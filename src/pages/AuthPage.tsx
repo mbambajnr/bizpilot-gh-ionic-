@@ -117,42 +117,55 @@ const AuthPage: React.FC = () => {
 
             <form className="auth-form" onSubmit={handleSubmit}>
               {isSignUp ? (
-                <IonItem lines="none" className="app-item auth-item">
-                  <IonLabel position="stacked">Business name</IonLabel>
+                <IonItem lines="none" className="app-item auth-item" aria-labelledby="business-name-label">
+                  <IonLabel id="business-name-label" position="stacked">Business name</IonLabel>
                   <IonInput
                     value={businessName}
                     autocomplete="organization"
+                    aria-describedby="business-name-help"
                     onIonInput={(event) => setBusinessName(event.detail.value ?? '')}
                   />
+                  <p id="business-name-help" className="auth-field-help">
+                    This creates the first business profile for the owner account.
+                  </p>
                 </IonItem>
               ) : null}
 
-              <IonItem lines="none" className="app-item auth-item">
-                <IonLabel position="stacked">Owner email</IonLabel>
+              <IonItem lines="none" className="app-item auth-item" aria-labelledby="owner-email-label">
+                <IonLabel id="owner-email-label" position="stacked">Owner email</IonLabel>
                 <IonInput
                   type="email"
                   value={email}
                   autocomplete="email"
                   inputmode="email"
+                  aria-describedby="owner-email-help"
                   onIonInput={(event) => setEmail(event.detail.value ?? '')}
                 />
+                <p id="owner-email-help" className="auth-field-help">
+                  Use the email connected to the business owner account.
+                </p>
               </IonItem>
 
-              <IonItem lines="none" className="app-item auth-item">
-                <IonLabel position="stacked">Password</IonLabel>
+              <IonItem lines="none" className="app-item auth-item" aria-labelledby="owner-password-label">
+                <IonLabel id="owner-password-label" position="stacked">Password</IonLabel>
                 <IonInput
                   type="password"
                   value={password}
                   autocomplete={isSignUp ? 'new-password' : 'current-password'}
+                  aria-describedby="owner-password-help"
                   onIonInput={(event) => setPassword(event.detail.value ?? '')}
                 />
+                <p id="owner-password-help" className="auth-field-help">
+                  Keep this private. Password reset is available from this screen.
+                </p>
               </IonItem>
 
-              <IonButton expand="block" type="submit" disabled={!isConfigured || isSubmitting}>
+              <IonButton className="auth-primary-action" expand="block" type="submit" disabled={!isConfigured || isSubmitting}>
                 {isSubmitting ? <IonSpinner name="crescent" /> : isSignUp ? 'Create owner account' : 'Sign in'}
               </IonButton>
 
               <IonButton
+                className="auth-secondary-action"
                 fill="clear"
                 color="medium"
                 type="button"
