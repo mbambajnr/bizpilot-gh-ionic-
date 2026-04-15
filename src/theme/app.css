@@ -93,14 +93,14 @@
 }
 
 .auth-logo {
-  width: 320px;
+  width: 192px;
   height: auto;
   display: block;
-  margin-bottom: 42px;
+  margin-bottom: 24px;
 }
 
 .auth-header {
-  margin-bottom: 24px;
+  margin-bottom: 32px;
 }
 
 .auth-panel-head h2 {
