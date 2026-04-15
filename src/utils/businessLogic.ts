@@ -24,7 +24,6 @@ import {
 } from './businessIds';
 import { createProductImage } from './productArtwork';
 import {
-  selectCustomerBalance,
   selectProductQuantityOnHand,
   selectSaleBalanceRemaining,
 } from '../selectors/businessSelectors';

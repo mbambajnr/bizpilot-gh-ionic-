@@ -20,9 +20,11 @@ import {
   selectCustomerLastPaymentLabel,
   selectCustomerLedgerEntries,
   selectCustomerSummaries,
+  selectCustomerStatement,
+  selectLedgerEntryDisplay,
   selectProductById,
   selectSaleBalanceRemaining,
-  selectSalePaymentStatus,
+  selectSaleStatusDisplay,
 } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate } from '../utils/format';
 
@@ -65,6 +67,13 @@ const CustomersPage: React.FC = () => {
     }
 
     return selectCustomerLedgerEntries(state, selectedCustomer.id);
+  }, [selectedCustomer, state]);
+  const selectedCustomerStatement = useMemo(() => {
+    if (!selectedCustomer) {
+      return null;
+    }
+
+    return selectCustomerStatement(state, selectedCustomer.id);
   }, [selectedCustomer, state]);
 
   const handleAddCustomer = () => {
@@ -155,7 +164,7 @@ const CustomersPage: React.FC = () => {
               />
             ) : (
               <div className="list-block">
-                {customerSummaries.map(({ customer, balance, lastPayment, needsFollowUp }) => (
+                {customerSummaries.map(({ customer, balance, lastPayment, accountStatus }) => (
                   <div
                     className="list-row"
                     key={customer.id}
@@ -177,10 +186,10 @@ const CustomersPage: React.FC = () => {
                       <p>{selectedCustomerId === customer.id ? 'Viewing ledger and invoice history' : 'Tap to view ledger history'}</p>
                     </div>
                     <div className="right-meta">
-                      <strong className={needsFollowUp ? 'danger-text' : 'success-text'}>
-                        {balance === 0 ? 'Paid' : `${formatCurrency(balance, currency)} due`}
+                      <strong className={accountStatus.tone === 'success' ? 'success-text' : 'warning-text'}>
+                        {accountStatus.label}
                       </strong>
-                      <p>{needsFollowUp ? 'Needs follow-up' : 'Account settled'}</p>
+                      <p>{balance === 0 ? accountStatus.helper : `${formatCurrency(balance, currency)} due`}</p>
                     </div>
                   </div>
                 ))}
@@ -221,7 +230,8 @@ const CustomersPage: React.FC = () => {
                   ) : (
                     selectedCustomerSales.map((sale) => {
                       const product = selectProductById(state, sale.productId);
-                      const paymentStatus = selectSalePaymentStatus(sale);
+                      const invoiceStatus = selectSaleStatusDisplay(sale);
+                      const balanceRemaining = selectSaleBalanceRemaining(sale);
 
                       return (
                         <div className="list-row" key={sale.id}>
@@ -229,21 +239,21 @@ const CustomersPage: React.FC = () => {
                             <strong>{product?.name ?? 'Recorded item'}</strong>
                             <p className="code-label">{sale.invoiceNumber} • {sale.receiptId}</p>
                             <p>
-                              {sale.quantity} units • {sale.paymentMethod} • {paymentStatus}
+                              {sale.quantity} units • {sale.paymentMethod} • {invoiceStatus.label}
                             </p>
                             <p>Recorded: {formatReceiptDate(sale.createdAt)}</p>
                             {sale.status === 'Reversed' && sale.reversalReason ? <p>Reason: {sale.reversalReason}</p> : null}
                           </div>
                           <div className="right-meta">
-                            <strong className={paymentStatus === 'Partial' || paymentStatus === 'Unpaid' ? 'danger-text' : paymentStatus === 'Paid' ? 'success-text' : 'danger-text'}>
-                              {paymentStatus}
+                            <strong className={invoiceStatus.tone === 'success' ? 'success-text' : invoiceStatus.tone === 'warning' ? 'warning-text' : 'danger-text'}>
+                              {invoiceStatus.label}
                             </strong>
                             <p>Total: {formatCurrency(sale.totalAmount, currency)}</p>
                             <p>
-                              {paymentStatus === 'Reversed'
+                              {invoiceStatus.label === 'Reversed'
                                 ? 'No longer active'
-                                : selectSaleBalanceRemaining(sale) > 0
-                                  ? `${formatCurrency(selectSaleBalanceRemaining(sale), currency)} left`
+                                : balanceRemaining > 0
+                                  ? `${formatCurrency(balanceRemaining, currency)} left`
                                   : 'Paid in full'}
                             </p>
                           </div>
@@ -255,10 +265,39 @@ const CustomersPage: React.FC = () => {
               </SectionCard>
 
               <SectionCard
-                title="Customer ledger"
-                subtitle="This is the local receivables history used to derive the customer balance shown across the app."
+                title="Customer statement"
+                subtitle="A plain-English receivables summary showing what increased or reduced this customer's balance."
               >
                 <div className="list-block">
+                  {selectedCustomerStatement ? (
+                    <>
+                      <div className="dual-stat">
+                        <div>
+                          <p className="muted-label">Opening balance</p>
+                          <h3>{formatCurrency(selectedCustomerStatement.openingBalance, currency)}</h3>
+                        </div>
+                        <div>
+                          <p className="muted-label">Closing balance</p>
+                          <h3>{formatCurrency(selectedCustomerStatement.closingBalance, currency)}</h3>
+                        </div>
+                      </div>
+                      <div className="triple-grid">
+                        <div className="mini-stat">
+                          <p className="muted-label">Invoices</p>
+                          <h3>{formatCurrency(selectedCustomerStatement.invoiceCharges, currency)}</h3>
+                        </div>
+                        <div className="mini-stat">
+                          <p className="muted-label">Payments</p>
+                          <h3>{formatCurrency(selectedCustomerStatement.paymentsReceived, currency)}</h3>
+                        </div>
+                        <div className="mini-stat">
+                          <p className="muted-label">Reversals</p>
+                          <h3>{formatCurrency(selectedCustomerStatement.reversals, currency)}</h3>
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+
                   {selectedCustomerLedger.length === 0 ? (
                     <EmptyState
                       eyebrow="No ledger entries"
@@ -266,23 +305,36 @@ const CustomersPage: React.FC = () => {
                       message="Ledger entries appear automatically whenever an invoice is raised, money is received, or an invoice is reversed."
                     />
                   ) : (
-                    selectedCustomerLedger.map((entry) => (
-                      <div className="list-row" key={entry.id}>
-                        <div>
-                          <strong>{entry.type.replace('_', ' ')}</strong>
-                          <p className="code-label">{entry.entryNumber}</p>
-                          <p>{entry.note}</p>
-                          <p>{formatReceiptDate(entry.createdAt)}</p>
+                    selectedCustomerLedger.map((entry) => {
+                      const entryDisplay = selectLedgerEntryDisplay(entry);
+                      const relatedSale = entry.relatedSaleId
+                        ? state.sales.find((sale) => sale.id === entry.relatedSaleId)
+                        : null;
+                      const relatedProduct = relatedSale ? selectProductById(state, relatedSale.productId) : null;
+
+                      return (
+                        <div className="list-row" key={entry.id}>
+                          <div>
+                            <strong>{entryDisplay.label}</strong>
+                            <p className="code-label">
+                              {entry.entryNumber}
+                              {entry.referenceNumber ? ` • ${entry.referenceNumber}` : ''}
+                            </p>
+                            <p>{entryDisplay.helper}</p>
+                            {relatedProduct ? <p>Item: {relatedProduct.name}</p> : null}
+                            <p>{formatReceiptDate(entry.createdAt)}</p>
+                          </div>
+                          <div className="right-meta">
+                            <strong className={entryDisplay.tone === 'warning' ? 'warning-text' : 'success-text'}>
+                              {entry.amountDelta > 0 ? '+' : '-'}
+                              {formatCurrency(Math.abs(entry.amountDelta), currency)}
+                            </strong>
+                            <p>{entryDisplay.amountLabel}</p>
+                            <p>{entry.paymentMethod ?? 'Statement entry'}</p>
+                          </div>
                         </div>
-                        <div className="right-meta">
-                          <strong className={entry.amountDelta > 0 ? 'danger-text' : 'success-text'}>
-                            {entry.amountDelta > 0 ? '+' : '-'}
-                            {formatCurrency(Math.abs(entry.amountDelta), currency)}
-                          </strong>
-                          <p>{entry.paymentMethod ?? entry.referenceNumber ?? 'Ledger entry'}</p>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </SectionCard>

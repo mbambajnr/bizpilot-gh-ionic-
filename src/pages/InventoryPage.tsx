@@ -15,8 +15,12 @@ import { useMemo, useState } from 'react';
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
 import { useBusiness } from '../context/BusinessContext';
-import { selectInventorySummaries } from '../selectors/businessSelectors';
-import { formatCurrency, formatRelativeDate } from '../utils/format';
+import {
+  selectInventorySummaries,
+  selectProductMovements,
+  selectStockMovementDisplay,
+} from '../selectors/businessSelectors';
+import { formatCurrency, formatReceiptDate, formatRelativeDate } from '../utils/format';
 
 const InventoryPage: React.FC = () => {
   const { state, addProduct } = useBusiness();
@@ -30,7 +34,13 @@ const InventoryPage: React.FC = () => {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [savedItemName, setSavedItemName] = useState('');
   const [formMessage, setFormMessage] = useState('');
+  const [selectedProductId, setSelectedProductId] = useState(state.products[0]?.id ?? '');
   const inventorySummaries = useMemo(() => selectInventorySummaries(state), [state]);
+  const selectedSummary = inventorySummaries.find((item) => item.product.id === selectedProductId) ?? inventorySummaries[0] ?? null;
+  const selectedMovements = useMemo(
+    () => (selectedSummary ? selectProductMovements(state, selectedSummary.product.id) : []),
+    [selectedSummary, state]
+  );
   const currency = state.businessProfile.currency;
 
   const handleAddProduct = () => {
@@ -167,11 +177,23 @@ const InventoryPage: React.FC = () => {
               />
             ) : (
               <div className="list-block">
-                {inventorySummaries.map(({ product, quantityOnHand, lowStock, latestMovement, stockStatus }) => {
+                {inventorySummaries.map(({ product, quantityOnHand, lowStock, latestMovement, stockStatusDisplay }) => {
                   const margin = product.price > 0 ? `${Math.round(((product.price - product.cost) / product.price) * 100)}%` : '0%';
 
                   return (
-                    <div className="list-row" key={product.id}>
+                    <div
+                      className="list-row"
+                      key={product.id}
+                      onClick={() => setSelectedProductId(product.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setSelectedProductId(product.id);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
                       <div className="item-main">
                         <img className="product-thumb" src={product.image} alt={product.name} />
                         <div>
@@ -184,17 +206,94 @@ const InventoryPage: React.FC = () => {
                             Latest movement:{' '}
                             {latestMovement ? `${latestMovement.type} • ${formatRelativeDate(latestMovement.createdAt)}` : 'No movements yet'}
                           </p>
+                          <p>{selectedSummary?.product.id === product.id ? 'Viewing movement history' : 'Tap to view movement history'}</p>
                         </div>
                       </div>
                       <div className="right-meta">
-                        <strong className={lowStock ? 'danger-text' : 'success-text'}>{quantityOnHand} left</strong>
-                        <p>{stockStatus}</p>
+                        <strong className={lowStock ? 'warning-text' : 'success-text'}>{stockStatusDisplay.label}</strong>
+                        <p>{quantityOnHand} left</p>
+                        <p>{stockStatusDisplay.helper}</p>
                         <p>{product.unit}</p>
                       </div>
                     </div>
                   );
                 })}
               </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Stock movement history"
+            subtitle="See exactly why this product's quantity changed, from opening stock to sales and reversals."
+          >
+            {selectedSummary ? (
+              <div className="list-block">
+                <div className="list-row">
+                  <div className="item-main">
+                    <img className="product-thumb" src={selectedSummary.product.image} alt={selectedSummary.product.name} />
+                    <div>
+                      <strong>{selectedSummary.product.name}</strong>
+                      <p className="code-label">{selectedSummary.product.inventoryId}</p>
+                      <p>{selectedSummary.stockStatusDisplay.helper}</p>
+                    </div>
+                  </div>
+                  <div className="right-meta">
+                    <strong className={selectedSummary.lowStock ? 'warning-text' : 'success-text'}>
+                      {selectedSummary.quantityOnHand} left
+                    </strong>
+                    <p>{selectedSummary.product.unit}</p>
+                  </div>
+                </div>
+
+                {selectedMovements.length === 0 ? (
+                  <EmptyState
+                    eyebrow="No movement history"
+                    title="No stock movement has been recorded yet."
+                    message="Opening stock, sales, and reversals will appear here as this product is used."
+                  />
+                ) : (
+                  selectedMovements.map((movement) => {
+                    const movementDisplay = selectStockMovementDisplay(movement);
+                    const relatedSale = movement.relatedSaleId
+                      ? state.sales.find((sale) => sale.id === movement.relatedSaleId)
+                      : null;
+                    const relatedCustomer = relatedSale
+                      ? state.customers.find((customer) => customer.id === relatedSale.customerId)
+                      : null;
+
+                    return (
+                      <div className="list-row" key={movement.id}>
+                        <div>
+                          <strong>{movementDisplay.label}</strong>
+                          <p className="code-label">
+                            {movement.movementNumber}
+                            {movement.referenceNumber ? ` • ${movement.referenceNumber}` : ''}
+                          </p>
+                          <p>{movement.note || movementDisplay.helper}</p>
+                          {relatedCustomer ? <p>Customer: {relatedCustomer.name}</p> : null}
+                          <p>{formatReceiptDate(movement.createdAt)}</p>
+                        </div>
+                        <div className="right-meta">
+                          <strong className={movement.quantityDelta < 0 ? 'danger-text' : 'success-text'}>
+                            {movement.quantityDelta > 0 ? '+' : ''}
+                            {movement.quantityDelta}
+                          </strong>
+                          <p>After: {movement.quantityAfter}</p>
+                          <p className={movementDisplay.tone === 'warning' ? 'warning-text' : 'success-text'}>
+                            {movementDisplay.helper}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : (
+              <EmptyState
+                eyebrow="No product selected"
+                title="Add a product to see movement history."
+                message="Once inventory exists, choose an item above to inspect how its stock changed."
+              />
             )}
           </SectionCard>
         </div>

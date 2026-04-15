@@ -15,7 +15,6 @@ import { useBusiness } from '../context/BusinessContext';
 import { formatCurrency, formatRelativeDate } from '../utils/format';
 import {
   selectActivityFeed,
-  selectCustomerBalance,
   selectDashboardMetrics,
   selectProductById,
   selectSaleBalanceRemaining,
@@ -129,8 +128,8 @@ const DashboardPage: React.FC = () => {
                         <p>Reorder level {item.product.reorderLevel}</p>
                       </div>
                       <div className="right-meta">
-                        <strong className="danger-text">{item.quantityOnHand} left</strong>
-                        <p>{item.stockStatus}</p>
+                        <strong className="warning-text">{item.stockStatusDisplay.label}</strong>
+                        <p>{item.quantityOnHand} left</p>
                       </div>
                     </div>
                   ))}

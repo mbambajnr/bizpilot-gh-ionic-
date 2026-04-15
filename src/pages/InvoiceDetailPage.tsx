@@ -21,20 +21,16 @@ import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
 import { useBusiness } from '../context/BusinessContext';
 import {
+  selectActivityDisplay,
   selectCustomerLedgerEntries,
+  selectLedgerEntryDisplay,
   selectProductMovements,
   selectSaleActivityEntries,
   selectSaleBalanceRemaining,
-  selectSalePaymentStatus,
+  selectSaleStatusDisplay,
+  selectStockMovementDisplay,
 } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate } from '../utils/format';
-
-const actionLabels: Record<string, string> = {
-  invoice_created: 'Invoice created',
-  receipt_issued: 'Receipt issued',
-  invoice_reversed: 'Invoice reversed',
-  corrected_copy_created: 'Correction invoice created',
-};
 
 const InvoiceDetailPage: React.FC = () => {
   const { saleId } = useParams<{ saleId: string }>();
@@ -87,7 +83,7 @@ const InvoiceDetailPage: React.FC = () => {
   }
 
   const balanceRemaining = selectSaleBalanceRemaining(sale);
-  const paymentStatus = selectSalePaymentStatus(sale);
+  const invoiceStatus = selectSaleStatusDisplay(sale);
   const receiptState = sale.status === 'Reversed' ? 'Receipt no longer active' : 'Receipt active';
 
   const handleConfirmReversal = () => {
@@ -128,7 +124,7 @@ const InvoiceDetailPage: React.FC = () => {
                   <p>{formatReceiptDate(sale.createdAt)}</p>
                 </div>
                 <div className="right-meta">
-                  <IonBadge color={sale.status === 'Reversed' ? 'danger' : paymentStatus === 'Paid' ? 'success' : 'warning'}>{paymentStatus}</IonBadge>
+                  <IonBadge color={invoiceStatus.tone}>{invoiceStatus.label}</IonBadge>
                   <p>{receiptState}</p>
                 </div>
               </div>
@@ -173,8 +169,8 @@ const InvoiceDetailPage: React.FC = () => {
                   <p>{formatCurrency(sale.paidAmount, currency)}</p>
                 </div>
                 <div className="right-meta">
-                  <strong className={paymentStatus === 'Paid' ? 'success-text' : 'danger-text'}>
-                    {paymentStatus === 'Reversed' ? 'Reversed' : paymentStatus === 'Paid' ? 'Paid' : `${formatCurrency(balanceRemaining, currency)} due`}
+                  <strong className={invoiceStatus.tone === 'success' ? 'success-text' : invoiceStatus.tone === 'warning' ? 'warning-text' : 'danger-text'}>
+                    {invoiceStatus.label === 'Reversed' ? 'Reversed' : balanceRemaining > 0 ? `${formatCurrency(balanceRemaining, currency)} due` : 'No balance due'}
                   </strong>
                   <p>Balance status</p>
                 </div>
@@ -260,36 +256,48 @@ const InvoiceDetailPage: React.FC = () => {
           >
             <div className="list-block">
               {stockMovements.map((movement) => (
-                <div className="list-row" key={movement.id}>
-                  <div>
-                    <strong>Stock movement</strong>
-                    <p className="code-label">{movement.movementNumber}</p>
-                    <p>{movement.note}</p>
-                  </div>
-                  <div className="right-meta">
-                    <strong className={movement.quantityDelta < 0 ? 'danger-text' : 'success-text'}>
-                      {movement.quantityDelta > 0 ? '+' : ''}
-                      {movement.quantityDelta}
-                    </strong>
-                    <p>After: {movement.quantityAfter}</p>
-                  </div>
-                </div>
+                (() => {
+                  const movementDisplay = selectStockMovementDisplay(movement);
+
+                  return (
+                    <div className="list-row" key={movement.id}>
+                      <div>
+                        <strong>{movementDisplay.label}</strong>
+                        <p className="code-label">{movement.movementNumber}</p>
+                        <p>{movementDisplay.helper}</p>
+                      </div>
+                      <div className="right-meta">
+                        <strong className={movement.quantityDelta < 0 ? 'danger-text' : 'success-text'}>
+                          {movement.quantityDelta > 0 ? '+' : ''}
+                          {movement.quantityDelta}
+                        </strong>
+                        <p>After: {movement.quantityAfter}</p>
+                      </div>
+                    </div>
+                  );
+                })()
               ))}
               {ledgerEntries.map((entry) => (
-                <div className="list-row" key={entry.id}>
-                  <div>
-                    <strong>Customer ledger</strong>
-                    <p className="code-label">{entry.entryNumber}</p>
-                    <p>{entry.note}</p>
-                  </div>
-                  <div className="right-meta">
-                    <strong className={entry.amountDelta > 0 ? 'danger-text' : 'success-text'}>
-                      {entry.amountDelta > 0 ? '+' : '-'}
-                      {formatCurrency(Math.abs(entry.amountDelta), currency)}
-                    </strong>
-                    <p>{entry.type.replace('_', ' ')}</p>
-                  </div>
-                </div>
+                (() => {
+                  const entryDisplay = selectLedgerEntryDisplay(entry);
+
+                  return (
+                    <div className="list-row" key={entry.id}>
+                      <div>
+                        <strong>{entryDisplay.label}</strong>
+                        <p className="code-label">{entry.entryNumber}</p>
+                        <p>{entryDisplay.helper}</p>
+                      </div>
+                      <div className="right-meta">
+                        <strong className={entryDisplay.tone === 'warning' ? 'warning-text' : 'success-text'}>
+                          {entry.amountDelta > 0 ? '+' : '-'}
+                          {formatCurrency(Math.abs(entry.amountDelta), currency)}
+                        </strong>
+                        <p>{entryDisplay.amountLabel}</p>
+                      </div>
+                    </div>
+                  );
+                })()
               ))}
             </div>
           </SectionCard>
@@ -306,17 +314,25 @@ const InvoiceDetailPage: React.FC = () => {
               />
             ) : (
               <div className="list-block">
-                {auditEvents.map((event) => (
-                  <div className="roadmap-row" key={event.id}>
-                    <span className={`status-dot ${event.status === 'warning' ? 'pending' : 'done'}`} />
-                    <div>
-                      <strong>{actionLabels[event.actionType] ?? event.title}</strong>
-                      <p>{formatReceiptDate(event.createdAt)}</p>
-                      <p>{event.detail}</p>
-                      {event.relatedEntityId ? <p>Related invoice: {event.relatedEntityId}</p> : null}
+                {auditEvents.map((event) => {
+                  const activityDisplay = selectActivityDisplay(event);
+                  const relatedSale = event.relatedEntityId
+                    ? state.sales.find((item) => item.id === event.relatedEntityId)
+                    : null;
+
+                  return (
+                    <div className="roadmap-row" key={event.id}>
+                      <span className={`status-dot ${activityDisplay.tone === 'warning' ? 'pending' : 'done'}`} />
+                      <div>
+                        <strong>{activityDisplay.label}</strong>
+                        <p>{formatReceiptDate(event.createdAt)}</p>
+                        <p>{activityDisplay.helper}</p>
+                        {event.detail !== activityDisplay.helper ? <p>{event.detail}</p> : null}
+                        {relatedSale ? <p>Linked invoice: {relatedSale.invoiceNumber}</p> : null}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </SectionCard>

@@ -23,7 +23,7 @@ import {
   selectProductQuantityOnHand,
   selectRecentSales,
   selectSaleBalanceRemaining,
-  selectSalePaymentStatus,
+  selectSaleStatusDisplay,
 } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate, formatRelativeDate } from '../utils/format';
 import { toPositiveInteger, toValidPaidAmount } from '../utils/salesMath';
@@ -79,10 +79,6 @@ const SalesPage: React.FC = () => {
   const selectedProduct = useMemo(
     () => state.products.find((item) => item.id === productId),
     [productId, state.products]
-  );
-  const selectedCustomer = useMemo(
-    () => state.customers.find((item) => item.id === customerId) ?? null,
-    [customerId, state.customers]
   );
   const correctionSourceSale = useMemo(
     () => state.sales.find((sale) => sale.id === correctionSourceSaleId) ?? null,
@@ -386,7 +382,7 @@ const SalesPage: React.FC = () => {
                   const customer = state.customers.find((item) => item.id === sale.customerId);
                   const product = state.products.find((item) => item.id === sale.productId);
                   const balanceLeft = selectSaleBalanceRemaining(sale);
-                  const paymentStatus = selectSalePaymentStatus(sale);
+                  const invoiceStatus = selectSaleStatusDisplay(sale);
 
                   return (
                     <div className="list-row" key={sale.id}>
@@ -408,8 +404,8 @@ const SalesPage: React.FC = () => {
                         </div>
                       </div>
                       <div className="right-meta">
-                        <strong className={paymentStatus === 'Partial' || paymentStatus === 'Unpaid' ? 'danger-text' : paymentStatus === 'Paid' ? 'success-text' : 'danger-text'}>
-                          {paymentStatus}
+                        <strong className={invoiceStatus.tone === 'success' ? 'success-text' : invoiceStatus.tone === 'warning' ? 'warning-text' : 'danger-text'}>
+                          {invoiceStatus.label}
                         </strong>
                         <p>{formatCurrency(sale.totalAmount, currency)}</p>
                         <IonButton fill="clear" size="small" onClick={() => history.push(`/sales/${sale.id}`)}>

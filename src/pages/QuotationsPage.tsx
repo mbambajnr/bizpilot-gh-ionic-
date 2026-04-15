@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from 'react';
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
 import { useBusiness } from '../context/BusinessContext';
+import { selectQuotationStatusDisplay } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate } from '../utils/format';
 import { toPositiveInteger, toValidPaidAmount } from '../utils/salesMath';
 
@@ -311,7 +312,10 @@ const QuotationsPage: React.FC = () => {
               />
             ) : (
               <div className="list-block">
-                {state.quotations.map((quotation) => (
+                {state.quotations.map((quotation) => {
+                  const quotationStatus = selectQuotationStatusDisplay(quotation);
+
+                  return (
                   <div className="selected-product" key={quotation.id}>
                     <div className="form-grid" style={{ flex: 1 }}>
                       <div className="list-row">
@@ -325,7 +329,7 @@ const QuotationsPage: React.FC = () => {
                         </div>
                         <div className="right-meta">
                           <strong>{formatCurrency(quotation.totalAmount)}</strong>
-                          <p>{quotation.status}</p>
+                          <p className={quotationStatus.tone === 'success' ? 'success-text' : 'warning-text'}>{quotationStatus.label}</p>
                         </div>
                       </div>
 
@@ -418,7 +422,8 @@ const QuotationsPage: React.FC = () => {
                       ) : null}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </SectionCard>
