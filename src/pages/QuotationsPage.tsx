@@ -1,0 +1,478 @@
+import {
+  IonButton,
+  IonContent,
+  IonHeader,
+  IonInput,
+  IonItem,
+  IonLabel,
+  IonPage,
+  IonSelect,
+  IonSelectOption,
+  IonTitle,
+  IonToast,
+  IonToolbar,
+} from '@ionic/react';
+import { useEffect, useMemo, useState } from 'react';
+
+import EmptyState from '../components/EmptyState';
+import SectionCard from '../components/SectionCard';
+import { useBusiness } from '../context/BusinessContext';
+import { formatCurrency, formatReceiptDate } from '../utils/format';
+import { toPositiveInteger, toValidPaidAmount } from '../utils/salesMath';
+
+type DraftLine = {
+  id: string;
+  productId: string;
+  quantityInput: string;
+};
+
+const createDraftLine = (productId = ''): DraftLine => ({
+  id: crypto.randomUUID(),
+  productId,
+  quantityInput: '1',
+});
+
+const QuotationsPage: React.FC = () => {
+  const { state, addQuotation, convertQuotationToSale } = useBusiness();
+  const [customerId, setCustomerId] = useState(state.customers[0]?.id ?? '');
+  const [lines, setLines] = useState<DraftLine[]>([createDraftLine(state.products[0]?.id ?? '')]);
+  const [formMessage, setFormMessage] = useState('');
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [latestQuotationNumber, setLatestQuotationNumber] = useState('');
+  const [conversionMessage, setConversionMessage] = useState('');
+  const [showConversionToast, setShowConversionToast] = useState(false);
+  const [convertingQuotationId, setConvertingQuotationId] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Mobile Money'>('Cash');
+  const [amountPaidInput, setAmountPaidInput] = useState('');
+  const [conversionFormMessage, setConversionFormMessage] = useState('');
+  const [latestConversionReceipts, setLatestConversionReceipts] = useState<
+    Array<{
+      receiptId: string;
+      createdAt: string;
+      customerName: string;
+      clientId: string;
+      productName: string;
+      inventoryId: string;
+      quantity: number;
+      unitPrice: number;
+      totalAmount: number;
+      amountPaid: number;
+      balanceRemaining: number;
+      paymentMethod: string;
+    }>
+  >([]);
+
+  useEffect(() => {
+    if (!state.customers.some((customer) => customer.id === customerId)) {
+      setCustomerId(state.customers[0]?.id ?? '');
+    }
+  }, [customerId, state.customers]);
+
+  useEffect(() => {
+    setLines((current) =>
+      current.map((line, index) => {
+        if (state.products.some((product) => product.id === line.productId)) {
+          return line;
+        }
+
+        return {
+          ...line,
+          productId: index === 0 ? state.products[0]?.id ?? '' : '',
+        };
+      })
+    );
+  }, [state.products]);
+
+  const selectedCustomer = useMemo(
+    () => state.customers.find((customer) => customer.id === customerId) ?? null,
+    [customerId, state.customers]
+  );
+
+  const quotationPreview = useMemo(() => {
+    const items = lines
+      .map((line) => {
+        const product = state.products.find((item) => item.id === line.productId);
+        const quantity = toPositiveInteger(line.quantityInput, 1);
+
+        if (!product) {
+          return null;
+        }
+
+        return {
+          id: line.id,
+          product,
+          quantity,
+          total: product.price * quantity,
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      items,
+      totalAmount: items.reduce((sum, item) => sum + (item?.total ?? 0), 0),
+    };
+  }, [lines, state.products]);
+
+  const activeQuotation = useMemo(
+    () => state.quotations.find((quotation) => quotation.id === convertingQuotationId) ?? null,
+    [convertingQuotationId, state.quotations]
+  );
+  const normalizedAmountPaid = toValidPaidAmount(amountPaidInput, activeQuotation?.totalAmount ?? 0);
+
+  const handleLineChange = (lineId: string, updates: Partial<DraftLine>) => {
+    setLines((current) => current.map((line) => (line.id === lineId ? { ...line, ...updates } : line)));
+  };
+
+  const handleAddLine = () => {
+    setLines((current) => [...current, createDraftLine(state.products[0]?.id ?? '')]);
+  };
+
+  const handleRemoveLine = (lineId: string) => {
+    setLines((current) => (current.length === 1 ? current : current.filter((line) => line.id !== lineId)));
+  };
+
+  const handleCreateQuotation = () => {
+    const result = addQuotation({
+      customerId,
+      items: lines
+        .filter((line) => line.productId)
+        .map((line) => ({
+          productId: line.productId,
+          quantity: toPositiveInteger(line.quantityInput, 1),
+        })),
+    });
+
+    if (!result.ok) {
+      setFormMessage(result.message);
+      return;
+    }
+
+    const savedQuotation = state.quotations[0];
+    const fallbackNumber = `QTN-${String(state.quotations.length + 1).padStart(3, '0')}`;
+
+    setFormMessage('');
+    setLatestQuotationNumber(savedQuotation?.quotationNumber ?? fallbackNumber);
+    setShowSuccessToast(true);
+    setLines([createDraftLine(state.products[0]?.id ?? '')]);
+  };
+
+  const handleStartConversion = (quotationId: string) => {
+    setConvertingQuotationId(quotationId);
+    setPaymentMethod('Cash');
+    setAmountPaidInput('');
+    setConversionFormMessage('');
+  };
+
+  const handleConvertQuotation = () => {
+    if (!activeQuotation) {
+      setConversionFormMessage('Choose a quotation to convert first.');
+      return;
+    }
+
+    const result = convertQuotationToSale({
+      quotationId: activeQuotation.id,
+      paymentMethod,
+      amountPaid: normalizedAmountPaid,
+    });
+
+    if (!result.ok) {
+      setConversionFormMessage(result.message);
+      return;
+    }
+
+    setLatestConversionReceipts(result.receipts);
+    setConversionMessage(`${result.quotationNumber} converted to sale successfully.`);
+    setShowConversionToast(true);
+    setConvertingQuotationId('');
+    setAmountPaidInput('');
+    setConversionFormMessage('');
+  };
+
+  return (
+    <IonPage>
+      <IonHeader translucent={true}>
+        <IonToolbar>
+          <IonTitle>Quotations</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent fullscreen={true}>
+        <div className="page-shell">
+          <SectionCard
+            title="Create quotation"
+            subtitle="Prepare a simple proforma for a client before the sale is finalized."
+          >
+            {state.customers.length === 0 || state.products.length === 0 ? (
+              <EmptyState
+                eyebrow="Quotation setup"
+                title="Add customers and products first"
+                message="Quotations need an existing client and at least one product so the app can calculate pricing correctly."
+              />
+            ) : (
+              <div className="form-grid">
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">Client</IonLabel>
+                  <IonSelect value={customerId} onIonChange={(event) => setCustomerId(event.detail.value)} interface="popover">
+                    {state.customers.map((customer) => (
+                      <IonSelectOption key={customer.id} value={customer.id}>
+                        {customer.clientId} · {customer.name}
+                      </IonSelectOption>
+                    ))}
+                  </IonSelect>
+                </IonItem>
+
+                {lines.map((line, index) => {
+                  const previewItem = quotationPreview.items.find((item) => item?.id === line.id) ?? null;
+
+                  return (
+                    <div className="selected-product" key={line.id}>
+                      <div className="form-grid" style={{ flex: 1 }}>
+                        <p className="muted-label">Item line {index + 1}</p>
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Product</IonLabel>
+                          <IonSelect
+                            value={line.productId}
+                            onIonChange={(event) => handleLineChange(line.id, { productId: event.detail.value })}
+                            interface="popover"
+                          >
+                            {state.products.map((product) => (
+                              <IonSelectOption key={product.id} value={product.id}>
+                                {product.inventoryId} · {product.name}
+                              </IonSelectOption>
+                            ))}
+                          </IonSelect>
+                        </IonItem>
+
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Quantity</IonLabel>
+                          <IonInput
+                            type="number"
+                            min={1}
+                            inputmode="numeric"
+                            value={line.quantityInput}
+                            onIonInput={(event) => handleLineChange(line.id, { quantityInput: event.detail.value ?? '1' })}
+                          />
+                        </IonItem>
+
+                        {previewItem ? (
+                          <div className="sale-summary">
+                            <div>
+                              <p className="muted-label">Unit price</p>
+                              <h3>{formatCurrency(previewItem.product.price)}</h3>
+                            </div>
+                            <div>
+                              <p className="muted-label">Line total</p>
+                              <h3>{formatCurrency(previewItem.total)}</h3>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {lines.length > 1 ? (
+                          <IonButton fill="clear" color="medium" onClick={() => handleRemoveLine(line.id)}>
+                            Remove line
+                          </IonButton>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <IonButton expand="block" fill="outline" onClick={handleAddLine}>
+                  Add another item
+                </IonButton>
+
+                <div className="sale-summary">
+                  <div>
+                    <p className="muted-label">Client</p>
+                    <h3>{selectedCustomer?.name ?? 'Choose client'}</h3>
+                  </div>
+                  <div>
+                    <p className="muted-label">Grand total</p>
+                    <h3>{formatCurrency(quotationPreview.totalAmount)}</h3>
+                  </div>
+                </div>
+
+                <IonButton expand="block" onClick={handleCreateQuotation}>
+                  Save quotation
+                </IonButton>
+                {formMessage ? <p className="form-message">{formMessage}</p> : null}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Quotation history"
+            subtitle="Recently created proformas stay in the app so you can review totals and line items before a sale is confirmed."
+          >
+            {state.quotations.length === 0 ? (
+              <EmptyState
+                eyebrow="No quotations yet"
+                title="No quotations created yet."
+                message="Once you create a quotation, it will appear here with client details, line items, and the total value."
+              />
+            ) : (
+              <div className="list-block">
+                {state.quotations.map((quotation) => (
+                  <div className="selected-product" key={quotation.id}>
+                    <div className="form-grid" style={{ flex: 1 }}>
+                      <div className="list-row">
+                        <div>
+                          <strong>{quotation.customerName}</strong>
+                          <p className="code-label">
+                            {quotation.quotationNumber} · {quotation.clientId}
+                          </p>
+                          <p>{formatReceiptDate(quotation.createdAt)}</p>
+                          {quotation.convertedAt ? <p>Converted: {formatReceiptDate(quotation.convertedAt)}</p> : null}
+                        </div>
+                        <div className="right-meta">
+                          <strong>{formatCurrency(quotation.totalAmount)}</strong>
+                          <p>{quotation.status}</p>
+                        </div>
+                      </div>
+
+                      {quotation.items.map((item) => (
+                        <div className="list-row" key={`${quotation.id}-${item.productId}`}>
+                          <div>
+                            <strong>{item.productName}</strong>
+                            <p className="code-label">Inventory ID: {item.inventoryId}</p>
+                            <p>{item.quantity} units</p>
+                          </div>
+                          <div className="right-meta">
+                            <strong>{formatCurrency(item.total)}</strong>
+                            <p>{formatCurrency(item.unitPrice)} each</p>
+                          </div>
+                        </div>
+                      ))}
+
+                      {quotation.status === 'Draft' ? (
+                        <IonButton expand="block" onClick={() => handleStartConversion(quotation.id)}>
+                          Convert to Sale
+                        </IonButton>
+                      ) : null}
+
+                      {convertingQuotationId === quotation.id ? (
+                        <div className="form-grid">
+                          <div className="sale-summary">
+                            <div>
+                              <p className="muted-label">Customer</p>
+                              <h3>{quotation.customerName}</h3>
+                            </div>
+                            <div>
+                              <p className="muted-label">Quotation total</p>
+                              <h3>{formatCurrency(quotation.totalAmount)}</h3>
+                            </div>
+                          </div>
+
+                          <IonItem lines="none" className="app-item">
+                            <IonLabel position="stacked">Payment method</IonLabel>
+                            <IonSelect
+                              value={paymentMethod}
+                              onIonChange={(event) => setPaymentMethod(event.detail.value)}
+                              interface="popover"
+                            >
+                              <IonSelectOption value="Cash">Cash</IonSelectOption>
+                              <IonSelectOption value="Mobile Money">Mobile Money</IonSelectOption>
+                            </IonSelect>
+                          </IonItem>
+
+                          <IonItem lines="none" className="app-item">
+                            <IonLabel position="stacked">Amount paid now</IonLabel>
+                            <IonInput
+                              type="number"
+                              inputmode="decimal"
+                              min={0}
+                              max={quotation.totalAmount}
+                              helperText={`Leave blank to mark ${formatCurrency(quotation.totalAmount)} as fully paid.`}
+                              value={amountPaidInput}
+                              onIonInput={(event) => setAmountPaidInput(event.detail.value ?? '')}
+                            />
+                          </IonItem>
+
+                          <div className="sale-summary">
+                            <div>
+                              <p className="muted-label">Paid now</p>
+                              <h3>{formatCurrency(normalizedAmountPaid)}</h3>
+                            </div>
+                            <div>
+                              <p className="muted-label">Balance after conversion</p>
+                              <h3>{formatCurrency(Math.max(0, quotation.totalAmount - normalizedAmountPaid))}</h3>
+                            </div>
+                          </div>
+
+                          <IonButton expand="block" onClick={handleConvertQuotation}>
+                            Confirm conversion
+                          </IonButton>
+                          <IonButton
+                            expand="block"
+                            fill="clear"
+                            color="medium"
+                            onClick={() => {
+                              setConvertingQuotationId('');
+                              setAmountPaidInput('');
+                              setConversionFormMessage('');
+                            }}
+                          >
+                            Cancel
+                          </IonButton>
+                          {conversionFormMessage ? <p className="form-message">{conversionFormMessage}</p> : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          {latestConversionReceipts.length > 0 ? (
+            <SectionCard
+              title="Latest conversion receipts"
+              subtitle="Each quotation line is recorded as its own sale so stock, balances, and receipts stay aligned with the current sales model."
+            >
+              <div className="list-block">
+                {latestConversionReceipts.map((receipt) => (
+                  <div className="list-row" key={receipt.receiptId}>
+                    <div>
+                      <strong>{receipt.productName}</strong>
+                      <p className="code-label">
+                        {receipt.receiptId} · {receipt.inventoryId}
+                      </p>
+                      <p>
+                        {receipt.quantity} units • {receipt.paymentMethod} • {formatReceiptDate(receipt.createdAt)}
+                      </p>
+                      <p>
+                        Paid {formatCurrency(receipt.amountPaid)} • Remaining{' '}
+                        {receipt.balanceRemaining > 0 ? formatCurrency(receipt.balanceRemaining) : 'Paid'}
+                      </p>
+                    </div>
+                    <div className="right-meta">
+                      <strong>{formatCurrency(receipt.totalAmount)}</strong>
+                      <p>{receipt.clientId}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          ) : null}
+        </div>
+      </IonContent>
+      <IonToast
+        isOpen={showSuccessToast}
+        message={`${latestQuotationNumber} created successfully.`}
+        duration={1800}
+        color="success"
+        position="top"
+        onDidDismiss={() => setShowSuccessToast(false)}
+      />
+      <IonToast
+        isOpen={showConversionToast}
+        message={conversionMessage}
+        duration={2200}
+        color="success"
+        position="top"
+        onDidDismiss={() => setShowConversionToast(false)}
+      />
+    </IonPage>
+  );
+};
+
+export default QuotationsPage;

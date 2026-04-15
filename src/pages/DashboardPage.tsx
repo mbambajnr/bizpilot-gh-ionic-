@@ -13,45 +13,30 @@ import RevenueChart from '../components/RevenueChart';
 import StatCard from '../components/StatCard';
 import { useBusiness } from '../context/BusinessContext';
 import { formatCurrency, formatRelativeDate } from '../utils/format';
+import {
+  selectActivityFeed,
+  selectCustomerBalance,
+  selectDashboardMetrics,
+  selectProductById,
+  selectSaleBalanceRemaining,
+} from '../selectors/businessSelectors';
 
 const DashboardPage: React.FC = () => {
   const { state, priorityQuestions } = useBusiness();
-  const now = new Date();
-  const todayKey = new Date().toDateString();
-  const todaySales = state.sales.filter((sale) => new Date(sale.createdAt).toDateString() === todayKey);
-  const salesToday = todaySales.reduce((sum, sale) => sum + sale.totalAmount, 0);
-  const cashInHand = todaySales
-    .filter((sale) => sale.paymentMethod === 'Cash')
-    .reduce((sum, sale) => sum + sale.paidAmount, 0);
-  const mobileMoneyToday = todaySales
-    .filter((sale) => sale.paymentMethod === 'Mobile Money')
-    .reduce((sum, sale) => sum + sale.paidAmount, 0);
-  const outstandingReceivables = state.customers.reduce((sum, customer) => sum + customer.balance, 0);
-  const lowStockCount = state.products.filter((product) => product.quantity <= product.reorderLevel).length;
-  const lastSync = state.sales[0]?.createdAt;
-  const revenuePoints = Array.from({ length: 7 }, (_, offset) => {
-    const date = new Date(now);
-    date.setDate(now.getDate() - (6 - offset));
-    const label = new Intl.DateTimeFormat('en-GH', { weekday: 'short' }).format(date);
-    const dayKey = date.toDateString();
-    const value = state.sales
-      .filter((sale) => new Date(sale.createdAt).toDateString() === dayKey)
-      .reduce((sum, sale) => sum + sale.totalAmount, 0);
-
-    return {
-      label,
-      shortLabel: label.slice(0, 2),
-      value,
-    };
-  });
-  const weekRevenue = revenuePoints.reduce((sum, point) => sum + point.value, 0);
-  const bestDay = revenuePoints.reduce((current, point) => (point.value > current.value ? point : current), revenuePoints[0]);
+  const metrics = selectDashboardMetrics(state);
+  const weekRevenue = metrics.weeklyRevenueTrend.reduce((sum, point) => sum + point.value, 0);
+  const bestDay = metrics.weeklyRevenueTrend.reduce(
+    (current, point) => (point.value > current.value ? point : current),
+    metrics.weeklyRevenueTrend[0]
+  );
+  const lastActivity = selectActivityFeed(state)[0];
+  const currency = state.businessProfile.currency;
 
   return (
     <IonPage>
       <IonHeader translucent={true}>
         <IonToolbar>
-          <IonTitle>BizPilot GH</IonTitle>
+          <IonTitle>{state.businessProfile.businessName}</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>
@@ -60,38 +45,58 @@ const DashboardPage: React.FC = () => {
             <p className="eyebrow">Business health</p>
             <h1>Run your shop with clarity.</h1>
             <p className="hero-copy">
-              Your dashboard now updates from recorded sales, customer balances, and live stock levels stored in this app.
+              Dashboard totals now come from recorded sales, customer ledger entries, and stock movement history stored in this app.
             </p>
             <div className="sync-line">
-              <IonBadge color="success">Healthy</IonBadge>
+              <IonBadge color="success">Local-first</IonBadge>
               <IonText>
-                Last activity {lastSync ? formatRelativeDate(lastSync) : 'waiting for first recorded sale'} • local-first state active
+                Last activity {lastActivity ? formatRelativeDate(lastActivity.createdAt) : 'waiting for first business event'}
               </IonText>
             </div>
           </section>
 
           <section className="stats-grid">
-            <StatCard label="Sales today" value={formatCurrency(salesToday)} helper={`${todaySales.length} transactions`} />
-            <StatCard label="Cash in hand" value={formatCurrency(cashInHand)} helper="Collected today" />
-            <StatCard label="MoMo received" value={formatCurrency(mobileMoneyToday)} helper="Mobile money collected" />
-            <StatCard label="Customers owing" value={formatCurrency(outstandingReceivables)} helper={`${lowStockCount} low-stock products`} />
+            <StatCard label="Sales today" value={formatCurrency(metrics.salesToday, currency)} helper={`${metrics.activeSales.filter((sale) => new Date(sale.createdAt).toDateString() === new Date().toDateString()).length} transactions`} />
+            <StatCard label="Cash in hand" value={formatCurrency(metrics.cashInHand, currency)} helper="Received today" />
+            <StatCard label="MoMo received" value={formatCurrency(metrics.mobileMoneyReceived, currency)} helper="Received today" />
+            <StatCard
+              label="Receivables"
+              value={formatCurrency(metrics.receivables, currency)}
+              helper={metrics.customersOwingCount > 0 ? `${metrics.customersOwingCount} customers still owe` : 'All tracked customers are settled'}
+            />
           </section>
 
           <SectionCard
+            title="Attention needed"
+            subtitle="A quick view of unpaid balances and stock pressure that may need owner follow-up."
+          >
+            <div className="dual-stat">
+              <div>
+                <p className="muted-label">Customers owing</p>
+                <h3>{metrics.customersOwingCount}</h3>
+              </div>
+              <div>
+                <p className="muted-label">Low-stock items</p>
+                <h3>{metrics.lowStockCount}</h3>
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
             title="Revenue analytics"
-            subtitle="A rolling seven-day view of sales value from recorded transactions."
+            subtitle="A rolling seven-day view of revenue from active sale transactions."
           >
             <div className="analytics-headline">
               <div>
                 <p className="muted-label">This week</p>
-                <h3>{formatCurrency(weekRevenue)}</h3>
+                <h3>{formatCurrency(weekRevenue, currency)}</h3>
               </div>
               <div className="right-meta">
                 <p className="muted-label">Best day</p>
-                <h3>{bestDay ? `${bestDay.label} · ${formatCurrency(bestDay.value)}` : formatCurrency(0)}</h3>
+                <h3>{bestDay ? `${bestDay.label} · ${formatCurrency(bestDay.value, currency)}` : formatCurrency(0, currency)}</h3>
               </div>
             </div>
-            <RevenueChart points={revenuePoints} />
+            <RevenueChart points={metrics.weeklyRevenueTrend} />
           </SectionCard>
 
           <SectionCard
@@ -109,14 +114,48 @@ const DashboardPage: React.FC = () => {
           </SectionCard>
 
           <SectionCard
+            title="Products to restock"
+            subtitle="Items at or below their reorder point based on movement history, not manual counters."
+          >
+            {metrics.inventorySummaries.filter((item) => item.lowStock).length > 0 ? (
+              <div className="list-block">
+                {metrics.inventorySummaries
+                  .filter((item) => item.lowStock)
+                  .map((item) => (
+                    <div className="list-row" key={item.product.id}>
+                      <div>
+                        <strong>{item.product.name}</strong>
+                        <p className="code-label">{item.product.inventoryId}</p>
+                        <p>Reorder level {item.product.reorderLevel}</p>
+                      </div>
+                      <div className="right-meta">
+                        <strong className="danger-text">{item.quantityOnHand} left</strong>
+                        <p>{item.stockStatus}</p>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div className="list-block">
+                <div className="list-row">
+                  <div>
+                    <strong>Stock levels look healthy</strong>
+                    <p>No products are currently at or below their reorder level.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
             title="Recent activity"
-            subtitle="New sales recorded from the Sales tab appear here immediately."
+            subtitle="The newest transactions and workflow events appear here immediately."
           >
             <div className="list-block">
-              {state.sales.slice(0, 5).map((sale) => {
+              {metrics.activeSales.slice(0, 5).map((sale) => {
                 const customer = state.customers.find((item) => item.id === sale.customerId);
-                const product = state.products.find((item) => item.id === sale.productId);
-                const outstanding = sale.totalAmount - sale.paidAmount;
+                const product = selectProductById(state, sale.productId);
+                const outstanding = selectSaleBalanceRemaining(sale);
 
                 return (
                   <div className="list-row" key={sale.id}>
@@ -127,13 +166,26 @@ const DashboardPage: React.FC = () => {
                       <p>
                         {sale.quantity} units • {sale.paymentMethod} • {formatRelativeDate(sale.createdAt)}
                       </p>
+                      <p className="sale-meta">
+                        {outstanding > 0
+                          ? `Paid ${formatCurrency(sale.paidAmount, currency)} so far • ${formatCurrency(outstanding, currency)} still outstanding`
+                          : `Paid in full • ${formatCurrency(sale.paidAmount, currency)} received`}
+                      </p>
                     </div>
                     <strong className={outstanding > 0 ? 'danger-text' : 'success-text'}>
-                      {formatCurrency(sale.totalAmount)}
+                      {outstanding > 0 ? formatCurrency(outstanding, currency) : formatCurrency(sale.totalAmount, currency)}
                     </strong>
                   </div>
                 );
               })}
+              {metrics.activeSales.length === 0 ? (
+                <div className="list-row">
+                  <div>
+                    <strong>No sales recorded yet</strong>
+                    <p>The first sale will start shaping the dashboard as soon as it is saved.</p>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </SectionCard>
         </div>

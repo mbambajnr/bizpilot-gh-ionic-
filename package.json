@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
+  "description": "Mobile-first Ghana SME operations demo built with Ionic React.",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -47,5 +48,6 @@
     "vite": "^5.0.0",
     "vitest": "^0.34.6"
   },
-  "description": "An Ionic project"
+  "author": "mbambajnr",
+  "license": "UNLICENSED"
 }

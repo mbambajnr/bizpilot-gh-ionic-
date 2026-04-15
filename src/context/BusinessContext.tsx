@@ -1,24 +1,74 @@
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 
-import { BusinessState, PaymentMethod, Product, Sale, priorityQuestions, seedState } from '../data/seedBusiness';
-import { nextInventoryId } from '../utils/businessIds';
-import { createProductImage } from '../utils/productArtwork';
+import { BusinessState, priorityQuestions, seedState } from '../data/seedBusiness';
+import {
+  ActionResult,
+  addCustomerToState,
+  addProductToState,
+  addQuotationToState,
+  addSaleToState,
+  convertQuotationToSalesState,
+  ConvertQuotationInput,
+  ConvertQuotationResult,
+  NewCustomerInput,
+  NewProductInput,
+  NewQuotationInput,
+  NewSaleInput,
+  restoreBusinessState,
+  reverseSaleInState,
+  ReverseSaleInput,
+  ReverseSaleResult,
+  updateBusinessProfileInState,
+  UpdateBusinessProfileInput,
+} from '../utils/businessLogic';
+import { selectProductQuantityOnHand } from '../selectors/businessSelectors';
 
 const STORAGE_KEY = 'bizpilot-gh-state-v1';
 
-type NewSaleInput = {
-  customerId: string;
+type LowStockAlert = {
   productId: string;
+  name: string;
   quantity: number;
-  paymentMethod: PaymentMethod;
-  paidAmount: number;
+  reorderLevel: number;
 };
+
+type SaleReceipt = {
+  receiptId: string;
+  createdAt: string;
+  customerName: string;
+  clientId: string;
+  productName: string;
+  inventoryId: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  amountPaid: number;
+  balanceRemaining: number;
+  paymentMethod: string;
+};
+
+type AddSaleResult =
+  | { ok: true; receipt: SaleReceipt; lowStockAlert?: LowStockAlert }
+  | { ok: false; message: string };
+
+type ConvertQuotationToSaleResult =
+  | { ok: true; receipts: SaleReceipt[]; quotationNumber: string }
+  | { ok: false; message: string };
+
+type ReverseSaleContextResult =
+  | { ok: true; reversedSaleId: string }
+  | { ok: false; message: string };
 
 type BusinessContextValue = {
   state: BusinessState;
   priorityQuestions: string[];
-  addProduct: (input: Omit<Product, 'id' | 'image'>) => void;
-  addSale: (input: NewSaleInput) => { ok: true } | { ok: false; message: string };
+  addProduct: (input: NewProductInput) => ActionResult;
+  addCustomer: (input: NewCustomerInput) => ActionResult;
+  updateBusinessProfile: (input: UpdateBusinessProfileInput) => ActionResult;
+  addQuotation: (input: NewQuotationInput) => ActionResult;
+  convertQuotationToSale: (input: ConvertQuotationInput) => ConvertQuotationToSaleResult;
+  reverseSale: (input: ReverseSaleInput) => ReverseSaleContextResult;
+  addSale: (input: NewSaleInput) => AddSaleResult;
 };
 
 const BusinessContext = createContext<BusinessContextValue | null>(null);
@@ -34,19 +84,7 @@ function readInitialState(): BusinessState {
   }
 
   try {
-    const parsed = JSON.parse(stored) as BusinessState;
-
-    return {
-      ...parsed,
-      products: parsed.products.map((product, index) => ({
-        ...product,
-        inventoryId: product.inventoryId ?? `INV-${String(index + 1).padStart(3, '0')}`,
-      })),
-      customers: parsed.customers.map((customer, index) => ({
-        ...customer,
-        clientId: customer.clientId ?? `CLT-${String(index + 1).padStart(3, '0')}`,
-      })),
-    };
+    return restoreBusinessState(JSON.parse(stored) as BusinessState);
   } catch {
     return seedState;
   }
@@ -64,72 +102,125 @@ export function BusinessProvider({ children }: PropsWithChildren) {
       state,
       priorityQuestions,
       addProduct(input) {
-        setState((current) => ({
-          ...current,
-          products: [
-            {
-              ...input,
-              id: `p${crypto.randomUUID()}`,
-              inventoryId: nextInventoryId(current.products),
-              image: createProductImage(input.name),
-            },
-            ...current.products,
-          ],
-        }));
+        const result = addProductToState(state, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not save the product right now.' };
+        }
+
+        setState(result.data);
+        return { ok: true };
+      },
+      addCustomer(input) {
+        const result = addCustomerToState(state, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not save the customer right now.' };
+        }
+
+        setState(result.data);
+        return { ok: true };
+      },
+      updateBusinessProfile(input) {
+        const result = updateBusinessProfileInState(state, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not update business settings right now.' };
+        }
+
+        setState(result.data);
+        return { ok: true };
+      },
+      addQuotation(input) {
+        const result = addQuotationToState(state, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not save the quotation right now.' };
+        }
+
+        setState(result.data);
+        return { ok: true };
+      },
+      convertQuotationToSale(input) {
+        const result = convertQuotationToSalesState(state, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not convert the quotation right now.' };
+        }
+
+        const { data, receipts, quotationNumber } = result.data as ConvertQuotationResult;
+        setState(data);
+        return { ok: true, receipts, quotationNumber };
+      },
+      reverseSale(input) {
+        const result = reverseSaleInState(state, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not reverse the invoice right now.' };
+        }
+
+        const { data, reversedSale } = result.data as ReverseSaleResult;
+        setState(data);
+        return { ok: true, reversedSaleId: reversedSale.id };
       },
       addSale(input) {
         const product = state.products.find((item) => item.id === input.productId);
         const customer = state.customers.find((item) => item.id === input.customerId);
+        const result = addSaleToState(state, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not record the sale right now.' };
+        }
+        const savedSale = result.data.sales[0];
 
-        if (!product || !customer) {
-          return { ok: false, message: 'Choose a valid product and customer.' };
+        if (!product || !customer || !savedSale) {
+          return { ok: false, message: 'Receipt details could not be prepared right now.' };
         }
 
-        if (input.quantity <= 0) {
-          return { ok: false, message: 'Quantity must be at least 1.' };
-        }
+        const newQuantity = selectProductQuantityOnHand(result.data, product.id);
+        const previouslyLow = selectProductQuantityOnHand(state, product.id) <= product.reorderLevel;
+        const nowLow = newQuantity <= product.reorderLevel;
+        const lowStockAlert = !previouslyLow && nowLow
+          ? {
+              productId: product.id,
+              name: product.name,
+              quantity: newQuantity,
+              reorderLevel: product.reorderLevel,
+            }
+          : undefined;
 
-        if (input.quantity > product.quantity) {
-          return { ok: false, message: 'Not enough stock available for that sale.' };
-        }
+        setState(result.data);
 
-        const totalAmount = product.price * input.quantity;
-        if (input.paidAmount < 0 || input.paidAmount > totalAmount) {
-          return { ok: false, message: 'Paid amount must be between 0 and the total sale value.' };
-        }
-
-        const createdAt = new Date().toISOString();
-        const sale: Sale = {
-          id: `s${crypto.randomUUID()}`,
-          customerId: input.customerId,
-          productId: input.productId,
-          quantity: input.quantity,
-          paymentMethod: input.paymentMethod,
-          paidAmount: input.paidAmount,
-          totalAmount,
-          createdAt,
+        const receipt: SaleReceipt = {
+          receiptId: savedSale.receiptId,
+          createdAt: savedSale.createdAt,
+          customerName: customer.name,
+          clientId: customer.clientId,
+          productName: product.name,
+          inventoryId: product.inventoryId,
+          quantity: savedSale.quantity,
+          unitPrice: product.price,
+          totalAmount: savedSale.totalAmount,
+          amountPaid: savedSale.paidAmount,
+          balanceRemaining: Math.max(0, savedSale.totalAmount - savedSale.paidAmount),
+          paymentMethod: savedSale.paymentMethod,
         };
 
-        setState((current) => ({
-          products: current.products.map((item) =>
-            item.id === input.productId ? { ...item, quantity: item.quantity - input.quantity } : item
-          ),
-          customers: current.customers.map((item) =>
-            item.id === input.customerId
-              ? {
-                  ...item,
-                  balance: Math.max(0, item.balance + totalAmount - input.paidAmount),
-                  lastPayment:
-                    input.paidAmount > 0
-                      ? `Today, ${input.paymentMethod === 'Cash' ? 'Cash' : 'MoMo'}`
-                      : item.lastPayment,
-                }
-              : item
-          ),
-          sales: [sale, ...current.sales],
-        }));
-
-        return { ok: true };
+        return lowStockAlert ? { ok: true, receipt, lowStockAlert } : { ok: true, receipt };
       },
     }),
     [state]

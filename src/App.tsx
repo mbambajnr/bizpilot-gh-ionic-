@@ -10,12 +10,14 @@ import {
   setupIonicReact,
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import { cart, grid, home, people, settings } from 'ionicons/icons';
+import { cart, documentText, grid, home, people, settings } from 'ionicons/icons';
 
 import { BusinessProvider } from './context/BusinessContext';
 import CustomersPage from './pages/CustomersPage';
 import DashboardPage from './pages/DashboardPage';
+import InvoiceDetailPage from './pages/InvoiceDetailPage';
 import InventoryPage from './pages/InventoryPage';
+import QuotationsPage from './pages/QuotationsPage';
 import SalesPage from './pages/SalesPage';
 import SettingsPage from './pages/SettingsPage';
 
@@ -50,11 +52,17 @@ const App: React.FC = () => (
             <Route exact path="/sales">
               <SalesPage />
             </Route>
+            <Route exact path="/sales/:saleId">
+              <InvoiceDetailPage />
+            </Route>
             <Route exact path="/inventory">
               <InventoryPage />
             </Route>
             <Route exact path="/customers">
               <CustomersPage />
+            </Route>
+            <Route exact path="/quotations">
+              <QuotationsPage />
             </Route>
             <Route exact path="/settings">
               <SettingsPage />
@@ -79,6 +87,10 @@ const App: React.FC = () => (
             <IonTabButton tab="customers" href="/customers">
               <IonIcon aria-hidden="true" icon={people} />
               <IonLabel>Customers</IonLabel>
+            </IonTabButton>
+            <IonTabButton tab="quotations" href="/quotations">
+              <IonIcon aria-hidden="true" icon={documentText} />
+              <IonLabel>Quotes</IonLabel>
             </IonTabButton>
             <IonTabButton tab="settings" href="/settings">
               <IonIcon aria-hidden="true" icon={settings} />
