@@ -11,6 +11,9 @@
 # production
 /dist
 
+# accidental nested repos / local worktrees
+/bizpilot/
+
 # misc
 .DS_Store
 .env.local
