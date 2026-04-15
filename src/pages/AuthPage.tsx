@@ -16,7 +16,7 @@ import { FormEvent, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 type AuthMode = 'sign-in' | 'sign-up';
-type AuthField = 'businessName' | 'email' | 'password';
+type AuthField = 'businessName' | 'email' | 'password' | 'confirmPassword';
 
 const AuthPage: React.FC = () => {
   const { isConfigured, signIn, signUp, requestPasswordReset } = useAuth();
@@ -24,6 +24,7 @@ const AuthPage: React.FC = () => {
   const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [formMessage, setFormMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [focusedField, setFocusedField] = useState<AuthField | null>(null);
@@ -46,6 +47,11 @@ const AuthPage: React.FC = () => {
 
     if (isSignUp && !businessName.trim()) {
       setFormMessage('Enter the business name for this owner account.');
+      return;
+    }
+
+    if (isSignUp && password !== confirmPassword) {
+      setFormMessage('Password and confirm password must match.');
       return;
     }
 
@@ -176,6 +182,27 @@ const AuthPage: React.FC = () => {
                   </p>
                 ) : null}
               </IonItem>
+
+              {isSignUp ? (
+                <IonItem lines="none" className="app-item auth-item" aria-labelledby="confirm-password-label">
+                  <IonLabel id="confirm-password-label" position="stacked">Confirm password</IonLabel>
+                  <IonInput
+                    type="password"
+                    value={confirmPassword}
+                    autocomplete="new-password"
+                    aria-describedby="confirm-password-help"
+                    placeholder={focusedField === 'confirmPassword' ? '' : 'Re-enter your password'}
+                    onIonFocus={() => setFocusedField('confirmPassword')}
+                    onIonBlur={() => setFocusedField(null)}
+                    onIonInput={(event) => setConfirmPassword(event.detail.value ?? '')}
+                  />
+                  {focusedField !== 'confirmPassword' ? (
+                    <p id="confirm-password-help" className="auth-field-help">
+                      This must match the password above before the owner account is created.
+                    </p>
+                  ) : null}
+                </IonItem>
+              ) : null}
 
               <IonButton className="auth-primary-action" expand="block" type="submit" disabled={!isConfigured || isSubmitting}>
                 {isSubmitting ? <IonSpinner name="crescent" /> : isSignUp ? 'Create owner account' : 'Sign in'}
