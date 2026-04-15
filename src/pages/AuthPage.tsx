@@ -2,6 +2,7 @@ import {
   IonBadge,
   IonButton,
   IonContent,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -11,6 +12,7 @@ import {
   IonSpinner,
   IonText,
 } from '@ionic/react';
+import { eye, eyeOff } from 'ionicons/icons';
 import { FormEvent, useState } from 'react';
 
 import { useAuth } from '../context/AuthContext';
@@ -28,6 +30,8 @@ const AuthPage: React.FC = () => {
   const [formMessage, setFormMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [focusedField, setFocusedField] = useState<AuthField | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const isSignUp = mode === 'sign-up';
 
@@ -167,7 +171,7 @@ const AuthPage: React.FC = () => {
               <IonItem lines="none" className="app-item auth-item" aria-labelledby="owner-password-label">
                 <IonLabel id="owner-password-label" position="stacked">Password</IonLabel>
                 <IonInput
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   autocomplete={isSignUp ? 'new-password' : 'current-password'}
                   aria-describedby="owner-password-help"
@@ -176,6 +180,16 @@ const AuthPage: React.FC = () => {
                   onIonBlur={() => setFocusedField(null)}
                   onIonInput={(event) => setPassword(event.detail.value ?? '')}
                 />
+                <IonButton
+                  className="auth-password-toggle"
+                  fill="clear"
+                  type="button"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => setShowPassword((current) => !current)}
+                >
+                  <IonIcon aria-hidden="true" icon={showPassword ? eyeOff : eye} />
+                  {showPassword ? 'Hide' : 'Show'}
+                </IonButton>
                 {focusedField !== 'password' ? (
                   <p id="owner-password-help" className="auth-field-help">
                     Keep this private. Password reset is available from this screen.
@@ -187,7 +201,7 @@ const AuthPage: React.FC = () => {
                 <IonItem lines="none" className="app-item auth-item" aria-labelledby="confirm-password-label">
                   <IonLabel id="confirm-password-label" position="stacked">Confirm password</IonLabel>
                   <IonInput
-                    type="password"
+                    type={showConfirmPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     autocomplete="new-password"
                     aria-describedby="confirm-password-help"
@@ -196,6 +210,16 @@ const AuthPage: React.FC = () => {
                     onIonBlur={() => setFocusedField(null)}
                     onIonInput={(event) => setConfirmPassword(event.detail.value ?? '')}
                   />
+                  <IonButton
+                    className="auth-password-toggle"
+                    fill="clear"
+                    type="button"
+                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                    onClick={() => setShowConfirmPassword((current) => !current)}
+                  >
+                    <IonIcon aria-hidden="true" icon={showConfirmPassword ? eyeOff : eye} />
+                    {showConfirmPassword ? 'Hide' : 'Show'}
+                  </IonButton>
                   {focusedField !== 'confirmPassword' ? (
                     <p id="confirm-password-help" className="auth-field-help">
                       This must match the password above before the owner account is created.
