@@ -1,5 +1,4 @@
 import {
-  IonBadge,
   IonButton,
   IonContent,
   IonIcon,
@@ -86,7 +85,6 @@ const AuthPage: React.FC = () => {
       <IonContent fullscreen={true}>
         <main className="auth-shell">
           <section className="auth-brief">
-            <IonBadge color="primary">Owner console</IonBadge>
             <h1>BizPilot Operations</h1>
             <p>
               Secure access for business owners to manage sales, inventory, customer balances, quotations, and
@@ -109,6 +107,7 @@ const AuthPage: React.FC = () => {
           </section>
 
           <section className="auth-panel" aria-label="BizPilot owner authentication">
+            <img src="/assets/logo.png" alt="BizPilot Logo" className="auth-logo" />
             <div className="auth-panel-head">
               <p className="eyebrow">BizPilot GH</p>
               <h2>{isSignUp ? 'Create owner access' : 'Sign in to workspace'}</h2>

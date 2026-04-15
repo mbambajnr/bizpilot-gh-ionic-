@@ -77,7 +77,8 @@
 }
 
 .auth-panel {
-  align-self: center;
+  align-self: start;
+  margin-top: 0;
   width: min(440px, calc(100% - 36px));
   justify-self: center;
   padding: 34px;
@@ -85,6 +86,18 @@
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 28px 80px rgba(16, 33, 43, 0.18);
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-logo {
+  width: 400px;
+  height: auto;
+  max-height: 140px;
+  object-fit: contain;
+  margin: 0 auto 8px;
+  mix-blend-mode: darken;
+  filter: contrast(1.1);
 }
 
 .auth-panel-head h2 {
@@ -240,13 +253,11 @@
   inset: -35%;
   pointer-events: none;
   background:
-    linear-gradient(
-      115deg,
+    linear-gradient(115deg,
       transparent 20%,
       rgba(255, 255, 255, 0.08) 38%,
       rgba(127, 215, 187, 0.08) 50%,
-      transparent 68%
-    );
+      transparent 68%);
   transform: translateX(-36%) rotate(8deg);
   animation: glassSweep 13s ease-in-out infinite;
 }
@@ -681,11 +692,13 @@ ion-button {
 }
 
 @keyframes glassSweep {
+
   0%,
   100% {
     transform: translateX(-42%) rotate(8deg);
     opacity: 0.35;
   }
+
   50% {
     transform: translateX(42%) rotate(8deg);
     opacity: 0.8;
@@ -693,16 +706,19 @@ ion-button {
 }
 
 @keyframes glassFloat {
+
   0%,
   100% {
     transform: translateY(0px);
   }
+
   50% {
     transform: translateY(-3px);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .hero-card,
   .section-card,
   .hero-card::after,
