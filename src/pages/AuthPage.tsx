@@ -188,7 +188,6 @@ const AuthPage: React.FC = () => {
                   onClick={() => setShowPassword((current) => !current)}
                 >
                   <IonIcon aria-hidden="true" icon={showPassword ? eyeOff : eye} />
-                  {showPassword ? 'Hide' : 'Show'}
                 </IonButton>
                 {focusedField !== 'password' ? (
                   <p id="owner-password-help" className="auth-field-help">
@@ -218,7 +217,6 @@ const AuthPage: React.FC = () => {
                     onClick={() => setShowConfirmPassword((current) => !current)}
                   >
                     <IonIcon aria-hidden="true" icon={showConfirmPassword ? eyeOff : eye} />
-                    {showConfirmPassword ? 'Hide' : 'Show'}
                   </IonButton>
                   {focusedField !== 'confirmPassword' ? (
                     <p id="confirm-password-help" className="auth-field-help">

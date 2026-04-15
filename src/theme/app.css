@@ -180,13 +180,14 @@
   --color: #123d31;
   align-self: flex-end;
   min-height: 36px;
+  min-width: 44px;
   margin: 4px 0 0;
   font-size: 0.86rem;
   font-weight: 800;
 }
 
 .auth-password-toggle ion-icon {
-  margin-right: 6px;
+  font-size: 1.25rem;
 }
 
 .auth-panel ion-button::part(native):focus-visible,
