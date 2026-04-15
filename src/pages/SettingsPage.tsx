@@ -16,9 +16,11 @@ import { useEffect, useState } from 'react';
 
 import SectionCard from '../components/SectionCard';
 import { roadmapSteps } from '../data/seedBusiness';
+import { useAuth } from '../context/AuthContext';
 import { useBusiness } from '../context/BusinessContext';
 
 const SettingsPage: React.FC = () => {
+  const { user, businessBootstrapStatus, signOut } = useAuth();
   const { state, backendStatus, updateBusinessProfile } = useBusiness();
   const [businessName, setBusinessName] = useState(state.businessProfile.businessName);
   const [currency, setCurrency] = useState(state.businessProfile.currency);
@@ -60,6 +62,14 @@ const SettingsPage: React.FC = () => {
     setShowSuccessToast(true);
   };
 
+  const handleSignOut = async () => {
+    const result = await signOut();
+
+    if (!result.ok) {
+      setFormMessage(result.message);
+    }
+  };
+
   return (
     <IonPage>
       <IonHeader translucent={true}>
@@ -81,6 +91,23 @@ const SettingsPage: React.FC = () => {
                 <strong>{backendStatus.label}</strong>
                 <span> · {backendStatus.detail}</span>
               </IonText>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Owner access"
+            subtitle="The signed-in owner controls this BizPilot workspace."
+          >
+            <div className="list-block">
+              <div className="list-row">
+                <div>
+                  <strong>{user?.email ?? 'Owner account'}</strong>
+                  <p>{businessBootstrapStatus.message}</p>
+                </div>
+                <IonButton fill="outline" color="medium" onClick={handleSignOut}>
+                  Sign out
+                </IonButton>
+              </div>
             </div>
           </SectionCard>
 

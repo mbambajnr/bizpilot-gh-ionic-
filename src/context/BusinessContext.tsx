@@ -1,5 +1,6 @@
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 
+import { useAuth } from './AuthContext';
 import { BusinessState, priorityQuestions, seedState } from '../data/seedBusiness';
 import { loadBusinessProfileFromSupabase } from '../data/supabaseBusinessProfile';
 import {
@@ -100,6 +101,7 @@ function readInitialState(): BusinessState {
 }
 
 export function BusinessProvider({ children }: PropsWithChildren) {
+  const { user } = useAuth();
   const [state, setState] = useState<BusinessState>(readInitialState);
   const [backendStatus, setBackendStatus] = useState<BusinessBackendStatus>({
     source: 'local',
@@ -116,7 +118,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
     let cancelled = false;
 
     async function loadBackendProfile() {
-      const result = await loadBusinessProfileFromSupabase();
+      const result = await loadBusinessProfileFromSupabase(user?.id);
 
       if (cancelled) {
         return;
@@ -149,7 +151,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.id]);
 
   const value = useMemo<BusinessContextValue>(
     () => ({
