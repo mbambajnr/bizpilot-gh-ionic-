@@ -17,7 +17,6 @@ import { FormEvent, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 type AuthMode = 'sign-in' | 'sign-up';
-type AuthField = 'businessName' | 'email' | 'password' | 'confirmPassword';
 
 const AuthPage: React.FC = () => {
   const { isConfigured, signIn, signUp, requestPasswordReset } = useAuth();
@@ -25,12 +24,9 @@ const AuthPage: React.FC = () => {
   const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [formMessage, setFormMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [focusedField, setFocusedField] = useState<AuthField | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const isSignUp = mode === 'sign-up';
 
@@ -39,22 +35,17 @@ const AuthPage: React.FC = () => {
     setFormMessage('');
 
     if (!email.trim()) {
-      setFormMessage('Enter the owner email address.');
+      setFormMessage('Owner email is required.');
       return;
     }
 
     if (!password) {
-      setFormMessage('Enter the owner password.');
+      setFormMessage('Password is required.');
       return;
     }
 
     if (isSignUp && !businessName.trim()) {
-      setFormMessage('Enter the business name for this owner account.');
-      return;
-    }
-
-    if (isSignUp && password !== confirmPassword) {
-      setFormMessage('Password and confirm password must match.');
+      setFormMessage('Business name is required for registration.');
       return;
     }
 
@@ -70,7 +61,7 @@ const AuthPage: React.FC = () => {
     setFormMessage('');
 
     if (!email.trim()) {
-      setFormMessage('Enter your email first, then request the reset link.');
+      setFormMessage('Please enter your email to request a reset link.');
       return;
     }
 
@@ -87,167 +78,117 @@ const AuthPage: React.FC = () => {
           <section className="auth-brief">
             <h1>BizPilot Operations</h1>
             <p>
-              Secure access for business owners to manage sales, inventory, customer balances, quotations, and
-              operational records from one practical workspace.
+              Professional ERP for Ghanaian SMEs. Manage your sales, inventory, and operational transactions with absolute clarity.
             </p>
             <div className="auth-proof-grid">
               <div>
-                <strong>RLS-backed</strong>
-                <span>Business data is scoped to the signed-in owner.</span>
+                <strong>Secure access</strong>
+                <span>Signed-in owner data isolation.</span>
               </div>
               <div>
-                <strong>Local-first MVP</strong>
-                <span>Existing workflows stay available while backend coverage grows.</span>
+                <strong>Local-first</strong>
+                <span>Workflows stay online or offline.</span>
               </div>
               <div>
-                <strong>Business-ready</strong>
-                <span>Designed for traceable invoices, stock movement, and customer ledgers.</span>
+                <strong>Enterprise focus</strong>
+                <span>Stock, invoices, and ledgers in sync.</span>
               </div>
             </div>
           </section>
 
           <section className="auth-panel" aria-label="BizPilot owner authentication">
-            <img src="/assets/logo.png" alt="BizPilot Logo" className="auth-logo" />
-            <div className="auth-panel-head">
-              <p className="eyebrow">BizPilot GH</p>
-              <h2>{isSignUp ? 'Create owner access' : 'Sign in to workspace'}</h2>
-              <IonText>
-                {isSignUp
-                  ? 'Create the owner account and initial business profile.'
-                  : 'Use your owner account to enter the BizPilot workspace.'}
-              </IonText>
-            </div>
+            <div className="auth-panel-card">
+              <header className="auth-header">
+                <img src="/assets/logo.png" alt="BizPilot" className="auth-logo" />
+                <div className="auth-panel-head">
+                  <p className="eyebrow">Enterprise Console</p>
+                  <h2>{isSignUp ? 'Establish Owner Account' : 'Sign in to Workspace'}</h2>
+                  <IonText>
+                    {isSignUp
+                      ? 'Create your business profile and owner credentials.'
+                      : 'Access your managed SME operations dashboard.'}
+                  </IonText>
+                </div>
+              </header>
 
-            <IonSegment
-              value={mode}
-              onIonChange={(event) => setMode((event.detail.value as AuthMode) ?? 'sign-in')}
-            >
-              <IonSegmentButton value="sign-in">Sign in</IonSegmentButton>
-              <IonSegmentButton value="sign-up">Create account</IonSegmentButton>
-            </IonSegment>
+              <IonSegment
+                value={mode}
+                onIonChange={(event) => setMode((event.detail.value as AuthMode) ?? 'sign-in')}
+              >
+                <IonSegmentButton value="sign-in">Sign in</IonSegmentButton>
+                <IonSegmentButton value="sign-up">Create account</IonSegmentButton>
+              </IonSegment>
 
-            <form className="auth-form" onSubmit={handleSubmit}>
-              {isSignUp ? (
-                <IonItem lines="none" className="app-item auth-item" aria-labelledby="business-name-label">
-                  <IonLabel id="business-name-label" position="stacked">Business name</IonLabel>
+              <form className="auth-form" onSubmit={handleSubmit}>
+                {isSignUp ? (
+                  <IonItem lines="none" className="app-item auth-item">
+                    <IonLabel position="stacked">Company Name</IonLabel>
+                    <IonInput
+                      value={businessName}
+                      autocomplete="organization"
+                      placeholder="e.g. Accra Logistics Ltd"
+                      onIonInput={(event) => setBusinessName(event.detail.value ?? '')}
+                    />
+                  </IonItem>
+                ) : null}
+
+                <IonItem lines="none" className="app-item auth-item">
+                  <IonLabel position="stacked">Owner Email Address</IonLabel>
                   <IonInput
-                    value={businessName}
-                    autocomplete="organization"
-                    aria-describedby="business-name-help"
-                    placeholder={focusedField === 'businessName' ? '' : 'Example: Ama Beauty Supplies'}
-                    onIonFocus={() => setFocusedField('businessName')}
-                    onIonBlur={() => setFocusedField(null)}
-                    onIonInput={(event) => setBusinessName(event.detail.value ?? '')}
+                    type="email"
+                    value={email}
+                    autocomplete="email"
+                    inputmode="email"
+                    placeholder="manager@business.com"
+                    onIonInput={(event) => setEmail(event.detail.value ?? '')}
                   />
-                  {focusedField !== 'businessName' ? (
-                    <p id="business-name-help" className="auth-field-help">
-                      This creates the first business profile for the owner account.
-                    </p>
-                  ) : null}
                 </IonItem>
-              ) : null}
 
-              <IonItem lines="none" className="app-item auth-item" aria-labelledby="owner-email-label">
-                <IonLabel id="owner-email-label" position="stacked">Owner email</IonLabel>
-                <IonInput
-                  type="email"
-                  value={email}
-                  autocomplete="email"
-                  inputmode="email"
-                  aria-describedby="owner-email-help"
-                  placeholder={focusedField === 'email' ? '' : 'owner@business.com'}
-                  onIonFocus={() => setFocusedField('email')}
-                  onIonBlur={() => setFocusedField(null)}
-                  onIonInput={(event) => setEmail(event.detail.value ?? '')}
-                />
-                {focusedField !== 'email' ? (
-                  <p id="owner-email-help" className="auth-field-help">
-                    Use the email connected to the business owner account.
-                  </p>
-                ) : null}
-              </IonItem>
-
-              <IonItem lines="none" className="app-item auth-item" aria-labelledby="owner-password-label">
-                <IonLabel id="owner-password-label" position="stacked">Password</IonLabel>
-                <IonInput
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  autocomplete={isSignUp ? 'new-password' : 'current-password'}
-                  aria-describedby="owner-password-help"
-                  placeholder={focusedField === 'password' ? '' : 'Enter your password'}
-                  onIonFocus={() => setFocusedField('password')}
-                  onIonBlur={() => setFocusedField(null)}
-                  onIonInput={(event) => setPassword(event.detail.value ?? '')}
-                />
-                <IonButton
-                  className="auth-password-toggle"
-                  fill="clear"
-                  type="button"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  onClick={() => setShowPassword((current) => !current)}
-                >
-                  <IonIcon aria-hidden="true" icon={showPassword ? eyeOff : eye} />
-                </IonButton>
-                {focusedField !== 'password' ? (
-                  <p id="owner-password-help" className="auth-field-help">
-                    Keep this private. Password reset is available from this screen.
-                  </p>
-                ) : null}
-              </IonItem>
-
-              {isSignUp ? (
-                <IonItem lines="none" className="app-item auth-item" aria-labelledby="confirm-password-label">
-                  <IonLabel id="confirm-password-label" position="stacked">Confirm password</IonLabel>
+                <IonItem lines="none" className="app-item auth-item">
+                  <IonLabel position="stacked">Secure Password</IonLabel>
                   <IonInput
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    value={confirmPassword}
-                    autocomplete="new-password"
-                    aria-describedby="confirm-password-help"
-                    placeholder={focusedField === 'confirmPassword' ? '' : 'Re-enter your password'}
-                    onIonFocus={() => setFocusedField('confirmPassword')}
-                    onIonBlur={() => setFocusedField(null)}
-                    onIonInput={(event) => setConfirmPassword(event.detail.value ?? '')}
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    autocomplete={isSignUp ? 'new-password' : 'current-password'}
+                    placeholder="Enter owner password"
+                    onIonInput={(event) => setPassword(event.detail.value ?? '')}
                   />
                   <IonButton
                     className="auth-password-toggle"
                     fill="clear"
                     type="button"
-                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
-                    onClick={() => setShowConfirmPassword((current) => !current)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    onClick={() => setShowPassword((current) => !current)}
                   >
-                    <IonIcon aria-hidden="true" icon={showConfirmPassword ? eyeOff : eye} />
+                    <IonIcon aria-hidden="true" icon={showPassword ? eyeOff : eye} />
                   </IonButton>
-                  {focusedField !== 'confirmPassword' ? (
-                    <p id="confirm-password-help" className="auth-field-help">
-                      This must match the password above before the owner account is created.
-                    </p>
-                  ) : null}
                 </IonItem>
-              ) : null}
 
-              <IonButton className="auth-primary-action" expand="block" type="submit" disabled={!isConfigured || isSubmitting}>
-                {isSubmitting ? <IonSpinner name="crescent" /> : isSignUp ? 'Create owner account' : 'Sign in'}
-              </IonButton>
+                <IonButton className="auth-primary-action" expand="block" type="submit" disabled={!isConfigured || isSubmitting}>
+                  {isSubmitting ? <IonSpinner name="crescent" /> : isSignUp ? 'Create owner account' : 'Enter workspace'}
+                </IonButton>
 
-              <IonButton
-                className="auth-secondary-action"
-                fill="clear"
-                color="medium"
-                type="button"
-                disabled={!isConfigured || isSubmitting}
-                onClick={handlePasswordReset}
-              >
-                Forgot password?
-              </IonButton>
+                <div className="auth-form-footer">
+                  <IonButton
+                    className="auth-secondary-action"
+                    fill="clear"
+                    color="medium"
+                    type="button"
+                    disabled={!isConfigured || isSubmitting}
+                    onClick={handlePasswordReset}
+                  >
+                    Forgot your password?
+                  </IonButton>
+                </div>
 
-              {!isConfigured ? (
-                <p className="form-message">
-                  Supabase auth is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to
-                  .env.local.
-                </p>
-              ) : null}
-              {formMessage ? <p className="form-message">{formMessage}</p> : null}
-            </form>
+                {!isConfigured ? (
+                  <p className="form-message">
+                    Connectivity state: Supabase authentication not configured.
+                  </p>
+                ) : null}
+                {formMessage ? <p className="form-message">{formMessage}</p> : null}
+              </form>
+            </div>
           </section>
         </main>
       </IonContent>
