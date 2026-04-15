@@ -364,7 +364,7 @@ describe('businessLogic', () => {
     }
   });
 
-  it('creates a corrected copy only from a reversed invoice and links both records', () => {
+  it('creates a correction invoice only from a reversed invoice and links both records', () => {
     const reversed = reverseSaleInState(seedState, {
       saleId: 's2',
       reason: 'Wrong quantity entered',
@@ -395,7 +395,7 @@ describe('businessLogic', () => {
     }
   });
 
-  it('blocks creating a corrected copy from an invoice that was not reversed', () => {
+  it('blocks creating a correction invoice from an invoice that was not reversed', () => {
     const result = addSaleToState(seedState, {
       customerId: 'c2',
       productId: 'p1',

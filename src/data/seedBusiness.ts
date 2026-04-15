@@ -238,6 +238,6 @@ export const priorityQuestions = [
 export const roadmapSteps = [
   { id: 'r1', title: 'Ionic React shell scaffolded', detail: 'Core web and mobile-friendly shell is ready for product iteration.', done: true },
   { id: 'r2', title: 'Transaction-derived business state', detail: 'Stock, receivables, and dashboard totals now derive from explicit movements and ledger entries.', done: true },
-  { id: 'r3', title: 'Sales recording flow', detail: 'Teams can record a sale, pick cash or mobile money, and update stock plus customer balances instantly.', done: true },
+  { id: 'r3', title: 'Sales-to-invoice flow', detail: 'Teams can record a sale, create an invoice, pick cash or mobile money, and update stock plus customer balances instantly.', done: true },
   { id: 'r4', title: 'Backend integration', detail: 'Auth, sync, and reporting APIs can land after the local product flow is stable.', done: false },
 ];

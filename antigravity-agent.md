@@ -26,6 +26,17 @@ The current architecture intentionally favors:
 
 ## Core Working Principles
 
+### Terminology Standard
+Use these terms consistently in the product:
+- `Sale`: the action/workflow of recording what was bought
+- `Invoice`: the formal record created from a sale
+- `Receipt`: proof of payment or payment received against an invoice
+- `Quotation`: a pre-sale document that can be converted into an invoice
+- `Correction`: a correction invoice created after a reversal
+- `Reversal`: the safe undo action that keeps history while reversing stock and receivable impact
+
+Use `Sales` for the app area where users record transactions. Use `Invoice` when referring to a saved document or detail view.
+
 ### 1. Think Before Changing
 - Read the affected files first
 - Understand the current workflow before editing
@@ -100,7 +111,7 @@ BizPilot relies on safe audit-friendly flows.
 When touching sales, quotations, receipts, or reversals:
 - preserve document linkage
 - preserve transaction history
-- preserve corrected-copy relationships
+- preserve correction invoice relationships
 - avoid destructive behavior
 - make statuses explicit
 

@@ -181,7 +181,7 @@ const QuotationsPage: React.FC = () => {
     }
 
     setLatestConversionReceipts(result.receipts);
-    setConversionMessage(`${result.quotationNumber} converted to sale successfully.`);
+    setConversionMessage(`${result.quotationNumber} converted to invoice successfully.`);
     setShowConversionToast(true);
     setConvertingQuotationId('');
     setAmountPaidInput('');
@@ -199,13 +199,13 @@ const QuotationsPage: React.FC = () => {
         <div className="page-shell">
           <SectionCard
             title="Create quotation"
-            subtitle="Prepare a simple proforma for a client before the sale is finalized."
+            subtitle="Prepare a pre-sale document for a customer before recording the final invoice."
           >
             {state.customers.length === 0 || state.products.length === 0 ? (
               <EmptyState
                 eyebrow="Quotation setup"
                 title="Add customers and products first"
-                message="Quotations need an existing client and at least one product so the app can calculate pricing correctly."
+                message="Quotations need an existing customer and at least one product so the app can calculate pricing correctly."
               />
             ) : (
               <div className="form-grid">
@@ -301,7 +301,7 @@ const QuotationsPage: React.FC = () => {
 
           <SectionCard
             title="Quotation history"
-            subtitle="Recently created proformas stay in the app so you can review totals and line items before a sale is confirmed."
+            subtitle="Recently created quotations stay in the app so you can review totals and line items before an invoice is confirmed."
           >
             {state.quotations.length === 0 ? (
               <EmptyState
@@ -345,7 +345,7 @@ const QuotationsPage: React.FC = () => {
 
                       {quotation.status === 'Draft' ? (
                         <IonButton expand="block" onClick={() => handleStartConversion(quotation.id)}>
-                          Convert to Sale
+                          Convert to Invoice
                         </IonButton>
                       ) : null}
 
@@ -381,7 +381,7 @@ const QuotationsPage: React.FC = () => {
                               inputmode="decimal"
                               min={0}
                               max={quotation.totalAmount}
-                              helperText={`Leave blank to mark ${formatCurrency(quotation.totalAmount)} as fully paid.`}
+                              helperText={`Leave blank to mark the converted invoice total of ${formatCurrency(quotation.totalAmount)} as fully paid.`}
                               value={amountPaidInput}
                               onIonInput={(event) => setAmountPaidInput(event.detail.value ?? '')}
                             />
@@ -425,8 +425,8 @@ const QuotationsPage: React.FC = () => {
 
           {latestConversionReceipts.length > 0 ? (
             <SectionCard
-              title="Latest conversion receipts"
-              subtitle="Each quotation line is recorded as its own sale so stock, balances, and receipts stay aligned with the current sales model."
+              title="Latest converted invoices"
+              subtitle="Each quotation line becomes an invoice record so stock, balances, and receipts stay aligned."
             >
               <div className="list-block">
                 {latestConversionReceipts.map((receipt) => (

@@ -142,7 +142,7 @@ const SalesPage: React.FC = () => {
     }
 
     setFormMessage('');
-    setSaleSuccessMessage(`Sale recorded for ${formatCurrency(saleTotal, currency)}.`);
+    setSaleSuccessMessage(`Sale recorded and invoice created for ${formatCurrency(saleTotal, currency)}.`);
     setLatestReceipt(result.receipt);
 
     if (result.lowStockAlert) {
@@ -179,7 +179,7 @@ const SalesPage: React.FC = () => {
                       <p className="muted-label">Correction mode</p>
                       <h3>Correcting invoice {correctionSourceSale.invoiceNumber}</h3>
                       <p className="muted-label">
-                        This replacement sale will stay linked to the reversed original for audit history.
+                        This correction invoice will stay linked to the reversed original for audit history.
                       </p>
                     </div>
                     <IonButton
@@ -278,7 +278,7 @@ const SalesPage: React.FC = () => {
                 </div>
 
                 <IonButton expand="block" onClick={handleSubmit}>
-                  Record Sale
+                  Record Sale and Create Invoice
                 </IonButton>
                 {formMessage ? <p className="form-message">{formMessage}</p> : null}
               </div>
@@ -286,7 +286,7 @@ const SalesPage: React.FC = () => {
               <EmptyState
                 eyebrow="Sales setup"
                 title="Recordings unlock once your shop basics are ready"
-                message="Add inventory items and at least one customer first, then each sale will update stock movements, customer ledger balances, and the dashboard automatically."
+                message="Add inventory items and at least one customer first, then each sale will create an invoice, update stock movements, customer ledger balances, and the dashboard automatically."
               />
             )}
           </SectionCard>
@@ -373,12 +373,12 @@ const SalesPage: React.FC = () => {
             </div>
           </SectionCard>
 
-          <SectionCard title="Recent sales" subtitle="The newest transactions appear first and continue to feed the dashboard automatically.">
+          <SectionCard title="Recent invoices" subtitle="Each recorded sale creates an invoice record that feeds the dashboard automatically.">
             {recentSales.length === 0 ? (
               <EmptyState
-                eyebrow="No sales yet"
-                title="Your first recorded transaction will appear here"
-                message="As soon as a teammate records a sale, this feed becomes a quick audit trail for who bought what, how they paid, and how much is still outstanding."
+                eyebrow="No invoices yet"
+                title="Your first recorded sale will appear here as an invoice"
+                message="As soon as a teammate records a sale, this feed becomes a quick invoice trail for who bought what, how they paid, and how much is still outstanding."
               />
             ) : (
               <div className="list-block">

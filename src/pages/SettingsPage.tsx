@@ -69,7 +69,7 @@ const SettingsPage: React.FC = () => {
         <div className="page-shell">
           <SectionCard
             title="Business setup"
-            subtitle="These local settings shape document numbering, contact details, and currency display across the current MVP."
+            subtitle="These local settings shape invoice and receipt numbering, contact details, and currency display across the current MVP."
           >
             <div className="form-grid">
               <IonItem lines="none" className="app-item">

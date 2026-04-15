@@ -84,7 +84,7 @@ const DashboardPage: React.FC = () => {
 
           <SectionCard
             title="Revenue analytics"
-            subtitle="A rolling seven-day view of revenue from active sale transactions."
+            subtitle="A rolling seven-day view of revenue from active invoice records."
           >
             <div className="analytics-headline">
               <div>
@@ -161,7 +161,7 @@ const DashboardPage: React.FC = () => {
                   <div className="list-row" key={sale.id}>
                     <div>
                       <strong>
-                        {(customer?.name ?? 'A customer')} bought {(product?.name ?? 'an item')}
+                    {(customer?.name ?? 'A customer')} bought {(product?.name ?? 'an item')}
                       </strong>
                       <p>
                         {sale.quantity} units • {sale.paymentMethod} • {formatRelativeDate(sale.createdAt)}

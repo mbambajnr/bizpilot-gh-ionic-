@@ -347,7 +347,7 @@ function migrateActivityEntries(sales: Sale[], legacyAuditEvents?: SaleAuditEven
             ? 'Receipt issued'
             : event.actionType === 'reversed'
               ? 'Invoice reversed'
-              : 'Corrected copy created',
+              : 'Correction invoice created',
       detail: event.reason,
       status: event.actionType === 'reversed' ? 'warning' : 'success',
       createdAt: event.timestamp,
@@ -775,13 +775,13 @@ export function convertQuotationToSalesState(
     }
 
     if (!saleResult.data) {
-      return { ok: false, message: 'Could not create a sale from this quotation right now.' };
+      return { ok: false, message: 'Could not create an invoice from this quotation right now.' };
     }
 
     const createdSale = saleResult.data.sales[0];
 
     if (!createdSale) {
-      return { ok: false, message: 'Could not create a sale from this quotation right now.' };
+      return { ok: false, message: 'Could not create an invoice from this quotation right now.' };
     }
 
     receipts.push({
@@ -827,7 +827,7 @@ export function convertQuotationToSalesState(
             entityId: quotation.id,
             actionType: 'quotation_converted',
             title: 'Quotation converted',
-            detail: `${quotation.quotationNumber} was converted into ${relatedSaleIds.length} linked sale record(s).`,
+            detail: `${quotation.quotationNumber} was converted into ${relatedSaleIds.length} linked invoice record(s).`,
             status: 'success',
             createdAt: convertedAt,
             referenceNumber: quotation.quotationNumber,
@@ -851,11 +851,11 @@ export function addSaleToState(current: BusinessState, input: NewSaleInput): Act
     }
 
     if (originalSale.status !== 'Reversed') {
-      return { ok: false, message: 'Only reversed invoices can be used to create a corrected copy.' };
+      return { ok: false, message: 'Only reversed invoices can be used to create a correction invoice.' };
     }
 
     if (originalSale.correctedBySaleId) {
-      return { ok: false, message: 'A corrected replacement has already been created for this invoice.' };
+      return { ok: false, message: 'A correction invoice has already been created for this invoice.' };
     }
   }
 
@@ -973,7 +973,7 @@ export function addSaleToState(current: BusinessState, input: NewSaleInput): Act
       actionType: 'invoice_created',
       title: 'Invoice created',
       detail: input.correctionOfSaleId
-        ? 'Corrected replacement invoice created'
+        ? 'Correction invoice created'
         : `Invoice recorded for ${customer.name}`,
       status: 'success',
       createdAt,
@@ -991,8 +991,8 @@ export function addSaleToState(current: BusinessState, input: NewSaleInput): Act
           entityType: 'sale',
           entityId: originalSale.id,
           actionType: 'corrected_copy_created',
-          title: 'Corrected copy created',
-          detail: 'Corrected copy created from reversed invoice',
+          title: 'Correction invoice created',
+          detail: 'Correction invoice created from reversed invoice',
           status: 'info',
           createdAt,
           referenceNumber: originalSale.invoiceNumber,

@@ -33,7 +33,7 @@ const actionLabels: Record<string, string> = {
   invoice_created: 'Invoice created',
   receipt_issued: 'Receipt issued',
   invoice_reversed: 'Invoice reversed',
-  corrected_copy_created: 'Corrected copy created',
+  corrected_copy_created: 'Correction invoice created',
 };
 
 const InvoiceDetailPage: React.FC = () => {
@@ -209,7 +209,7 @@ const InvoiceDetailPage: React.FC = () => {
               {correctedBySale ? (
                 <div className="list-row">
                   <div>
-                    <strong>Corrected replacement</strong>
+                    <strong>Correction invoice</strong>
                     <p>{correctedBySale.invoiceNumber}</p>
                   </div>
                   <div className="right-meta">
@@ -224,7 +224,7 @@ const InvoiceDetailPage: React.FC = () => {
 
           <SectionCard
             title="Invoice actions"
-            subtitle="Use these guarded actions to safely reverse an invoice or issue a corrected replacement without deleting history."
+            subtitle="Use these guarded actions to safely record a reversal or create a correction without deleting history."
           >
             <div className="form-grid">
               {sale.status === 'Completed' ? (
@@ -242,13 +242,13 @@ const InvoiceDetailPage: React.FC = () => {
                     })
                   }
                 >
-                  Create Corrected Copy
+                  Create Correction Invoice
                 </IonButton>
               ) : null}
 
               {sale.correctedBySaleId ? (
                 <IonText color="medium">
-                  <p>A corrected replacement has already been issued for this invoice.</p>
+                  <p>A correction invoice has already been issued for this reversed invoice.</p>
                 </IonText>
               ) : null}
             </div>
@@ -296,7 +296,7 @@ const InvoiceDetailPage: React.FC = () => {
 
           <SectionCard
             title="Invoice history"
-            subtitle="This activity log preserves creation, receipt generation, reversal, and corrected-copy actions."
+            subtitle="This activity log preserves creation, receipt generation, reversal, and correction actions."
           >
             {auditEvents.length === 0 ? (
               <EmptyState
@@ -332,8 +332,8 @@ const InvoiceDetailPage: React.FC = () => {
         <IonContent fullscreen={true}>
           <div className="page-shell">
             <SectionCard
-              title="Confirm reversal"
-              subtitle="This will restore stock, remove the invoice from active totals, and reverse its receivable impact while keeping the record visible."
+            title="Confirm reversal"
+              subtitle="This reversal restores stock, removes the invoice from active totals, and reverses its receivable impact while keeping the record visible."
             >
               <div className="form-grid">
                 <div className="selected-product">

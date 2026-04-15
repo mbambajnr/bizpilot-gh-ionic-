@@ -90,7 +90,7 @@ const App: React.FC = () => (
             </IonTabButton>
             <IonTabButton tab="quotations" href="/quotations">
               <IonIcon aria-hidden="true" icon={documentText} />
-              <IonLabel>Quotes</IonLabel>
+              <IonLabel>Quotations</IonLabel>
             </IonTabButton>
             <IonTabButton tab="settings" href="/settings">
               <IonIcon aria-hidden="true" icon={settings} />

@@ -105,7 +105,7 @@ const CustomersPage: React.FC = () => {
         <div className="page-shell">
           <SectionCard
             title="Add customer"
-            subtitle="Create a customer profile so sales, ledger entries, and follow-up status can be tied to the right buyer."
+            subtitle="Create a customer profile so invoices, ledger entries, and follow-up status can be tied to the right buyer."
           >
             <div className="form-grid">
               <IonItem lines="none" className="app-item">
@@ -174,7 +174,7 @@ const CustomersPage: React.FC = () => {
                       <p className="code-label">Client ID: {customer.clientId}</p>
                       <p>Follow-up: {customer.channel}</p>
                       <p>Last payment: {lastPayment}</p>
-                      <p>{selectedCustomerId === customer.id ? 'Viewing ledger and sales history' : 'Tap to view ledger history'}</p>
+                      <p>{selectedCustomerId === customer.id ? 'Viewing ledger and invoice history' : 'Tap to view ledger history'}</p>
                     </div>
                     <div className="right-meta">
                       <strong className={needsFollowUp ? 'danger-text' : 'success-text'}>
@@ -191,7 +191,7 @@ const CustomersPage: React.FC = () => {
           {selectedCustomer ? (
             <>
               <SectionCard
-                title="Customer sales history"
+                title="Customer invoice history"
                 subtitle="Review what this customer bought, how it was paid, and the current status of each invoice."
               >
                 <div className="list-block">
@@ -216,7 +216,7 @@ const CustomersPage: React.FC = () => {
                     <EmptyState
                       eyebrow="No transactions yet"
                       title="No transactions recorded yet for this customer."
-                      message="Once a sale is recorded against this customer, the invoice history will appear here with payment and balance details."
+                      message="Once a sale is recorded for this customer, the invoice history will appear here with payment and balance details."
                     />
                   ) : (
                     selectedCustomerSales.map((sale) => {
