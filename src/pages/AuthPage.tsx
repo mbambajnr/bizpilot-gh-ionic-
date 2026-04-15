@@ -16,6 +16,7 @@ import { FormEvent, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 type AuthMode = 'sign-in' | 'sign-up';
+type AuthField = 'businessName' | 'email' | 'password';
 
 const AuthPage: React.FC = () => {
   const { isConfigured, signIn, signUp, requestPasswordReset } = useAuth();
@@ -25,6 +26,7 @@ const AuthPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [formMessage, setFormMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [focusedField, setFocusedField] = useState<AuthField | null>(null);
 
   const isSignUp = mode === 'sign-up';
 
@@ -123,11 +125,16 @@ const AuthPage: React.FC = () => {
                     value={businessName}
                     autocomplete="organization"
                     aria-describedby="business-name-help"
+                    placeholder={focusedField === 'businessName' ? '' : 'Example: Ama Beauty Supplies'}
+                    onIonFocus={() => setFocusedField('businessName')}
+                    onIonBlur={() => setFocusedField(null)}
                     onIonInput={(event) => setBusinessName(event.detail.value ?? '')}
                   />
-                  <p id="business-name-help" className="auth-field-help">
-                    This creates the first business profile for the owner account.
-                  </p>
+                  {focusedField !== 'businessName' ? (
+                    <p id="business-name-help" className="auth-field-help">
+                      This creates the first business profile for the owner account.
+                    </p>
+                  ) : null}
                 </IonItem>
               ) : null}
 
@@ -139,11 +146,16 @@ const AuthPage: React.FC = () => {
                   autocomplete="email"
                   inputmode="email"
                   aria-describedby="owner-email-help"
+                  placeholder={focusedField === 'email' ? '' : 'owner@business.com'}
+                  onIonFocus={() => setFocusedField('email')}
+                  onIonBlur={() => setFocusedField(null)}
                   onIonInput={(event) => setEmail(event.detail.value ?? '')}
                 />
-                <p id="owner-email-help" className="auth-field-help">
-                  Use the email connected to the business owner account.
-                </p>
+                {focusedField !== 'email' ? (
+                  <p id="owner-email-help" className="auth-field-help">
+                    Use the email connected to the business owner account.
+                  </p>
+                ) : null}
               </IonItem>
 
               <IonItem lines="none" className="app-item auth-item" aria-labelledby="owner-password-label">
@@ -153,11 +165,16 @@ const AuthPage: React.FC = () => {
                   value={password}
                   autocomplete={isSignUp ? 'new-password' : 'current-password'}
                   aria-describedby="owner-password-help"
+                  placeholder={focusedField === 'password' ? '' : 'Enter your password'}
+                  onIonFocus={() => setFocusedField('password')}
+                  onIonBlur={() => setFocusedField(null)}
                   onIonInput={(event) => setPassword(event.detail.value ?? '')}
                 />
-                <p id="owner-password-help" className="auth-field-help">
-                  Keep this private. Password reset is available from this screen.
-                </p>
+                {focusedField !== 'password' ? (
+                  <p id="owner-password-help" className="auth-field-help">
+                    Keep this private. Password reset is available from this screen.
+                  </p>
+                ) : null}
               </IonItem>
 
               <IonButton className="auth-primary-action" expand="block" type="submit" disabled={!isConfigured || isSubmitting}>
