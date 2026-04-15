@@ -1,6 +1,7 @@
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 
 import { BusinessState, priorityQuestions, seedState } from '../data/seedBusiness';
+import { loadBusinessProfileFromSupabase } from '../data/supabaseBusinessProfile';
 import {
   ActionResult,
   addCustomerToState,
@@ -59,8 +60,16 @@ type ReverseSaleContextResult =
   | { ok: true; reversedSaleId: string }
   | { ok: false; message: string };
 
+type BusinessBackendStatus = {
+  source: 'local' | 'supabase';
+  loading: boolean;
+  label: string;
+  detail: string;
+};
+
 type BusinessContextValue = {
   state: BusinessState;
+  backendStatus: BusinessBackendStatus;
   priorityQuestions: string[];
   addProduct: (input: NewProductInput) => ActionResult;
   addCustomer: (input: NewCustomerInput) => ActionResult;
@@ -92,14 +101,60 @@ function readInitialState(): BusinessState {
 
 export function BusinessProvider({ children }: PropsWithChildren) {
   const [state, setState] = useState<BusinessState>(readInitialState);
+  const [backendStatus, setBackendStatus] = useState<BusinessBackendStatus>({
+    source: 'local',
+    loading: true,
+    label: 'Checking Supabase',
+    detail: 'BizPilot is checking whether a backend business profile is available.',
+  });
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBackendProfile() {
+      const result = await loadBusinessProfileFromSupabase();
+
+      if (cancelled) {
+        return;
+      }
+
+      if (result.status === 'loaded') {
+        setState((current) => ({
+          ...current,
+          businessProfile: result.profile,
+        }));
+        setBackendStatus({
+          source: 'supabase',
+          loading: false,
+          label: 'Supabase profile loaded',
+          detail: result.message,
+        });
+        return;
+      }
+
+      setBackendStatus({
+        source: 'local',
+        loading: false,
+        label: result.status === 'error' ? 'Using local profile' : 'Local profile active',
+        detail: result.message,
+      });
+    }
+
+    void loadBackendProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const value = useMemo<BusinessContextValue>(
     () => ({
       state,
+      backendStatus,
       priorityQuestions,
       addProduct(input) {
         const result = addProductToState(state, input);
@@ -223,7 +278,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return lowStockAlert ? { ok: true, receipt, lowStockAlert } : { ok: true, receipt };
       },
     }),
-    [state]
+    [backendStatus, state]
   );
 
   return <BusinessContext.Provider value={value}>{children}</BusinessContext.Provider>;

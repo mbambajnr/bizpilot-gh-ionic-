@@ -1,4 +1,5 @@
 import {
+  IonBadge,
   IonButton,
   IonContent,
   IonHeader,
@@ -6,6 +7,7 @@ import {
   IonItem,
   IonLabel,
   IonPage,
+  IonText,
   IonToast,
   IonTitle,
   IonToolbar,
@@ -17,7 +19,7 @@ import { roadmapSteps } from '../data/seedBusiness';
 import { useBusiness } from '../context/BusinessContext';
 
 const SettingsPage: React.FC = () => {
-  const { state, updateBusinessProfile } = useBusiness();
+  const { state, backendStatus, updateBusinessProfile } = useBusiness();
   const [businessName, setBusinessName] = useState(state.businessProfile.businessName);
   const [currency, setCurrency] = useState(state.businessProfile.currency);
   const [country, setCountry] = useState(state.businessProfile.country);
@@ -67,6 +69,21 @@ const SettingsPage: React.FC = () => {
       </IonHeader>
       <IonContent fullscreen={true}>
         <div className="page-shell">
+          <SectionCard
+            title="Data source"
+            subtitle="Phase 1 keeps transactions local while safely checking Supabase for business profile setup."
+          >
+            <div className="sync-line">
+              <IonBadge color={backendStatus.source === 'supabase' ? 'success' : 'medium'}>
+                {backendStatus.loading ? 'Checking' : backendStatus.source === 'supabase' ? 'Supabase' : 'Local-first'}
+              </IonBadge>
+              <IonText>
+                <strong>{backendStatus.label}</strong>
+                <span> · {backendStatus.detail}</span>
+              </IonText>
+            </div>
+          </SectionCard>
+
           <SectionCard
             title="Business setup"
             subtitle="These local settings shape invoice and receipt numbering, contact details, and currency display across the current MVP."
