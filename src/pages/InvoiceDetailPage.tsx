@@ -131,7 +131,7 @@ const InvoiceDetailPage: React.FC = () => {
               <div className="receipt-header">
                 <div className="business-auth">
                   <h2>{state.businessProfile.businessName}</h2>
-                  <p>{state.businessProfile.businessType} • {state.businessProfile.phone}</p>
+                  <p>{state.businessProfile.country} • {state.businessProfile.phone}</p>
                 </div>
                 <div className="receipt-meta-box">
                   <strong>{sale.invoiceNumber}</strong>
