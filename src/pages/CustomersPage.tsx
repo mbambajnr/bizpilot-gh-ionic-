@@ -31,7 +31,7 @@ import {
 import { formatCurrency, formatReceiptDate } from '../utils/format';
 
 const CustomersPage: React.FC = () => {
-  const { state, addCustomer } = useBusiness();
+  const { state, addCustomer, hasPermission } = useBusiness();
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [phone, setPhone] = useState('');
@@ -132,57 +132,59 @@ const CustomersPage: React.FC = () => {
       </IonHeader>
       <IonContent fullscreen={true}>
         <div className="page-shell">
-          <SectionCard
-            title="Add customer"
-            subtitle="Create a customer profile so invoices, ledger entries, and follow-up status can be tied to the right buyer."
-          >
-            <div className="form-grid">
-              <IonItem lines="none" className="app-item">
-                <IonLabel position="stacked">Customer name</IonLabel>
-                <IonInput
-                  value={name}
-                  placeholder="e.g. Adom Provision Store"
-                  onIonInput={(event) => setName(event.detail.value ?? '')}
-                />
-              </IonItem>
-
-              <div className="dual-stat">
+           {hasPermission('customers.create') && (
+            <SectionCard
+              title="Add customer"
+              subtitle="Create a customer profile so invoices, ledger entries, and follow-up status can be tied to the right buyer."
+            >
+              <div className="form-grid">
                 <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Phone number</IonLabel>
+                  <IonLabel position="stacked">Customer name</IonLabel>
                   <IonInput
-                    type="tel"
-                    value={phone}
-                    placeholder="e.g. 233240000000"
-                    onIonInput={(event) => setPhone(event.detail.value ?? '')}
+                    value={name}
+                    placeholder="e.g. Adom Provision Store"
+                    onIonInput={(event) => setName(event.detail.value ?? '')}
                   />
                 </IonItem>
 
+                <div className="dual-stat">
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Phone number</IonLabel>
+                    <IonInput
+                      type="tel"
+                      value={phone}
+                      placeholder="e.g. 233240000000"
+                      onIonInput={(event) => setPhone(event.detail.value ?? '')}
+                    />
+                  </IonItem>
+
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Client ID (optional)</IonLabel>
+                    <IonInput
+                      value={clientId}
+                      helperText="Leave blank to auto-generate one."
+                      onIonInput={(event) => setClientId(event.detail.value ?? '')}
+                    />
+                  </IonItem>
+                </div>
+
                 <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Client ID (optional)</IonLabel>
+                  <IonLabel position="stacked">Follow-up channel</IonLabel>
                   <IonInput
-                    value={clientId}
-                    helperText="Leave blank to auto-generate one."
-                    onIonInput={(event) => setClientId(event.detail.value ?? '')}
+                    value={channel}
+                    placeholder="e.g. WhatsApp follow-up"
+                    helperText="Leave blank to use No action needed."
+                    onIonInput={(event) => setChannel(event.detail.value ?? '')}
                   />
                 </IonItem>
+
+                <IonButton expand="block" onClick={handleAddCustomer}>
+                  Save Customer
+                </IonButton>
+                {formMessage ? <p className="form-message">{formMessage}</p> : null}
               </div>
-
-              <IonItem lines="none" className="app-item">
-                <IonLabel position="stacked">Follow-up channel</IonLabel>
-                <IonInput
-                  value={channel}
-                  placeholder="e.g. WhatsApp follow-up"
-                  helperText="Leave blank to use No action needed."
-                  onIonInput={(event) => setChannel(event.detail.value ?? '')}
-                />
-              </IonItem>
-
-              <IonButton expand="block" onClick={handleAddCustomer}>
-                Save Customer
-              </IonButton>
-              {formMessage ? <p className="form-message">{formMessage}</p> : null}
-            </div>
-          </SectionCard>
+            </SectionCard>
+          )}
 
           <SectionCard
             title="Customer balances"
