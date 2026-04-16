@@ -193,22 +193,24 @@ const SettingsPage: React.FC = () => {
             </div>
           </SectionCard>
 
-          <SectionCard
-             title="Demo access"
-             subtitle="Switch between identities to test Role-Based Access Control and permission gating."
-           >
-             <div className="tab-group" style={{ padding: '4px' }}>
-                {state.users.map((u) => (
-                  <IonChip
-                    key={u.userId}
-                    color={state.currentUserId === u.userId ? 'primary' : 'medium'}
-                    onClick={() => switchUser(u.userId)}
-                  >
-                    <IonLabel>{u.name} ({u.role})</IonLabel>
-                  </IonChip>
-                ))}
-             </div>
-           </SectionCard>
+           {hasPermission('permissions.manage') && (
+            <SectionCard
+               title="Demo access"
+               subtitle="Switch between identities to test Role-Based Access Control and permission gating."
+             >
+               <div className="tab-group" style={{ padding: '4px' }}>
+                  {state.users.map((u) => (
+                    <IonChip
+                      key={u.userId}
+                      color={state.currentUserId === u.userId ? 'primary' : 'medium'}
+                      onClick={() => switchUser(u.userId)}
+                    >
+                      <IonLabel>{u.name} ({u.role})</IonLabel>
+                    </IonChip>
+                  ))}
+               </div>
+             </SectionCard>
+           )}
 
            {hasPermission('permissions.manage') && (
              <SectionCard
