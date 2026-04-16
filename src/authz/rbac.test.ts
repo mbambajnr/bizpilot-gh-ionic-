@@ -7,6 +7,7 @@ describe('RBAC Logic', () => {
     const admin: UserAccessProfile = {
       userId: '1',
       name: 'Admin',
+      email: 'admin@test.com',
       role: 'Admin',
       grantedPermissions: [],
       revokedPermissions: [],
@@ -21,6 +22,7 @@ describe('RBAC Logic', () => {
     const sales: UserAccessProfile = {
       userId: '2',
       name: 'Sales',
+      email: 'sales@test.com',
       role: 'SalesManager',
       grantedPermissions: [],
       revokedPermissions: [],
@@ -38,6 +40,7 @@ describe('RBAC Logic', () => {
     const accountant: UserAccessProfile = {
       userId: '3',
       name: 'Accountant',
+      email: 'accountant@test.com',
       role: 'Accountant',
       grantedPermissions: [],
       revokedPermissions: [],
@@ -51,6 +54,7 @@ describe('RBAC Logic', () => {
     const sales: UserAccessProfile = {
       userId: '2',
       name: 'Sales',
+      email: 'sales@test.com',
       role: 'SalesManager',
       grantedPermissions: ['inventory.create', 'sales.reverse'],
       revokedPermissions: [],
@@ -64,6 +68,7 @@ describe('RBAC Logic', () => {
     const admin: UserAccessProfile = {
       userId: '1',
       name: 'Admin',
+      email: 'admin@test.com',
       role: 'Admin',
       grantedPermissions: [],
       revokedPermissions: ['inventory.create'],
@@ -77,6 +82,7 @@ describe('RBAC Logic', () => {
     const sales: UserAccessProfile = {
       userId: '2',
       name: 'Sales',
+      email: 'sales@test.com',
       role: 'SalesManager',
       grantedPermissions: ['inventory.create'],
       revokedPermissions: ['inventory.create'],

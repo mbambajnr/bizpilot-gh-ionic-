@@ -84,6 +84,7 @@ type BusinessContextValue = {
   currentUser: UserAccessProfile;
   switchUser: (userId: string) => void;
   updateUserPermissions: (userId: string, granted: AppPermission[], revoked: AppPermission[]) => ActionResult;
+  updateUserProfile: (userId: string, profile: Partial<Pick<UserAccessProfile, 'email' | 'password' | 'name'>>) => ActionResult;
   hasPermission: (permission: AppPermission) => boolean;
 };
 
@@ -331,6 +332,21 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           } : u)
         }));
         
+        return { ok: true };
+      },
+      updateUserProfile(userId, profile) {
+        if (!hasPermission(currentUser, 'permissions.manage')) {
+          return { ok: false, message: 'Only admins can update user profiles.' };
+        }
+
+        setState(current => ({
+          ...current,
+          users: current.users.map(u => u.userId === userId ? {
+            ...u,
+            ...profile,
+          } : u)
+        }));
+
         return { ok: true };
       },
       hasPermission(permission) {

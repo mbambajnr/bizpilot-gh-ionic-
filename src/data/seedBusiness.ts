@@ -236,6 +236,8 @@ export const seedState: BusinessState = {
     {
       userId: 'u-admin',
       name: 'Admin User',
+      email: 'admin@bizpilot.gh',
+      password: 'admin-password',
       role: 'Admin',
       grantedPermissions: [],
       revokedPermissions: [],
@@ -243,6 +245,8 @@ export const seedState: BusinessState = {
     {
       userId: 'u-sales',
       name: 'Sales Manager',
+      email: 'sales@bizpilot.gh',
+      password: 'sales-password',
       role: 'SalesManager',
       grantedPermissions: [],
       revokedPermissions: [],
@@ -250,6 +254,8 @@ export const seedState: BusinessState = {
     {
       userId: 'u-accountant',
       name: 'Accountant User',
+      email: 'accountant@bizpilot.gh',
+      password: 'accountant-password',
       role: 'Accountant',
       grantedPermissions: [],
       revokedPermissions: [],

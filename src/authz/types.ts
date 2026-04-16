@@ -34,6 +34,8 @@ export type AppPermission =
 export interface UserAccessProfile {
   userId: string;
   name: string;
+  email: string;
+  password?: string;
   role: AppRole;
   grantedPermissions: AppPermission[];
   revokedPermissions: AppPermission[];

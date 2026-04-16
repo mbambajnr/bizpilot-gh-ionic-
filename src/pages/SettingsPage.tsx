@@ -24,7 +24,8 @@ import { AppPermission } from '../authz/types';
 
 const SettingsPage: React.FC = () => {
   const { user, businessBootstrapStatus, signOut } = useAuth();
-  const { state, backendStatus, updateBusinessProfile, switchUser, updateUserPermissions, hasPermission } = useBusiness();
+  const { state, backendStatus, updateBusinessProfile, switchUser, updateUserPermissions, updateUserProfile, hasPermission } = useBusiness();
+  
   const [businessName, setBusinessName] = useState(state.businessProfile.businessName);
   const [businessType, setBusinessType] = useState(state.businessProfile.businessType);
   const [currency, setCurrency] = useState(state.businessProfile.currency);
@@ -36,6 +37,15 @@ const SettingsPage: React.FC = () => {
   const [formMessage, setFormMessage] = useState('');
   const [showSuccessToast, setShowSuccessToast] = useState(false);
 
+  // User credential state
+  const salesManager = state.users.find((u) => u.role === 'SalesManager');
+  const accountant = state.users.find((u) => u.role === 'Accountant');
+
+  const [salesEmail, setSalesEmail] = useState(salesManager?.email ?? '');
+  const [salesPassword, setSalesPassword] = useState(salesManager?.password ?? '');
+  const [accountantEmail, setAccountantEmail] = useState(accountant?.email ?? '');
+  const [accountantPassword, setAccountantPassword] = useState(accountant?.password ?? '');
+
   useEffect(() => {
     setBusinessName(state.businessProfile.businessName);
     setBusinessType(state.businessProfile.businessType);
@@ -45,7 +55,12 @@ const SettingsPage: React.FC = () => {
     setInvoicePrefix(state.businessProfile.invoicePrefix);
     setPhone(state.businessProfile.phone);
     setEmail(state.businessProfile.email);
-  }, [state.businessProfile]);
+    
+    setSalesEmail(salesManager?.email ?? '');
+    setSalesPassword(salesManager?.password ?? '');
+    setAccountantEmail(accountant?.email ?? '');
+    setAccountantPassword(accountant?.password ?? '');
+  }, [state.businessProfile, salesManager, accountant]);
 
   const handleSave = () => {
     const result = updateBusinessProfile({
@@ -76,8 +91,31 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const salesManager = state.users.find((u) => u.role === 'SalesManager');
-  const accountant = state.users.find((u) => u.role === 'Accountant');
+  const handleSaveSalesCredentials = () => {
+    if (!salesManager) return;
+    const result = updateUserProfile(salesManager.userId, { 
+      email: salesEmail, 
+      password: salesPassword 
+    });
+    if (result.ok) {
+      setShowSuccessToast(true);
+    } else {
+      setFormMessage(result.message);
+    }
+  };
+
+  const handleSaveAccountantCredentials = () => {
+    if (!accountant) return;
+    const result = updateUserProfile(accountant.userId, { 
+      email: accountantEmail, 
+      password: accountantPassword 
+    });
+    if (result.ok) {
+      setShowSuccessToast(true);
+    } else {
+      setFormMessage(result.message);
+    }
+  };
 
   const toggleInventoryForSales = (checked: boolean) => {
     if (!salesManager) return;
@@ -161,34 +199,73 @@ const SettingsPage: React.FC = () => {
 
            {hasPermission('permissions.manage') && (
              <SectionCard
-               title="User permissions (Admin only)"
-               subtitle="Control explicit grants and overrides for your team roles."
+               title="User credentials & permissions (Admin only)"
+               subtitle="Manage access identifiers and explicit grants for your team."
              >
                <div className="list-block">
-                 <IonItem lines="none" className="app-item">
-                   <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                     <div>
-                       <strong>Authorize Sales Manager Inventory</strong>
-                       <p>Explicitly grant create/edit permissions to Sales Managers.</p>
-                     </div>
-                     <IonToggle
-                       checked={salesManager?.grantedPermissions.includes('inventory.create')}
-                       onIonChange={(e) => toggleInventoryForSales(e.detail.checked)}
-                     />
+                 <div className="form-grid" style={{ marginBottom: '24px' }}>
+                   <IonText color="primary"><strong>Sales Manager credentials</strong></IonText>
+                   <div className="dual-stat">
+                     <IonItem lines="none" className="app-item">
+                       <IonLabel position="stacked">Email</IonLabel>
+                       <IonInput 
+                         type="email" 
+                         value={salesEmail} 
+                         onIonInput={(e) => setSalesEmail(e.detail.value ?? '')} 
+                       />
+                     </IonItem>
+                     <IonItem lines="none" className="app-item">
+                       <IonLabel position="stacked">Password</IonLabel>
+                       <IonInput 
+                         type="password" 
+                         value={salesPassword} 
+                         onIonInput={(e) => setSalesPassword(e.detail.value ?? '')} 
+                       />
+                     </IonItem>
                    </div>
-                 </IonItem>
-                 <IonItem lines="none" className="app-item" style={{ marginTop: '8px' }}>
-                    <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <strong>Authorize Accountant Access</strong>
-                        <p>Grant visibility and access to accounting documents/reports.</p>
-                      </div>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <p style={{ margin: 0, fontSize: '0.9em' }}>Authorize Inventory Access</p>
+                      <IonToggle
+                        checked={salesManager?.grantedPermissions.includes('inventory.create')}
+                        onIonChange={(e) => toggleInventoryForSales(e.detail.checked)}
+                      />
+                   </div>
+                   <IonButton fill="outline" size="small" onClick={handleSaveSalesCredentials}>
+                     Update Sales Profile
+                   </IonButton>
+                 </div>
+
+                 <div className="form-grid">
+                   <IonText color="primary"><strong>Accountant credentials</strong></IonText>
+                   <div className="dual-stat">
+                     <IonItem lines="none" className="app-item">
+                       <IonLabel position="stacked">Email</IonLabel>
+                       <IonInput 
+                         type="email" 
+                         value={accountantEmail} 
+                         onIonInput={(e) => setAccountantEmail(e.detail.value ?? '')} 
+                       />
+                     </IonItem>
+                     <IonItem lines="none" className="app-item">
+                       <IonLabel position="stacked">Password</IonLabel>
+                       <IonInput 
+                         type="password" 
+                         value={accountantPassword} 
+                         onIonInput={(e) => setAccountantPassword(e.detail.value ?? '')} 
+                       />
+                     </IonItem>
+                   </div>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <p style={{ margin: 0, fontSize: '0.9em' }}>Authorize Accounting Access</p>
                       <IonToggle
                         checked={accountant?.grantedPermissions.includes('accounting.access')}
                         onIonChange={(e) => toggleAccountingForAccountant(e.detail.checked)}
                       />
-                    </div>
-                 </IonItem>
+                   </div>
+                   <IonButton fill="outline" size="small" onClick={handleSaveAccountantCredentials}>
+                     Update Accountant Profile
+                   </IonButton>
+                 </div>
                </div>
              </SectionCard>
            )}
