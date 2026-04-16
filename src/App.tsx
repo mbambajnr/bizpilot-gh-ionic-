@@ -49,7 +49,7 @@ function LoadingScreen({ message }: { message: string }) {
   return (
     <IonPage>
       <IonContent fullscreen={true}>
-        <div className="auth-loading">
+        <div className="auth-loading" data-testid="loading-screen">
           <IonSpinner name="crescent" />
           <p>{message}</p>
         </div>
@@ -89,27 +89,27 @@ function AppShell() {
           </Route>
         </IonRouterOutlet>
         <IonTabBar slot="bottom">
-          <IonTabButton tab="dashboard" href="/dashboard">
+          <IonTabButton tab="dashboard" href="/dashboard" data-testid="tab-dashboard">
             <IonIcon aria-hidden="true" icon={home} />
             <IonLabel>Dashboard</IonLabel>
           </IonTabButton>
-          <IonTabButton tab="sales" href="/sales">
+          <IonTabButton tab="sales" href="/sales" data-testid="tab-sales">
             <IonIcon aria-hidden="true" icon={cart} />
             <IonLabel>Sales</IonLabel>
           </IonTabButton>
-          <IonTabButton tab="inventory" href="/inventory">
+          <IonTabButton tab="inventory" href="/inventory" data-testid="tab-inventory">
             <IonIcon aria-hidden="true" icon={grid} />
             <IonLabel>Inventory</IonLabel>
           </IonTabButton>
-          <IonTabButton tab="customers" href="/customers">
+          <IonTabButton tab="customers" href="/customers" data-testid="tab-customers">
             <IonIcon aria-hidden="true" icon={people} />
             <IonLabel>Customers</IonLabel>
           </IonTabButton>
-          <IonTabButton tab="quotations" href="/quotations">
+          <IonTabButton tab="quotations" href="/quotations" data-testid="tab-quotations">
             <IonIcon aria-hidden="true" icon={documentText} />
             <IonLabel>Quotations</IonLabel>
           </IonTabButton>
-          <IonTabButton tab="settings" href="/settings">
+          <IonTabButton tab="settings" href="/settings" data-testid="tab-settings">
             <IonIcon aria-hidden="true" icon={settings} />
             <IonLabel>Settings</IonLabel>
           </IonTabButton>

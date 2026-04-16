@@ -4,6 +4,7 @@ import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
 type BusinessProfileRow = {
   id: string;
   business_name: string;
+  business_type: string;
   currency: string;
   country: string;
   receipt_prefix: string;
@@ -30,6 +31,7 @@ function mapBusinessProfile(row: BusinessProfileRow): BusinessProfile {
   return {
     id: row.id,
     businessName: row.business_name,
+    businessType: row.business_type,
     currency: row.currency,
     country: row.country,
     receiptPrefix: row.receipt_prefix,
@@ -72,7 +74,7 @@ export async function loadBusinessProfileFromSupabase(ownerId?: string): Promise
 
   const { data, error } = await supabase
     .from('businesses')
-    .select('id, business_name, currency, country, receipt_prefix, invoice_prefix, phone, email')
+    .select('id, business_name, business_type, currency, country, receipt_prefix, invoice_prefix, phone, email')
     .eq('owner_id', userId)
     .order('created_at', { ascending: true })
     .limit(1)
@@ -134,6 +136,7 @@ export async function ensureBusinessProfileForOwner(
       owner_id: input.ownerId,
       business_code: `biz-${input.ownerId}`,
       business_name: fallbackName,
+      business_type: 'General Retail',
       currency: 'GHS',
       country: 'Ghana',
       receipt_prefix: 'RCP-',
@@ -141,7 +144,7 @@ export async function ensureBusinessProfileForOwner(
       phone: '',
       email: input.email ?? '',
     })
-    .select('id, business_name, currency, country, receipt_prefix, invoice_prefix, phone, email')
+    .select('id, business_name, business_type, currency, country, receipt_prefix, invoice_prefix, phone, email')
     .single<BusinessProfileRow>();
 
   if (error) {

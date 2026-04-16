@@ -39,7 +39,7 @@ const DashboardPage: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>
-        <div className="page-shell">
+        <div className="page-shell" data-testid="dashboard-page">
           <section className="hero-card">
             <p className="eyebrow">Business health</p>
             <h1>Run your shop with clarity.</h1>

@@ -165,7 +165,7 @@ const SalesPage: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>
-        <div className="page-shell">
+        <div className="page-shell" data-testid="sales-page">
           <SectionCard title="Record a sale" subtitle="Capture the buyer, item sold, quantity, and whether payment came by cash or mobile money.">
             {canRecordSale ? (
               <div className="form-grid">
@@ -206,7 +206,7 @@ const SalesPage: React.FC = () => {
 
                 <IonItem lines="none" className="app-item">
                   <IonLabel position="stacked">Buyer</IonLabel>
-                  <IonSelect value={customerId} onIonChange={(event) => setCustomerId(event.detail.value)} interface="popover">
+                  <IonSelect data-testid="customer-select" value={customerId} onIonChange={(event) => setCustomerId(event.detail.value)} interface="popover">
                     {state.customers.map((customer) => (
                       <IonSelectOption key={customer.id} value={customer.id}>
                         {customer.clientId} · {customer.name}
@@ -217,7 +217,7 @@ const SalesPage: React.FC = () => {
 
                 <IonItem lines="none" className="app-item">
                   <IonLabel position="stacked">Item sold</IonLabel>
-                  <IonSelect value={productId} onIonChange={(event) => setProductId(event.detail.value)} interface="popover">
+                  <IonSelect data-testid="product-select" value={productId} onIonChange={(event) => setProductId(event.detail.value)} interface="popover">
                     {state.products.map((product) => (
                       <IonSelectOption key={product.id} value={product.id}>
                         {product.inventoryId} · {product.name} ({selectProductQuantityOnHand(state, product.id)} left)
@@ -230,6 +230,7 @@ const SalesPage: React.FC = () => {
                   <IonItem lines="none" className="app-item">
                     <IonLabel position="stacked">Quantity</IonLabel>
                     <IonInput
+                      data-testid="quantity-input"
                       type="number"
                       min={1}
                       inputmode="numeric"
@@ -240,7 +241,7 @@ const SalesPage: React.FC = () => {
 
                   <IonItem lines="none" className="app-item">
                     <IonLabel position="stacked">Payment method</IonLabel>
-                    <IonSelect value={paymentMethod} onIonChange={(event) => setPaymentMethod(event.detail.value)} interface="popover">
+                    <IonSelect data-testid="payment-method-select" value={paymentMethod} onIonChange={(event) => setPaymentMethod(event.detail.value)} interface="popover">
                       <IonSelectOption value="Cash">Cash</IonSelectOption>
                       <IonSelectOption value="Mobile Money">Mobile Money</IonSelectOption>
                     </IonSelect>
@@ -250,6 +251,7 @@ const SalesPage: React.FC = () => {
                 <IonItem lines="none" className="app-item">
                   <IonLabel position="stacked">Amount paid now</IonLabel>
                   <IonInput
+                    data-testid="paid-amount-input"
                     type="number"
                     inputmode="decimal"
                     min={0}
@@ -273,7 +275,7 @@ const SalesPage: React.FC = () => {
                   </div>
                 </div>
 
-                <IonButton expand="block" onClick={handleSubmit}>
+                <IonButton data-testid="record-sale-button" expand="block" onClick={handleSubmit}>
                   Record Sale and Create Invoice
                 </IonButton>
                 {formMessage ? <p className="form-message">{formMessage}</p> : null}
@@ -377,7 +379,7 @@ const SalesPage: React.FC = () => {
                 message="As soon as a teammate records a sale, this feed becomes a quick invoice trail for who bought what, how they paid, and how much is still outstanding."
               />
             ) : (
-              <div className="list-block">
+              <div className="list-block" data-testid="recent-invoices-list">
                 {recentSales.map((sale) => {
                   const customer = state.customers.find((item) => item.id === sale.customerId);
                   const product = state.products.find((item) => item.id === sale.productId);

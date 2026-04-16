@@ -166,6 +166,7 @@ function ensureBusinessProfile(profile?: Partial<BusinessProfile>): BusinessProf
   return {
     id: profile?.id ?? 'biz-001',
     businessName: profile?.businessName?.trim() || 'BizPilot GH Demo Shop',
+    businessType: profile?.businessType?.trim() || 'General Retail',
     currency: profile?.currency?.trim() || 'GHS',
     country: profile?.country?.trim() || 'Ghana',
     receiptPrefix: profile?.receiptPrefix?.trim() || 'RCP-',
@@ -589,13 +590,14 @@ export function addCustomerToState(current: BusinessState, input: NewCustomerInp
 
 export function updateBusinessProfileInState(current: BusinessState, input: UpdateBusinessProfileInput): ActionResult<BusinessState> {
   const businessName = input.businessName.trim();
+  const businessType = input.businessType?.trim() || '';
   const currency = input.currency.trim();
   const country = input.country.trim();
   const receiptPrefix = input.receiptPrefix.trim();
   const invoicePrefix = input.invoicePrefix.trim();
 
-  if (!businessName || !currency || !country || !receiptPrefix || !invoicePrefix) {
-    return { ok: false, message: 'Business name, country, currency, and document prefixes are required.' };
+  if (!businessName || !currency || !country || !receiptPrefix || !invoicePrefix || !businessType) {
+    return { ok: false, message: 'Business name, type, country, currency, and document prefixes are required.' };
   }
 
   const updatedProfile: BusinessProfile = {

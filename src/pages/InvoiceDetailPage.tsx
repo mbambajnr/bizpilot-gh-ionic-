@@ -125,7 +125,7 @@ const InvoiceDetailPage: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>
-        <div className="page-shell">
+        <div className="page-shell" data-testid="invoice-detail-page">
           <SectionCard title="Official Receipt" subtitle="This document serves as proof of transaction and is recorded in your business ledger.">
             <div className="list-block receipt-container">
               <div className="receipt-header">
@@ -252,7 +252,7 @@ const InvoiceDetailPage: React.FC = () => {
           >
             <div className="form-grid">
               {sale.status === 'Completed' ? (
-                <IonButton color="danger" expand="block" onClick={() => setShowReverseModal(true)}>
+                <IonButton data-testid="reverse-invoice-button" color="danger" expand="block" onClick={() => setShowReverseModal(true)}>
                   Reverse Invoice
                 </IonButton>
               ) : null}
@@ -391,6 +391,7 @@ const InvoiceDetailPage: React.FC = () => {
                 <IonItem lines="none" className="app-item">
                   <IonLabel position="stacked">Reason for reversal</IonLabel>
                   <IonTextarea
+                    data-testid="reversal-reason-input"
                     value={reversalReason}
                     autoGrow={true}
                     placeholder="e.g. duplicate invoice, wrong customer, goods not delivered"
@@ -399,7 +400,7 @@ const InvoiceDetailPage: React.FC = () => {
                 </IonItem>
 
                 {formMessage ? <p className="form-message">{formMessage}</p> : null}
-                <IonButton color="danger" expand="block" onClick={handleConfirmReversal}>
+                <IonButton data-testid="confirm-reversal-button" color="danger" expand="block" onClick={handleConfirmReversal}>
                   Confirm reversal
                 </IonButton>
                 <IonButton fill="clear" color="medium" expand="block" onClick={() => setShowReverseModal(false)}>

@@ -6,6 +6,7 @@ export type SaleStatus = 'Completed' | 'Reversed';
 export type BusinessProfile = {
   id: string;
   businessName: string;
+  businessType: string;
   currency: string;
   country: string;
   receiptPrefix: string;
@@ -156,6 +157,7 @@ export const seedState: BusinessState = {
   businessProfile: {
     id: 'biz-001',
     businessName: 'BizPilot GH Demo Shop',
+    businessType: 'General Retail',
     currency: 'GHS',
     country: 'Ghana',
     receiptPrefix: 'RCP-',

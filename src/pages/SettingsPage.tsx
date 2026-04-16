@@ -23,6 +23,7 @@ const SettingsPage: React.FC = () => {
   const { user, businessBootstrapStatus, signOut } = useAuth();
   const { state, backendStatus, updateBusinessProfile } = useBusiness();
   const [businessName, setBusinessName] = useState(state.businessProfile.businessName);
+  const [businessType, setBusinessType] = useState(state.businessProfile.businessType);
   const [currency, setCurrency] = useState(state.businessProfile.currency);
   const [country, setCountry] = useState(state.businessProfile.country);
   const [receiptPrefix, setReceiptPrefix] = useState(state.businessProfile.receiptPrefix);
@@ -34,6 +35,7 @@ const SettingsPage: React.FC = () => {
 
   useEffect(() => {
     setBusinessName(state.businessProfile.businessName);
+    setBusinessType(state.businessProfile.businessType);
     setCurrency(state.businessProfile.currency);
     setCountry(state.businessProfile.country);
     setReceiptPrefix(state.businessProfile.receiptPrefix);
@@ -45,6 +47,7 @@ const SettingsPage: React.FC = () => {
   const handleSave = () => {
     const result = updateBusinessProfile({
       businessName,
+      businessType,
       currency,
       country,
       receiptPrefix,
@@ -116,10 +119,16 @@ const SettingsPage: React.FC = () => {
             subtitle="These local settings shape invoice and receipt numbering, contact details, and currency display across the current MVP."
           >
             <div className="form-grid">
-              <IonItem lines="none" className="app-item">
-                <IonLabel position="stacked">Business name</IonLabel>
-                <IonInput value={businessName} onIonInput={(event) => setBusinessName(event.detail.value ?? '')} />
-              </IonItem>
+              <div className="dual-stat">
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">Business name</IonLabel>
+                  <IonInput value={businessName} onIonInput={(event) => setBusinessName(event.detail.value ?? '')} />
+                </IonItem>
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">Business type</IonLabel>
+                  <IonInput value={businessType} onIonInput={(event) => setBusinessType(event.detail.value ?? '')} />
+                </IonItem>
+              </div>
 
               <div className="dual-stat">
                 <IonItem lines="none" className="app-item">

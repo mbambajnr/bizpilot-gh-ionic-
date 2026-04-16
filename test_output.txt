@@ -1,0 +1,39 @@
+
+> bizpilot-gh-ionic@0.0.1 test.unit
+> vitest --run src/App.test.tsx
+
+
+ RUN  v0.34.6 /Users/macbook/Documents/Portfolio/bizpilot-gh-ionic
+
+ ❯ src/App.test.tsx  (1 test | 1 failed) 19ms
+   ❯ src/App.test.tsx > renders without crashing
+     → Cannot read properties of undefined (reading 'auth')
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/App.test.tsx > renders without crashing
+TypeError: Cannot read properties of undefined (reading 'auth')
+ ❯ getAuthClient src/context/AuthContext.tsx:30:28
+     28| 
+     29| function getAuthClient() {
+     30|   return getSupabaseClient().auth;
+       |                            ^
+     31| }
+     32| 
+ ❯ src/context/AuthContext.tsx:54:18
+ ❯ Object.react-stack-bottom-frame node_modules/react-dom/cjs/react-dom-client.development.js:22509:20
+ ❯ runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:543:16
+ ❯ commitHookEffectListMount node_modules/react-dom/cjs/react-dom-client.development.js:10758:29
+ ❯ commitHookPassiveMountEffects node_modules/react-dom/cjs/react-dom-client.development.js:10880:11
+ ❯ commitPassiveMountOnFiber node_modules/react-dom/cjs/react-dom-client.development.js:12653:13
+ ❯ recursivelyTraversePassiveMountEffects node_modules/react-dom/cjs/react-dom-client.development.js:12627:11
+ ❯ commitPassiveMountOnFiber node_modules/react-dom/cjs/react-dom-client.development.js:12755:11
+ ❯ recursivelyTraversePassiveMountEffects node_modules/react-dom/cjs/react-dom-client.development.js:12627:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  12:22:34
+   Duration  1.25s (transform 376ms, setup 72ms, collect 621ms, tests 19ms, environment 251ms, prepare 54ms)
+
