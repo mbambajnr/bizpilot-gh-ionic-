@@ -335,8 +335,16 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       updateUserProfile(userId, profile) {
-        if (!hasPermission(currentUser, 'permissions.manage')) {
-          return { ok: false, message: 'Only admins can update user profiles.' };
+        const isSelf = currentUser.userId === userId;
+        const isAdmin = hasPermission(currentUser, 'permissions.manage');
+
+        if (!isSelf && !isAdmin) {
+          return { ok: false, message: 'You are not authorized to update this profile.' };
+        }
+
+        // Non-admins can only update their own password or name, not email (identity)
+        if (isSelf && !isAdmin && profile.email && profile.email !== currentUser.email) {
+          return { ok: false, message: 'Only admins can change user email addresses.' };
         }
 
         setState(current => ({

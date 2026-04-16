@@ -24,7 +24,7 @@ import { AppPermission } from '../authz/types';
 
 const SettingsPage: React.FC = () => {
   const { user, businessBootstrapStatus, signOut } = useAuth();
-  const { state, backendStatus, updateBusinessProfile, switchUser, updateUserPermissions, updateUserProfile, hasPermission } = useBusiness();
+  const { state, currentUser, backendStatus, updateBusinessProfile, switchUser, updateUserPermissions, updateUserProfile, hasPermission } = useBusiness();
   
   const [businessName, setBusinessName] = useState(state.businessProfile.businessName);
   const [businessType, setBusinessType] = useState(state.businessProfile.businessType);
@@ -45,6 +45,7 @@ const SettingsPage: React.FC = () => {
   const [salesPassword, setSalesPassword] = useState(salesManager?.password ?? '');
   const [accountantEmail, setAccountantEmail] = useState(accountant?.email ?? '');
   const [accountantPassword, setAccountantPassword] = useState(accountant?.password ?? '');
+  const [myPassword, setMyPassword] = useState(currentUser.password ?? '');
 
   useEffect(() => {
     setBusinessName(state.businessProfile.businessName);
@@ -60,7 +61,8 @@ const SettingsPage: React.FC = () => {
     setSalesPassword(salesManager?.password ?? '');
     setAccountantEmail(accountant?.email ?? '');
     setAccountantPassword(accountant?.password ?? '');
-  }, [state.businessProfile, salesManager, accountant]);
+    setMyPassword(currentUser.password ?? '');
+  }, [state.businessProfile, salesManager, accountant, currentUser]);
 
   const handleSave = () => {
     const result = updateBusinessProfile({
@@ -109,6 +111,17 @@ const SettingsPage: React.FC = () => {
     const result = updateUserProfile(accountant.userId, { 
       email: accountantEmail, 
       password: accountantPassword 
+    });
+    if (result.ok) {
+      setShowSuccessToast(true);
+    } else {
+      setFormMessage(result.message);
+    }
+  };
+
+  const handleUpdateMyPassword = () => {
+    const result = updateUserProfile(currentUser.userId, { 
+      password: myPassword 
     });
     if (result.ok) {
       setShowSuccessToast(true);
@@ -269,6 +282,25 @@ const SettingsPage: React.FC = () => {
                </div>
              </SectionCard>
            )}
+
+          <SectionCard
+            title="Security"
+            subtitle="Secure your identity by keeping your password updated."
+          >
+            <div className="form-grid">
+              <IonItem lines="none" className="app-item">
+                <IonLabel position="stacked">My password</IonLabel>
+                <IonInput 
+                  type="password" 
+                  value={myPassword} 
+                  onIonInput={(e) => setMyPassword(e.detail.value ?? '')} 
+                />
+              </IonItem>
+              <IonButton expand="block" fill="outline" onClick={handleUpdateMyPassword}>
+                Change my password
+              </IonButton>
+            </div>
+          </SectionCard>
 
           <SectionCard
             title="Business setup"
