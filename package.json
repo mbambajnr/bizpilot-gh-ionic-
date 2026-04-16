@@ -5,10 +5,10 @@
   "type": "module",
   "description": "Mobile-first Ghana SME operations demo built with Ionic React.",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test.e2e": "start-server-and-test 'npm run dev' http://localhost:5173 'npm run cypress:run'",
+    "test.e2e": "start-server-and-test 'npm run dev' http://127.0.0.1:5173 'npm run cypress:run'",
     "test.unit": "vitest",
     "lint": "eslint",
     "cypress:run": "cypress run",
