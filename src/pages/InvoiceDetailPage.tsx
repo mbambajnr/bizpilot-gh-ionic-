@@ -15,7 +15,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react';
-import { printOutline, shareSocialOutline } from 'ionicons/icons';
+import { shareSocialOutline } from 'ionicons/icons';
 import { useMemo, useState } from 'react';
 import { useHistory, useParams } from 'react-router-dom';
 
@@ -188,47 +188,63 @@ const InvoiceDetailPage: React.FC = () => {
             </div>
           </SectionCard>
 
-              {sale.reversalReason ? (
-                <div className="selected-product">
-                  <div>
-                    <p className="muted-label">Reversal reason</p>
-                    <h3>{sale.reversalReason}</h3>
-                    <p className="muted-label">
-                      Reversed {sale.reversedAt ? formatReceiptDate(sale.reversedAt) : 'recently'} {sale.reversedBy ? `by ${sale.reversedBy}` : ''}
-                    </p>
+          {Boolean(sale.reversalReason || correctionOfSale || correctedBySale) && (
+            <SectionCard
+              title="Adjustment details"
+              subtitle="Information regarding reversals or corrections linked to this invoice."
+            >
+              <div className="list-block">
+                {sale.reversalReason ? (
+                  <div className="selected-product">
+                    <div>
+                      <p className="muted-label">Reversal reason</p>
+                      <h3>{sale.reversalReason}</h3>
+                      <p className="muted-label">
+                        Reversed {sale.reversedAt ? formatReceiptDate(sale.reversedAt) : 'recently'}{' '}
+                        {sale.reversedBy ? `by ${sale.reversedBy}` : ''}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              {correctionOfSale ? (
-                <div className="list-row">
-                  <div>
-                    <strong>Correction source</strong>
-                    <p>{correctionOfSale.invoiceNumber}</p>
+                {correctionOfSale ? (
+                  <div className="list-row">
+                    <div>
+                      <strong>Correction source</strong>
+                      <p>{correctionOfSale.invoiceNumber}</p>
+                    </div>
+                    <div className="right-meta">
+                      <IonButton
+                        fill="clear"
+                        size="small"
+                        onClick={() => history.push(`/sales/${correctionOfSale.id}`)}
+                      >
+                        Open linked invoice
+                      </IonButton>
+                    </div>
                   </div>
-                  <div className="right-meta">
-                    <IonButton fill="clear" size="small" onClick={() => history.push(`/sales/${correctionOfSale.id}`)}>
-                      Open linked invoice
-                    </IonButton>
-                  </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              {correctedBySale ? (
-                <div className="list-row">
-                  <div>
-                    <strong>Correction invoice</strong>
-                    <p>{correctedBySale.invoiceNumber}</p>
+                {correctedBySale ? (
+                  <div className="list-row">
+                    <div>
+                      <strong>Correction invoice</strong>
+                      <p>{correctedBySale.invoiceNumber}</p>
+                    </div>
+                    <div className="right-meta">
+                      <IonButton
+                        fill="clear"
+                        size="small"
+                        onClick={() => history.push(`/sales/${correctedBySale.id}`)}
+                      >
+                        Open linked invoice
+                      </IonButton>
+                    </div>
                   </div>
-                  <div className="right-meta">
-                    <IonButton fill="clear" size="small" onClick={() => history.push(`/sales/${correctedBySale.id}`)}>
-                      Open linked invoice
-                    </IonButton>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </SectionCard>
+                ) : null}
+              </div>
+            </SectionCard>
+          )}
 
           <SectionCard
             title="Invoice actions"
