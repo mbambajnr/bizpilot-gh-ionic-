@@ -302,61 +302,63 @@ const SettingsPage: React.FC = () => {
             </div>
           </SectionCard>
 
-          <SectionCard
-            title="Business setup"
-            subtitle="These local settings shape invoice and receipt numbering, contact details, and currency display across the current MVP."
-          >
-            <div className="form-grid">
-              <div className="dual-stat">
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Business name</IonLabel>
-                  <IonInput value={businessName} onIonInput={(event) => setBusinessName(event.detail.value ?? '')} />
-                </IonItem>
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Business type</IonLabel>
-                  <IonInput value={businessType} onIonInput={(event) => setBusinessType(event.detail.value ?? '')} />
-                </IonItem>
-              </div>
+           {hasPermission('business.edit') && (
+            <SectionCard
+              title="Business setup"
+              subtitle="These local settings shape invoice and receipt numbering, contact details, and currency display across the current MVP."
+            >
+              <div className="form-grid">
+                <div className="dual-stat">
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Business name</IonLabel>
+                    <IonInput value={businessName} onIonInput={(event) => setBusinessName(event.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Business type</IonLabel>
+                    <IonInput value={businessType} onIonInput={(event) => setBusinessType(event.detail.value ?? '')} />
+                  </IonItem>
+                </div>
 
-              <div className="dual-stat">
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Country</IonLabel>
-                  <IonInput value={country} onIonInput={(event) => setCountry(event.detail.value ?? '')} />
-                </IonItem>
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Currency</IonLabel>
-                  <IonInput value={currency} onIonInput={(event) => setCurrency(event.detail.value ?? '')} />
-                </IonItem>
-              </div>
+                <div className="dual-stat">
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Country</IonLabel>
+                    <IonInput value={country} onIonInput={(event) => setCountry(event.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Currency</IonLabel>
+                    <IonInput value={currency} onIonInput={(event) => setCurrency(event.detail.value ?? '')} />
+                  </IonItem>
+                </div>
 
-              <div className="dual-stat">
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Receipt prefix</IonLabel>
-                  <IonInput value={receiptPrefix} onIonInput={(event) => setReceiptPrefix(event.detail.value ?? '')} />
-                </IonItem>
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Invoice prefix</IonLabel>
-                  <IonInput value={invoicePrefix} onIonInput={(event) => setInvoicePrefix(event.detail.value ?? '')} />
-                </IonItem>
-              </div>
+                <div className="dual-stat">
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Receipt prefix</IonLabel>
+                    <IonInput value={receiptPrefix} onIonInput={(event) => setReceiptPrefix(event.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Invoice prefix</IonLabel>
+                    <IonInput value={invoicePrefix} onIonInput={(event) => setInvoicePrefix(event.detail.value ?? '')} />
+                  </IonItem>
+                </div>
 
-              <div className="dual-stat">
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Phone</IonLabel>
-                  <IonInput value={phone} onIonInput={(event) => setPhone(event.detail.value ?? '')} />
-                </IonItem>
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Email</IonLabel>
-                  <IonInput value={email} onIonInput={(event) => setEmail(event.detail.value ?? '')} />
-                </IonItem>
-              </div>
+                <div className="dual-stat">
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Phone</IonLabel>
+                    <IonInput value={phone} onIonInput={(event) => setPhone(event.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Email</IonLabel>
+                    <IonInput value={email} onIonInput={(event) => setEmail(event.detail.value ?? '')} />
+                  </IonItem>
+                </div>
 
-              <IonButton expand="block" onClick={handleSave}>
-                Save settings
-              </IonButton>
-              {formMessage ? <p className="form-message">{formMessage}</p> : null}
-            </div>
-          </SectionCard>
+                <IonButton expand="block" onClick={handleSave}>
+                  Save settings
+                </IonButton>
+                {formMessage ? <p className="form-message">{formMessage}</p> : null}
+              </div>
+            </SectionCard>
+          )}
 
           <SectionCard
             title="Product roadmap"
