@@ -3,6 +3,7 @@ import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useRe
 
 import { ensureBusinessProfileForOwner } from '../data/supabaseBusinessProfile';
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
+import type { UserAccessProfile } from '../authz/types';
 
 type AuthActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
@@ -79,23 +80,36 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const auth = getAuthClient();
     let mounted = true;
 
-    auth.getSession().then(({ data, error }) => {
-      if (!mounted) {
-        return;
+    // Check for local session first
+    const localSession = window.localStorage.getItem('bizpilot-local-session');
+    if (localSession) {
+      try {
+        setSession(JSON.parse(localSession));
+        setLoading(false);
+      } catch {
+        window.localStorage.removeItem('bizpilot-local-session');
       }
+    } else {
+      auth.getSession().then(({ data, error }) => {
+        if (!mounted) {
+          return;
+        }
 
-      if (!error) {
-        setSession(data.session);
-      }
+        if (!error && data.session) {
+          setSession(data.session);
+        }
 
-      setLoading(false);
-    });
+        setLoading(false);
+      });
+    }
 
     const { data: listener } = auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
+      if (nextSession) {
+        setSession(nextSession);
+      }
       setLoading(false);
 
-      if (!nextSession) {
+      if (!nextSession && !window.localStorage.getItem('bizpilot-local-session')) {
         bootstrappedOwnerRef.current = null;
         setBusinessBootstrapStatus({
           loading: false,
@@ -165,8 +179,44 @@ export function AuthProvider({ children }: PropsWithChildren) {
       isConfigured: hasSupabaseConfig,
       businessBootstrapStatus,
       async signIn(email, password) {
+        // Attempt LOCAL authentication check first (for RBAC users)
+        const storedState = window.localStorage.getItem('bizpilot-gh-state-v1');
+        if (storedState) {
+          try {
+            const state = JSON.parse(storedState);
+            const matchedUser = state.users.find((u: UserAccessProfile) => 
+              u.email.toLowerCase() === email.trim().toLowerCase() && 
+              u.password === password
+            );
+
+            if (matchedUser) {
+              // Simulating a Supabase session for the local user
+              const localSession = {
+                user: {
+                  id: matchedUser.userId,
+                  email: matchedUser.email,
+                  user_metadata: { name: matchedUser.name, role: matchedUser.role },
+                },
+                access_token: 'local-token',
+                expires_in: 3600,
+                token_type: 'bearer',
+              };
+
+              // Update storage to target this user ID for BusinessProvider
+              state.currentUserId = matchedUser.userId;
+              window.localStorage.setItem('bizpilot-gh-state-v1', JSON.stringify(state));
+              window.localStorage.setItem('bizpilot-local-session', JSON.stringify(localSession));
+              
+              setSession(localSession as unknown as Session);
+              return { ok: true, message: `Signed in as ${matchedUser.name}.` };
+            }
+          } catch (e) {
+            console.error('Local auth check failed', e);
+          }
+        }
+
         if (!hasSupabaseConfig) {
-          return { ok: false, message: 'Supabase is not configured for authentication yet.' };
+          return { ok: false, message: 'Supabase is not configured. Local user not found.' };
         }
 
         const { error } = await getAuthClient().signInWithPassword({
@@ -224,8 +274,23 @@ export function AuthProvider({ children }: PropsWithChildren) {
         return { ok: true, message: 'Password reset instructions were sent if that email exists.' };
       },
       async signOut() {
+        window.localStorage.removeItem('bizpilot-local-session');
+        
+        // Optionally reset to Admin in stored state when logging out
+        const storedState = window.localStorage.getItem('bizpilot-gh-state-v1');
+        if (storedState) {
+          try {
+            const state = JSON.parse(storedState);
+            state.currentUserId = 'u-admin';
+            window.localStorage.setItem('bizpilot-gh-state-v1', JSON.stringify(state));
+          } catch (e) {
+            console.error('Signout state reset failed', e);
+          }
+        }
+
         if (!hasSupabaseConfig) {
-          return { ok: false, message: 'Supabase is not configured for authentication yet.' };
+          setSession(null);
+          return { ok: true, message: 'Logged out from local session.' };
         }
 
         const { error } = await getAuthClient().signOut();
