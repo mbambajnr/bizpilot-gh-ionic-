@@ -11,6 +11,8 @@ import {
   IonToast,
   IonTitle,
   IonToolbar,
+  IonToggle,
+  IonChip,
 } from '@ionic/react';
 import { useEffect, useState } from 'react';
 
@@ -18,10 +20,11 @@ import SectionCard from '../components/SectionCard';
 import { roadmapSteps } from '../data/seedBusiness';
 import { useAuth } from '../context/AuthContext';
 import { useBusiness } from '../context/BusinessContext';
+import { AppPermission } from '../authz/types';
 
 const SettingsPage: React.FC = () => {
   const { user, businessBootstrapStatus, signOut } = useAuth();
-  const { state, backendStatus, updateBusinessProfile } = useBusiness();
+  const { state, backendStatus, updateBusinessProfile, switchUser, updateUserPermissions, hasPermission } = useBusiness();
   const [businessName, setBusinessName] = useState(state.businessProfile.businessName);
   const [businessType, setBusinessType] = useState(state.businessProfile.businessType);
   const [currency, setCurrency] = useState(state.businessProfile.currency);
@@ -73,6 +76,31 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  const salesManager = state.users.find((u) => u.role === 'SalesManager');
+  const accountant = state.users.find((u) => u.role === 'Accountant');
+
+  const toggleInventoryForSales = (checked: boolean) => {
+    if (!salesManager) return;
+    const inventoryPerms: AppPermission[] = ['inventory.create', 'inventory.edit', 'inventory.adjust', 'inventory.restock'];
+    const currentGranted = salesManager.grantedPermissions;
+    const nextGranted = checked
+      ? [...new Set([...currentGranted, ...inventoryPerms])]
+      : currentGranted.filter((p) => !inventoryPerms.includes(p));
+
+    updateUserPermissions(salesManager.userId, nextGranted, salesManager.revokedPermissions);
+  };
+
+  const toggleAccountingForAccountant = (checked: boolean) => {
+    if (!accountant) return;
+    const accountingPerms: AppPermission[] = ['accounting.access', 'expenses.view', 'expenses.create', 'expenses.edit', 'reports.financial.view'];
+    const currentGranted = accountant.grantedPermissions;
+    const nextGranted = checked
+      ? [...new Set([...currentGranted, ...accountingPerms])]
+      : currentGranted.filter((p) => !accountingPerms.includes(p));
+
+    updateUserPermissions(accountant.userId, nextGranted, accountant.revokedPermissions);
+  };
+
   return (
     <IonPage>
       <IonHeader translucent={true}>
@@ -113,6 +141,57 @@ const SettingsPage: React.FC = () => {
               </div>
             </div>
           </SectionCard>
+
+          <SectionCard
+             title="Demo access"
+             subtitle="Switch between identities to test Role-Based Access Control and permission gating."
+           >
+             <div className="tab-group" style={{ padding: '4px' }}>
+                {state.users.map((u) => (
+                  <IonChip
+                    key={u.userId}
+                    color={state.currentUserId === u.userId ? 'primary' : 'medium'}
+                    onClick={() => switchUser(u.userId)}
+                  >
+                    <IonLabel>{u.name} ({u.role})</IonLabel>
+                  </IonChip>
+                ))}
+             </div>
+           </SectionCard>
+
+           {hasPermission('permissions.manage') && (
+             <SectionCard
+               title="User permissions (Admin only)"
+               subtitle="Control explicit grants and overrides for your team roles."
+             >
+               <div className="list-block">
+                 <IonItem lines="none" className="app-item">
+                   <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                     <div>
+                       <strong>Authorize Sales Manager Inventory</strong>
+                       <p>Explicitly grant create/edit permissions to Sales Managers.</p>
+                     </div>
+                     <IonToggle
+                       checked={salesManager?.grantedPermissions.includes('inventory.create')}
+                       onIonChange={(e) => toggleInventoryForSales(e.detail.checked)}
+                     />
+                   </div>
+                 </IonItem>
+                 <IonItem lines="none" className="app-item" style={{ marginTop: '8px' }}>
+                    <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong>Authorize Accountant Access</strong>
+                        <p>Grant visibility and access to accounting documents/reports.</p>
+                      </div>
+                      <IonToggle
+                        checked={accountant?.grantedPermissions.includes('accounting.access')}
+                        onIonChange={(e) => toggleAccountingForAccountant(e.detail.checked)}
+                      />
+                    </div>
+                 </IonItem>
+               </div>
+             </SectionCard>
+           )}
 
           <SectionCard
             title="Business setup"

@@ -1,4 +1,5 @@
 import { createProductImage } from '../utils/productArtwork';
+import { UserAccessProfile } from '../authz/types';
 
 export type PaymentMethod = 'Cash' | 'Mobile Money';
 export type SaleStatus = 'Completed' | 'Reversed';
@@ -147,6 +148,8 @@ export type BusinessState = {
   stockMovements: StockMovement[];
   customerLedgerEntries: CustomerLedgerEntry[];
   activityLogEntries: ActivityLogEntry[];
+  users: UserAccessProfile[];
+  currentUserId: string;
 };
 
 const now = new Date();
@@ -229,6 +232,30 @@ export const seedState: BusinessState = {
     { id: 'act-003', activityNumber: 'ACT-003', entityType: 'sale', entityId: 's2', actionType: 'receipt_issued', title: 'Receipt issued', detail: 'Receipt generated for completed invoice', status: 'success', createdAt: isoDaysAgoAt(1, 14, 10), referenceNumber: 'RCP-002', relatedSaleId: 's2' },
     { id: 'act-004', activityNumber: 'ACT-004', entityType: 'sale', entityId: 's2', actionType: 'invoice_created', title: 'Invoice created', detail: 'Invoice recorded for Kojo Mini Mart', status: 'success', createdAt: isoDaysAgoAt(1, 14, 10), referenceNumber: 'INV-002', relatedSaleId: 's2' },
   ],
+  users: [
+    {
+      userId: 'u-admin',
+      name: 'Admin User',
+      role: 'Admin',
+      grantedPermissions: [],
+      revokedPermissions: [],
+    },
+    {
+      userId: 'u-sales',
+      name: 'Sales Manager',
+      role: 'SalesManager',
+      grantedPermissions: [],
+      revokedPermissions: [],
+    },
+    {
+      userId: 'u-accountant',
+      name: 'Accountant User',
+      role: 'Accountant',
+      grantedPermissions: [],
+      revokedPermissions: [],
+    },
+  ],
+  currentUserId: 'u-admin',
 };
 
 export const priorityQuestions = [

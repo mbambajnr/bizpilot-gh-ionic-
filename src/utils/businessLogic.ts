@@ -12,6 +12,7 @@ import type {
   SaleAuditEvent,
   StockMovement,
 } from '../data/seedBusiness';
+import { seedState } from '../data/seedBusiness';
 import {
   nextActivityNumber,
   nextClientId,
@@ -451,6 +452,8 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     stockMovements,
     customerLedgerEntries,
     activityLogEntries,
+    users: raw.users ?? seedState.users,
+    currentUserId: raw.currentUserId ?? seedState.currentUserId,
   };
 }
 

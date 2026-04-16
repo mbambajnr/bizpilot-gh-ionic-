@@ -24,6 +24,8 @@ import {
   UpdateBusinessProfileInput,
 } from '../utils/businessLogic';
 import { selectProductQuantityOnHand } from '../selectors/businessSelectors';
+import { AppPermission, UserAccessProfile } from '../authz/types';
+import { hasPermission } from '../authz/permissions';
 
 const STORAGE_KEY = 'bizpilot-gh-state-v1';
 
@@ -79,6 +81,10 @@ type BusinessContextValue = {
   convertQuotationToSale: (input: ConvertQuotationInput) => ConvertQuotationToSaleResult;
   reverseSale: (input: ReverseSaleInput) => ReverseSaleContextResult;
   addSale: (input: NewSaleInput) => AddSaleResult;
+  currentUser: UserAccessProfile;
+  switchUser: (userId: string) => void;
+  updateUserPermissions: (userId: string, granted: AppPermission[], revoked: AppPermission[]) => ActionResult;
+  hasPermission: (permission: AppPermission) => boolean;
 };
 
 const BusinessContext = createContext<BusinessContextValue | null>(null);
@@ -152,6 +158,10 @@ export function BusinessProvider({ children }: PropsWithChildren) {
       cancelled = true;
     };
   }, [user?.id]);
+  
+  const currentUser = useMemo(() => {
+    return state.users.find(u => u.userId === state.currentUserId) || state.users[0];
+  }, [state.currentUserId, state.users]);
 
   const value = useMemo<BusinessContextValue>(
     () => ({
@@ -159,6 +169,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
       backendStatus,
       priorityQuestions,
       addProduct(input) {
+        if (!hasPermission(currentUser, 'inventory.create')) {
+          return { ok: false, message: 'You are not authorized to add new products.' };
+        }
         const result = addProductToState(state, input);
         if (!result.ok) {
           return result;
@@ -171,6 +184,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       addCustomer(input) {
+        if (!hasPermission(currentUser, 'customers.create')) {
+          return { ok: false, message: 'You are not authorized to add customers.' };
+        }
         const result = addCustomerToState(state, input);
         if (!result.ok) {
           return result;
@@ -183,6 +199,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       updateBusinessProfile(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to update business settings.' };
+        }
         const result = updateBusinessProfileInState(state, input);
         if (!result.ok) {
           return result;
@@ -195,6 +214,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       addQuotation(input) {
+        if (!hasPermission(currentUser, 'quotations.create')) {
+          return { ok: false, message: 'You are not authorized to create quotations.' };
+        }
         const result = addQuotationToState(state, input);
         if (!result.ok) {
           return result;
@@ -207,6 +229,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       convertQuotationToSale(input) {
+        if (!hasPermission(currentUser, 'quotations.convert')) {
+          return { ok: false, message: 'You are not authorized to convert quotations to sales.' };
+        }
         const result = convertQuotationToSalesState(state, input);
         if (!result.ok) {
           return result;
@@ -220,6 +245,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true, receipts, quotationNumber };
       },
       reverseSale(input) {
+        if (!hasPermission(currentUser, 'sales.reverse')) {
+          return { ok: false, message: 'You are not authorized to reverse invoices.' };
+        }
         const result = reverseSaleInState(state, input);
         if (!result.ok) {
           return result;
@@ -233,6 +261,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true, reversedSaleId: reversedSale.id };
       },
       addSale(input) {
+        if (!hasPermission(currentUser, 'sales.create')) {
+          return { ok: false, message: 'You are not authorized to record sales.' };
+        }
         const product = state.products.find((item) => item.id === input.productId);
         const customer = state.customers.find((item) => item.id === input.customerId);
         const result = addSaleToState(state, input);
@@ -279,8 +310,34 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         return lowStockAlert ? { ok: true, receipt, lowStockAlert } : { ok: true, receipt };
       },
+      currentUser,
+      switchUser(userId) {
+        setState(current => ({
+          ...current,
+          currentUserId: userId,
+        }));
+      },
+      updateUserPermissions(userId, granted, revoked) {
+        if (!hasPermission(currentUser, 'permissions.manage')) {
+          return { ok: false, message: 'Only admins can manage permissions.' };
+        }
+        
+        setState(current => ({
+          ...current,
+          users: current.users.map(u => u.userId === userId ? {
+            ...u,
+            grantedPermissions: granted,
+            revokedPermissions: revoked,
+          } : u)
+        }));
+        
+        return { ok: true };
+      },
+      hasPermission(permission) {
+        return hasPermission(currentUser, permission);
+      }
     }),
-    [backendStatus, state]
+    [backendStatus, state, currentUser]
   );
 
   return <BusinessContext.Provider value={value}>{children}</BusinessContext.Provider>;

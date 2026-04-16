@@ -1,0 +1,45 @@
+export type AppRole = 'Admin' | 'SalesManager' | 'Accountant';
+
+export type AppPermission =
+  | 'users.manage'
+  | 'roles.assign'
+  | 'permissions.manage'
+  | 'business.view'
+  | 'business.edit'
+  | 'sales.view'
+  | 'sales.create'
+  | 'sales.reverse'
+  | 'quotations.view'
+  | 'quotations.create'
+  | 'quotations.convert'
+  | 'invoices.view'
+  | 'inventory.view'
+  | 'inventory.create'
+  | 'inventory.edit'
+  | 'inventory.adjust'
+  | 'inventory.restock'
+  | 'customers.view'
+  | 'customers.create'
+  | 'customers.edit'
+  | 'customers.ledger.view'
+  | 'accounting.access'
+  | 'expenses.view'
+  | 'expenses.create'
+  | 'expenses.edit'
+  | 'reports.financial.view'
+  | 'reports.dashboard.view'
+  | 'reports.sales.view'
+  | 'reports.inventory.view';
+
+export interface UserAccessProfile {
+  userId: string;
+  name: string;
+  role: AppRole;
+  grantedPermissions: AppPermission[];
+  revokedPermissions: AppPermission[];
+}
+
+export interface PermissionCheckResult {
+  allowed: boolean;
+  message?: string;
+}

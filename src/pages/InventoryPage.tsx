@@ -24,7 +24,7 @@ import {
 import { formatCurrency, formatReceiptDate, formatRelativeDate } from '../utils/format';
 
 const InventoryPage: React.FC = () => {
-  const { state, addProduct } = useBusiness();
+  const { state, addProduct, hasPermission } = useBusiness();
   const [name, setName] = useState('');
   const [inventoryId, setInventoryId] = useState('');
   const [unit, setUnit] = useState('');
@@ -111,119 +111,121 @@ const InventoryPage: React.FC = () => {
       </IonHeader>
       <IonContent fullscreen={true}>
         <div className="page-shell">
-          <SectionCard title="Add stock item" subtitle="Create a sellable item with its details. Adding a photo is optional but helps with quick identification.">
-            <div className="form-grid">
-              <div className="inventory-photo-section">
-                <div className="inventory-photo-preview">
-                  {image ? (
-                    <img src={image} alt="Preview" />
-                  ) : (
-                    <div className="photo-placeholder">
-                      <span>No photo</span>
-                    </div>
-                  )}
-                </div>
-                <div className="photo-actions">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    id="inventory-photo-input"
-                    hidden
-                    onChange={handleFileChange}
-                  />
-                  <IonButton
-                    fill="outline"
-                    size="small"
-                    onClick={() => document.getElementById('inventory-photo-input')?.click()}
-                  >
-                    {image ? 'Change Photo' : 'Add Photo (Optional)'}
-                  </IonButton>
-                  {image && (
-                    <IonButton fill="clear" color="danger" size="small" onClick={() => setImage('')}>
-                      Remove
+          {hasPermission('inventory.create') && (
+            <SectionCard title="Add stock item" subtitle="Create a sellable item with its details. Adding a photo is optional but helps with quick identification.">
+              <div className="form-grid">
+                <div className="inventory-photo-section">
+                  <div className="inventory-photo-preview">
+                    {image ? (
+                      <img src={image} alt="Preview" />
+                    ) : (
+                      <div className="photo-placeholder">
+                        <span>No photo</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="photo-actions">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      id="inventory-photo-input"
+                      hidden
+                      onChange={handleFileChange}
+                    />
+                    <IonButton
+                      fill="outline"
+                      size="small"
+                      onClick={() => document.getElementById('inventory-photo-input')?.click()}
+                    >
+                      {image ? 'Change Photo' : 'Add Photo (Optional)'}
                     </IonButton>
-                  )}
+                    {image && (
+                      <IonButton fill="clear" color="danger" size="small" onClick={() => setImage('')}>
+                        Remove
+                      </IonButton>
+                    )}
+                  </div>
                 </div>
+
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">Item name</IonLabel>
+                  <IonInput
+                    value={name}
+                    placeholder="e.g. Morning Fresh Soap"
+                    onIonInput={(event) => setName(event.detail.value ?? '')}
+                  />
+                </IonItem>
+
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">Inventory ID (optional)</IonLabel>
+                  <IonInput
+                    value={inventoryId}
+                    helperText="Leave blank to auto-generate one."
+                    onIonInput={(event) => setInventoryId(event.detail.value ?? '')}
+                  />
+                </IonItem>
+
+                <div className="triple-grid">
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Unit</IonLabel>
+                    <IonInput
+                      value={unit}
+                      placeholder="e.g. packs, boxes, units"
+                      onIonInput={(event) => setUnit(event.detail.value ?? '')}
+                    />
+                  </IonItem>
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Price</IonLabel>
+                    <IonInput
+                      type="number"
+                      inputmode="decimal"
+                      placeholder="0.00"
+                      value={price}
+                      onIonInput={(event) => setPrice(event.detail.value === '' ? '' : Number(event.detail.value))}
+                    />
+                  </IonItem>
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Cost</IonLabel>
+                    <IonInput
+                      type="number"
+                      inputmode="decimal"
+                      placeholder="0.00"
+                      value={cost}
+                      onIonInput={(event) => setCost(event.detail.value === '' ? '' : Number(event.detail.value))}
+                    />
+                  </IonItem>
+                </div>
+
+                <div className="dual-stat">
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Opening stock</IonLabel>
+                    <IonInput
+                      type="number"
+                      inputmode="numeric"
+                      placeholder="0"
+                      value={quantity}
+                      onIonInput={(event) => setQuantity(event.detail.value === '' ? '' : Number(event.detail.value))}
+                    />
+                  </IonItem>
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Reorder level</IonLabel>
+                    <IonInput
+                      type="number"
+                      inputmode="numeric"
+                      placeholder="0"
+                      value={reorderLevel}
+                      onIonInput={(event) => setReorderLevel(event.detail.value === '' ? '' : Number(event.detail.value))}
+                    />
+                  </IonItem>
+                </div>
+
+                <IonButton expand="block" onClick={handleAddProduct}>
+                  Save Item
+                </IonButton>
+                {formMessage ? <p className="form-message">{formMessage}</p> : null}
               </div>
-
-              <IonItem lines="none" className="app-item">
-                <IonLabel position="stacked">Item name</IonLabel>
-                <IonInput
-                  value={name}
-                  placeholder="e.g. Morning Fresh Soap"
-                  onIonInput={(event) => setName(event.detail.value ?? '')}
-                />
-              </IonItem>
-
-              <IonItem lines="none" className="app-item">
-                <IonLabel position="stacked">Inventory ID (optional)</IonLabel>
-                <IonInput
-                  value={inventoryId}
-                  helperText="Leave blank to auto-generate one."
-                  onIonInput={(event) => setInventoryId(event.detail.value ?? '')}
-                />
-              </IonItem>
-
-              <div className="triple-grid">
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Unit</IonLabel>
-                  <IonInput
-                    value={unit}
-                    placeholder="e.g. packs, boxes, units"
-                    onIonInput={(event) => setUnit(event.detail.value ?? '')}
-                  />
-                </IonItem>
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Price</IonLabel>
-                  <IonInput
-                    type="number"
-                    inputmode="decimal"
-                    placeholder="0.00"
-                    value={price}
-                    onIonInput={(event) => setPrice(event.detail.value === '' ? '' : Number(event.detail.value))}
-                  />
-                </IonItem>
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Cost</IonLabel>
-                  <IonInput
-                    type="number"
-                    inputmode="decimal"
-                    placeholder="0.00"
-                    value={cost}
-                    onIonInput={(event) => setCost(event.detail.value === '' ? '' : Number(event.detail.value))}
-                  />
-                </IonItem>
-              </div>
-
-              <div className="dual-stat">
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Opening stock</IonLabel>
-                  <IonInput
-                    type="number"
-                    inputmode="numeric"
-                    placeholder="0"
-                    value={quantity}
-                    onIonInput={(event) => setQuantity(event.detail.value === '' ? '' : Number(event.detail.value))}
-                  />
-                </IonItem>
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Reorder level</IonLabel>
-                  <IonInput
-                    type="number"
-                    inputmode="numeric"
-                    placeholder="0"
-                    value={reorderLevel}
-                    onIonInput={(event) => setReorderLevel(event.detail.value === '' ? '' : Number(event.detail.value))}
-                  />
-                </IonItem>
-              </div>
-
-              <IonButton expand="block" onClick={handleAddProduct}>
-                Save Item
-              </IonButton>
-              {formMessage ? <p className="form-message">{formMessage}</p> : null}
-            </div>
-          </SectionCard>
+            </SectionCard>
+          )}
 
           <SectionCard title="Stock control" subtitle="Quantities now come from explicit stock movements instead of a loose on-hand counter.">
             {inventorySummaries.length === 0 ? (

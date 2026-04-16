@@ -37,7 +37,7 @@ import { formatCurrency, formatReceiptDate } from '../utils/format';
 const InvoiceDetailPage: React.FC = () => {
   const { saleId } = useParams<{ saleId: string }>();
   const history = useHistory();
-  const { state, reverseSale } = useBusiness();
+  const { state, reverseSale, hasPermission, currentUser } = useBusiness();
   const [showReverseModal, setShowReverseModal] = useState(false);
   const [reversalReason, setReversalReason] = useState('');
   const [formMessage, setFormMessage] = useState('');
@@ -92,7 +92,7 @@ const InvoiceDetailPage: React.FC = () => {
     const result = reverseSale({
       saleId: sale.id,
       reason: reversalReason,
-      actor: 'Owner',
+      actor: currentUser.name || 'Owner',
     });
 
     if (!result.ok) {
@@ -251,13 +251,13 @@ const InvoiceDetailPage: React.FC = () => {
             subtitle="Use these guarded actions to safely record a reversal or create a correction without deleting history."
           >
             <div className="form-grid">
-              {sale.status === 'Completed' ? (
+              {sale.status === 'Completed' && hasPermission('sales.reverse') && (
                 <IonButton data-testid="reverse-invoice-button" color="danger" expand="block" onClick={() => setShowReverseModal(true)}>
                   Reverse Invoice
                 </IonButton>
-              ) : null}
+              )}
 
-              {sale.status === 'Reversed' && !sale.correctedBySaleId ? (
+              {sale.status === 'Reversed' && !sale.correctedBySaleId && hasPermission('sales.create') && (
                 <IonButton
                   expand="block"
                   onClick={() =>
@@ -268,7 +268,7 @@ const InvoiceDetailPage: React.FC = () => {
                 >
                   Create Correction Invoice
                 </IonButton>
-              ) : null}
+              )}
 
               {sale.correctedBySaleId ? (
                 <IonText color="medium">
