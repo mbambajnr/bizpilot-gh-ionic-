@@ -5,6 +5,7 @@ import {
   IonButtons,
   IonContent,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonModal,
@@ -14,6 +15,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react';
+import { printOutline, shareSocialOutline } from 'ionicons/icons';
 import { useMemo, useState } from 'react';
 import { useHistory, useParams } from 'react-router-dom';
 
@@ -84,7 +86,7 @@ const InvoiceDetailPage: React.FC = () => {
 
   const balanceRemaining = selectSaleBalanceRemaining(sale);
   const invoiceStatus = selectSaleStatusDisplay(sale);
-  const receiptState = sale.status === 'Reversed' ? 'Receipt no longer active' : 'Receipt active';
+  const receiptState = sale.status === 'Reversed' ? 'Void' : 'Valid';
 
   const handleConfirmReversal = () => {
     const result = reverseSale({
@@ -103,6 +105,10 @@ const InvoiceDetailPage: React.FC = () => {
     setShowReverseModal(false);
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <IonPage>
       <IonHeader translucent={true}>
@@ -111,70 +117,76 @@ const InvoiceDetailPage: React.FC = () => {
             <IonBackButton defaultHref="/sales" />
           </IonButtons>
           <IonTitle>Invoice Detail</IonTitle>
+          <IonButtons slot="end">
+            <IonButton onClick={handlePrint}>
+              <IonIcon slot="icon-only" icon={shareSocialOutline} />
+            </IonButton>
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>
         <div className="page-shell">
-          <SectionCard title="Invoice summary" subtitle="Review the invoice, its current status, and any linked replacement history before taking action.">
-            <div className="list-block">
-              <div className="list-row">
-                <div>
+          <SectionCard title="Official Receipt" subtitle="This document serves as proof of transaction and is recorded in your business ledger.">
+            <div className="list-block receipt-container">
+              <div className="receipt-header">
+                <div className="business-auth">
+                  <h2>{state.businessProfile.businessName}</h2>
+                  <p>{state.businessProfile.businessType} • {state.businessProfile.phone}</p>
+                </div>
+                <div className="receipt-meta-box">
                   <strong>{sale.invoiceNumber}</strong>
-                  <p>{sale.receiptId}</p>
                   <p>{formatReceiptDate(sale.createdAt)}</p>
-                </div>
-                <div className="right-meta">
                   <IonBadge color={invoiceStatus.tone}>{invoiceStatus.label}</IonBadge>
-                  <p>{receiptState}</p>
                 </div>
               </div>
 
-              <div className="list-row">
+              <div className="receipt-divider" />
+
+              <div className="list-row no-border">
                 <div>
-                  <strong>Customer</strong>
-                  <p>{customer?.name ?? 'Unknown customer'}</p>
+                  <p className="muted-label">Billed to</p>
+                  <strong>{customer?.name ?? 'Walking customer'}</strong>
+                  <p className="code-label">{customer?.clientId ?? 'CLT-GUEST'}</p>
                 </div>
                 <div className="right-meta">
-                  <strong>{customer?.clientId ?? 'CLT-UNK'}</strong>
-                  <p>Client ID</p>
+                  <p className="muted-label">Status</p>
+                  <strong>{receiptState}</strong>
                 </div>
               </div>
 
-              <div className="list-row">
+              <div className="list-row no-border">
                 <div>
-                  <strong>Line item</strong>
-                  <p>{product?.name ?? 'Missing product'}</p>
+                  <p className="muted-label">Description</p>
+                  <strong>{product?.name ?? 'Item'}</strong>
                   <p className="code-label">{product?.inventoryId ?? 'INV-UNK'}</p>
                 </div>
                 <div className="right-meta">
+                  <p className="muted-label">Quantity</p>
                   <strong>{sale.quantity} units</strong>
-                  <p>{formatCurrency(sale.totalAmount / sale.quantity, currency)} each</p>
                 </div>
               </div>
 
-              <div className="list-row">
-                <div>
-                  <strong>Total</strong>
+              <div className="receipt-divider" />
+
+              <div className="receipt-footer">
+                <div className="footer-row">
+                  <p>Subtotal</p>
                   <p>{formatCurrency(sale.totalAmount, currency)}</p>
                 </div>
-                <div className="right-meta">
-                  <strong>{sale.paymentMethod}</strong>
-                  <p>Payment method</p>
-                </div>
-              </div>
-
-              <div className="list-row">
-                <div>
-                  <strong>Amount paid</strong>
+                <div className="footer-row">
+                  <p>Paid</p>
                   <p>{formatCurrency(sale.paidAmount, currency)}</p>
                 </div>
-                <div className="right-meta">
-                  <strong className={invoiceStatus.tone === 'success' ? 'success-text' : invoiceStatus.tone === 'warning' ? 'warning-text' : 'danger-text'}>
-                    {invoiceStatus.label === 'Reversed' ? 'Reversed' : balanceRemaining > 0 ? `${formatCurrency(balanceRemaining, currency)} due` : 'No balance due'}
-                  </strong>
-                  <p>Balance status</p>
+                <div className="footer-row grand-total">
+                  <p>Balance Due</p>
+                  <p className={balanceRemaining > 0 ? 'danger-text' : 'success-text'}>
+                    {formatCurrency(balanceRemaining, currency)}
+                  </p>
                 </div>
+                <p className="payment-note">Paid via {sale.paymentMethod}</p>
               </div>
+            </div>
+          </SectionCard>
 
               {sale.reversalReason ? (
                 <div className="selected-product">

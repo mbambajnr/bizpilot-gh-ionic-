@@ -78,7 +78,7 @@ const AuthPage: React.FC = () => {
           <section className="auth-brief">
             <h1>BizPilot Operations</h1>
             <p>
-              Professional ERP for Ghanaian SMEs. Manage your sales, inventory, and operational transactions with absolute clarity.
+              Unified business management for African SMEs. Manage your sales, inventory, and operational transactions with absolute clarity.
             </p>
             <div className="auth-proof-grid">
               <div>
@@ -101,7 +101,6 @@ const AuthPage: React.FC = () => {
               <header className="auth-header">
                 <img src="/assets/logo.png" alt="BizPilot" className="auth-logo" />
                 <div className="auth-panel-head">
-                  <p className="eyebrow">Enterprise Console</p>
                   <h2>{isSignUp ? 'Establish Owner Account' : 'Sign in to Workspace'}</h2>
                   <IonText>
                     {isSignUp

@@ -31,10 +31,12 @@ import {
 export type NewProductInput = Omit<Product, 'id' | 'inventoryId' | 'image'> & {
   inventoryId?: string;
   quantity: number;
+  image?: string;
 };
 
 export type NewCustomerInput = Omit<Customer, 'id' | 'clientId'> & {
   clientId?: string;
+  phone?: string;
 };
 
 export type UpdateBusinessProfileInput = Omit<BusinessProfile, 'id'>;
@@ -493,7 +495,7 @@ export function addProductToState(current: BusinessState, input: NewProductInput
     cost: input.cost,
     reorderLevel: input.reorderLevel,
     inventoryId,
-    image: createProductImage(name),
+    image: input.image || createProductImage(name),
   };
   const createdAt = new Date().toISOString();
   const stockMovements =
@@ -557,6 +559,7 @@ export function addCustomerToState(current: BusinessState, input: NewCustomerInp
   const customer: Customer = {
     id: `c${crypto.randomUUID()}`,
     name,
+    phone: input.phone?.trim() || '',
     channel,
     clientId,
   };

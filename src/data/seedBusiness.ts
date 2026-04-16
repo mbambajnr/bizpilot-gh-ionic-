@@ -29,6 +29,7 @@ export type Customer = {
   id: string;
   clientId: string;
   name: string;
+  phone?: string;
   channel: string;
 };
 
@@ -169,10 +170,10 @@ export const seedState: BusinessState = {
     { id: 'p4', inventoryId: 'INV-004', name: 'Hair Food', unit: 'tins', price: 28, cost: 19, reorderLevel: 9, image: createProductImage('Hair Food', '#ff9f8f', '#4d2434') },
   ],
   customers: [
-    { id: 'c1', clientId: 'CLT-001', name: 'Ama Beauty Supplies', channel: 'WhatsApp follow-up' },
-    { id: 'c2', clientId: 'CLT-002', name: 'Kojo Mini Mart', channel: 'No action needed' },
-    { id: 'c3', clientId: 'CLT-003', name: 'Nhyira Agro Shop', channel: 'Call owner' },
-    { id: 'c4', clientId: 'CLT-004', name: 'Walk-in customer', channel: 'Counter sale' },
+    { id: 'c1', clientId: 'CLT-001', name: 'Ama Beauty Supplies', phone: '+233240000001', channel: 'WhatsApp follow-up' },
+    { id: 'c2', clientId: 'CLT-002', name: 'Kojo Mini Mart', phone: '+233240000002', channel: 'No action needed' },
+    { id: 'c3', clientId: 'CLT-003', name: 'Nhyira Agro Shop', phone: '+233240000003', channel: 'Call owner' },
+    { id: 'c4', clientId: 'CLT-004', name: 'Walk-in customer', phone: '', channel: 'Counter sale' },
   ],
   sales: [
     {

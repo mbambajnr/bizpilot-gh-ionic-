@@ -10,6 +10,18 @@ export default defineConfig({
     react(),
     legacy()
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'ionic-vendor': ['@ionic/react', '@ionic/react-router', 'ionicons'],
+          'supabase-vendor': ['@supabase/supabase-js'],
+          'react-vendor': ['react', 'react-dom'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000,
+  },
   test: {
     globals: true,
     environment: 'jsdom',

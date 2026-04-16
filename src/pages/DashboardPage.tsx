@@ -66,6 +66,41 @@ const DashboardPage: React.FC = () => {
           </section>
 
           <SectionCard
+            title="Daily reconciliation"
+            subtitle="A clear breakdown of today's operational performance and cash collection status."
+          >
+            <div className="list-block">
+              <div className="list-row">
+                <div>
+                  <strong>Total sales volume</strong>
+                  <p>Invoiced value today</p>
+                </div>
+                <div className="right-meta">
+                  <strong>{formatCurrency(metrics.salesToday, currency)}</strong>
+                </div>
+              </div>
+              <div className="list-row">
+                <div>
+                  <strong>Payments collected</strong>
+                  <p>Total Cash + MoMo received</p>
+                </div>
+                <div className="right-meta">
+                  <strong className="success-text">+{formatCurrency(metrics.cashInHand + metrics.mobileMoneyReceived, currency)}</strong>
+                </div>
+              </div>
+              <div className="list-row">
+                <div>
+                  <strong>Added to receivables</strong>
+                  <p>Outstanding from today's sales</p>
+                </div>
+                <div className="right-meta">
+                  <strong className="danger-text">{formatCurrency(Math.max(0, metrics.salesToday - (metrics.cashInHand + metrics.mobileMoneyReceived)), currency)}</strong>
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
             title="Attention needed"
             subtitle="A quick view of unpaid balances and stock pressure that may need owner follow-up."
           >
@@ -100,7 +135,7 @@ const DashboardPage: React.FC = () => {
 
           <SectionCard
             title="Owner priorities"
-            subtitle="The working MVP is still centered on the questions Ghanaian SMEs ask every day."
+            subtitle="The working MVP is still centered on the questions African SMEs ask every day."
           >
             <div className="bullet-list">
               {priorityQuestions.map((question) => (

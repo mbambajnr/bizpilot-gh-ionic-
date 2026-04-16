@@ -2,6 +2,7 @@ import {
   IonButton,
   IonContent,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -10,6 +11,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/react';
+import { logoWhatsapp } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 
 import EmptyState from '../components/EmptyState';
@@ -32,6 +34,7 @@ const CustomersPage: React.FC = () => {
   const { state, addCustomer } = useBusiness();
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
+  const [phone, setPhone] = useState('');
   const [channel, setChannel] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState(state.customers[0]?.id ?? '');
   const [formMessage, setFormMessage] = useState('');
@@ -87,6 +90,7 @@ const CustomersPage: React.FC = () => {
     const result = addCustomer({
       name: customerName,
       clientId,
+      phone: phone.trim(),
       channel: channel.trim() || 'No action needed',
     });
 
@@ -97,10 +101,26 @@ const CustomersPage: React.FC = () => {
 
     setName('');
     setClientId('');
+    setPhone('');
     setChannel('');
     setSavedCustomerName(customerName);
     setFormMessage('');
     setShowSuccessToast(true);
+  };
+
+  const handleWhatsAppFollowUp = () => {
+    if (!selectedCustomer?.phone) {
+      return;
+    }
+
+    const balance = selectCustomerBalance(state, selectedCustomer.id);
+    const businessName = state.businessProfile.businessName;
+    const cleanPhone = selectedCustomer.phone.replace(/\D/g, '');
+    
+    const message = `Hello ${selectedCustomer.name}, this is ${businessName}. Just sending a friendly reminder regarding your outstanding balance of ${formatCurrency(balance, currency)}. Thank you!`;
+    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    
+    window.open(url, '_blank');
   };
 
   return (
@@ -126,14 +146,26 @@ const CustomersPage: React.FC = () => {
                 />
               </IonItem>
 
-              <IonItem lines="none" className="app-item">
-                <IonLabel position="stacked">Client ID (optional)</IonLabel>
-                <IonInput
-                  value={clientId}
-                  helperText="Leave blank to auto-generate one."
-                  onIonInput={(event) => setClientId(event.detail.value ?? '')}
-                />
-              </IonItem>
+              <div className="dual-stat">
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">Phone number</IonLabel>
+                  <IonInput
+                    type="tel"
+                    value={phone}
+                    placeholder="e.g. 233240000000"
+                    onIonInput={(event) => setPhone(event.detail.value ?? '')}
+                  />
+                </IonItem>
+
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">Client ID (optional)</IonLabel>
+                  <IonInput
+                    value={clientId}
+                    helperText="Leave blank to auto-generate one."
+                    onIonInput={(event) => setClientId(event.detail.value ?? '')}
+                  />
+                </IonItem>
+              </div>
 
               <IonItem lines="none" className="app-item">
                 <IonLabel position="stacked">Follow-up channel</IonLabel>
@@ -180,7 +212,9 @@ const CustomersPage: React.FC = () => {
                   >
                     <div>
                       <strong>{customer.name}</strong>
-                      <p className="code-label">Client ID: {customer.clientId}</p>
+                      <p className="code-label">
+                        {customer.clientId} {customer.phone ? `• ${customer.phone}` : ''}
+                      </p>
                       <p>Follow-up: {customer.channel}</p>
                       <p>Last payment: {lastPayment}</p>
                       <p>{selectedCustomerId === customer.id ? 'Viewing ledger and invoice history' : 'Tap to view ledger history'}</p>
@@ -207,7 +241,9 @@ const CustomersPage: React.FC = () => {
                   <div className="list-row">
                     <div>
                       <strong>{selectedCustomer.name}</strong>
-                      <p className="code-label">Client ID: {selectedCustomer.clientId}</p>
+                      <p className="code-label">
+                        {selectedCustomer.clientId} {selectedCustomer.phone ? `• ${selectedCustomer.phone}` : ''}
+                      </p>
                       <p>Follow-up: {selectedCustomer.channel}</p>
                       <p>Last payment: {selectCustomerLastPaymentLabel(state, selectedCustomer.id)}</p>
                     </div>
@@ -218,6 +254,12 @@ const CustomersPage: React.FC = () => {
                           : `${formatCurrency(selectCustomerBalance(state, selectedCustomer.id), currency)} due`}
                       </strong>
                       <p>Current balance</p>
+                      {selectedCustomer.phone && selectCustomerBalance(state, selectedCustomer.id) > 0 && (
+                        <IonButton fill="outline" size="small" color="success" onClick={handleWhatsAppFollowUp}>
+                          <IonIcon slot="start" icon={logoWhatsapp} />
+                          WhatsApp
+                        </IonButton>
+                      )}
                     </div>
                   </div>
 

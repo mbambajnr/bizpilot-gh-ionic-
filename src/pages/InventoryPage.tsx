@@ -11,6 +11,7 @@ import {
   IonToolbar,
 } from '@ionic/react';
 import { useMemo, useState } from 'react';
+import { resizeImage } from '../utils/imageUtils';
 
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
@@ -31,9 +32,30 @@ const InventoryPage: React.FC = () => {
   const [cost, setCost] = useState<number | ''>('');
   const [reorderLevel, setReorderLevel] = useState<number | ''>('');
   const [quantity, setQuantity] = useState<number | ''>('');
+  const [image, setImage] = useState<string>('');
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [savedItemName, setSavedItemName] = useState('');
   const [formMessage, setFormMessage] = useState('');
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        setFormMessage('Photo is very large (over 10MB). Please choose a smaller file.');
+        return;
+      }
+      
+      try {
+        setFormMessage('Processing photo...');
+        const resized = await resizeImage(file, 600, 600);
+        setImage(resized);
+        setFormMessage('');
+      } catch (err) {
+        setFormMessage('Failed to process the photo. Please try again.');
+        console.error(err);
+      }
+    }
+  };
   const [selectedProductId, setSelectedProductId] = useState(state.products[0]?.id ?? '');
   const inventorySummaries = useMemo(() => selectInventorySummaries(state), [state]);
   const selectedSummary = inventorySummaries.find((item) => item.product.id === selectedProductId) ?? inventorySummaries[0] ?? null;
@@ -59,6 +81,7 @@ const InventoryPage: React.FC = () => {
       cost: Number(cost),
       reorderLevel: Number(reorderLevel),
       quantity: Number(quantity),
+      image: image || undefined,
     });
 
     if (!result.ok) {
@@ -73,6 +96,7 @@ const InventoryPage: React.FC = () => {
     setCost('');
     setReorderLevel('');
     setQuantity('');
+    setImage('');
     setSavedItemName(itemName);
     setFormMessage('');
     setShowSuccessToast(true);
@@ -87,8 +111,41 @@ const InventoryPage: React.FC = () => {
       </IonHeader>
       <IonContent fullscreen={true}>
         <div className="page-shell">
-          <SectionCard title="Add stock item" subtitle="Create a sellable item with its unit, price, cost, opening quantity, and reorder point.">
+          <SectionCard title="Add stock item" subtitle="Create a sellable item with its details. Adding a photo is optional but helps with quick identification.">
             <div className="form-grid">
+              <div className="inventory-photo-section">
+                <div className="inventory-photo-preview">
+                  {image ? (
+                    <img src={image} alt="Preview" />
+                  ) : (
+                    <div className="photo-placeholder">
+                      <span>No photo</span>
+                    </div>
+                  )}
+                </div>
+                <div className="photo-actions">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    id="inventory-photo-input"
+                    hidden
+                    onChange={handleFileChange}
+                  />
+                  <IonButton
+                    fill="outline"
+                    size="small"
+                    onClick={() => document.getElementById('inventory-photo-input')?.click()}
+                  >
+                    {image ? 'Change Photo' : 'Add Photo (Optional)'}
+                  </IonButton>
+                  {image && (
+                    <IonButton fill="clear" color="danger" size="small" onClick={() => setImage('')}>
+                      Remove
+                    </IonButton>
+                  )}
+                </div>
+              </div>
+
               <IonItem lines="none" className="app-item">
                 <IonLabel position="stacked">Item name</IonLabel>
                 <IonInput
@@ -117,7 +174,7 @@ const InventoryPage: React.FC = () => {
                   />
                 </IonItem>
                 <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Selling price</IonLabel>
+                  <IonLabel position="stacked">Price</IonLabel>
                   <IonInput
                     type="number"
                     inputmode="decimal"
@@ -140,7 +197,7 @@ const InventoryPage: React.FC = () => {
 
               <div className="dual-stat">
                 <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Opening quantity</IonLabel>
+                  <IonLabel position="stacked">Opening stock</IonLabel>
                   <IonInput
                     type="number"
                     inputmode="numeric"
