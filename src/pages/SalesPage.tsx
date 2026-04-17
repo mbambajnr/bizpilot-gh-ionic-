@@ -9,8 +9,11 @@ import {
   IonSelect,
   IonSelectOption,
   IonToast,
-  IonTitle,
+  IonModal,
+  IonButtons,
+  IonNote,
   IonToolbar,
+  IonTitle,
   IonSearchbar,
 } from '@ionic/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -47,7 +50,7 @@ type ReceiptView = {
 };
 
 const SalesPage: React.FC = () => {
-  const { state, addSale } = useBusiness();
+  const { state, addSale, convertQuotationToSale } = useBusiness();
   const history = useHistory();
   const location = useLocation<{ correctionSourceSaleId?: string } | undefined>();
   const [customerId, setCustomerId] = useState(state.customers[0]?.id ?? '');
@@ -59,12 +62,17 @@ const SalesPage: React.FC = () => {
   const [formMessage, setFormMessage] = useState('');
   const [saleSuccessMessage, setSaleSuccessMessage] = useState('');
   const [lowStockMessage, setLowStockMessage] = useState('');
-  const [showLowStockToast, setShowLowStockToast] = useState(false);
   const [latestReceipt, setLatestReceipt] = useState<ReceiptView | null>(null);
   const [invoiceSearchTerm, setInvoiceSearchTerm] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
+  const [showQuotationPicker, setShowQuotationPicker] = useState(false);
+  const [activeQuotationId, setActiveQuotationId] = useState('');
+  const [showConversionModal, setShowConversionModal] = useState(false);
+  const [conversionMessage, setConversionMessage] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [latestConversionReceipts, setLatestConversionReceipts] = useState<any[]>([]);
   const hasCustomers = state.customers.length > 0;
   const hasProducts = state.products.length > 0;
   const canRecordSale = hasCustomers && hasProducts;
@@ -97,6 +105,26 @@ const SalesPage: React.FC = () => {
   const selectedCustomer = useMemo(
     () => state.customers.find((c) => c.id === customerId) ?? null,
     [customerId, state.customers]
+  );
+
+  const customerQuotations = useMemo(
+    () => state.quotations.filter((q) => q.customerId === customerId && q.status === 'Draft'),
+    [customerId, state.quotations]
+  );
+
+  const activeQuotation = useMemo(
+    () => state.quotations.find((q) => q.id === activeQuotationId) ?? null,
+    [activeQuotationId, state.quotations]
+  );
+
+  const quotationPickerItems: PickerItem[] = useMemo(
+    () =>
+      customerQuotations.map((q) => ({
+        id: q.id,
+        title: `${q.quotationNumber} (${formatCurrency(q.totalAmount, currency)})`,
+        subtitle: formatReceiptDate(q.createdAt),
+      })),
+    [customerQuotations, currency]
   );
 
   const customerPickerItems = useMemo<PickerItem[]>(
@@ -196,13 +224,34 @@ const SalesPage: React.FC = () => {
           : `Low stock alert: ${name} has reached its reorder level at ${alertQuantity} left.`;
 
       setLowStockMessage(message);
-      setShowLowStockToast(true);
     }
 
     setQuantityInput('1');
     setPaidAmountInput('');
     setPaymentReference('');
     setCorrectionSourceSaleId('');
+  };
+
+  const handleConvertQuotation = () => {
+    if (!activeQuotation) return;
+
+    const result = convertQuotationToSale({
+      quotationId: activeQuotation.id,
+      paymentMethod,
+      amountPaid: toValidPaidAmount(paidAmountInput, activeQuotation.totalAmount),
+    });
+
+    if (!result.ok) {
+      setFormMessage(result.message);
+      return;
+    }
+
+    setConversionMessage(`${result.quotationNumber} converted to invoices successfully.`);
+    setLatestConversionReceipts(result.receipts);
+    setShowConversionModal(false);
+    setActiveQuotationId('');
+    setPaidAmountInput('');
+    setFormMessage('');
   };
 
   return (
@@ -250,6 +299,22 @@ const SalesPage: React.FC = () => {
                       {selectedCustomer ? selectedCustomer.name : 'Select Customer'}
                     </IonButton>
                   </div>
+
+                  {customerQuotations.length > 0 && !correctionSourceSale && (
+                    <div className="picker-container">
+                       <p className="muted-label">Quotes Available</p>
+                       <IonButton 
+                         expand="block" 
+                         fill="solid" 
+                         color="warning"
+                         onClick={() => setShowQuotationPicker(true)}
+                         data-testid="load-quote-btn"
+                       >
+                         Load from {customerQuotations.length} quotes
+                       </IonButton>
+                    </div>
+                  )}
+
                   <div className="picker-container">
                     <p className="muted-label">Stock Item</p>
                     <IonButton 
@@ -279,6 +344,77 @@ const SalesPage: React.FC = () => {
                   onDismiss={() => setShowProductPicker(false)}
                   onSelect={(item) => setProductId(item.id)}
                 />
+
+                <SearchablePicker
+                  isOpen={showQuotationPicker}
+                  title={`Quotes for ${selectedCustomer?.name}`}
+                  placeholder="Select a quote to convert..."
+                  items={quotationPickerItems}
+                  onDismiss={() => setShowQuotationPicker(false)}
+                  onSelect={(item) => {
+                    setActiveQuotationId(item.id);
+                    setShowQuotationPicker(false);
+                    setShowConversionModal(true);
+                  }}
+                />
+
+                <IonModal isOpen={showConversionModal} onDidDismiss={() => setShowConversionModal(false)}>
+                  <IonHeader translucent>
+                    <IonToolbar>
+                      <IonTitle>Convert Quote</IonTitle>
+                      <IonButtons slot="end">
+                        <IonButton onClick={() => setShowConversionModal(false)}>Cancel</IonButton>
+                      </IonButtons>
+                    </IonToolbar>
+                  </IonHeader>
+                  <IonContent className="ion-padding">
+                    {activeQuotation ? (
+                      <div className="form-grid">
+                        <SectionCard title="Conversion Payment" subtitle={`Confirm payments for ${activeQuotation.quotationNumber}. Total value is ${formatCurrency(activeQuotation.totalAmount, currency)}.`}>
+                          <div className="sale-summary">
+                            <div>
+                                <p className="muted-label">Quoted Total</p>
+                                <h3>{formatCurrency(activeQuotation.totalAmount, currency)}</h3>
+                            </div>
+                            <div>
+                                <p className="muted-label">Selected Items</p>
+                                <h3>{activeQuotation.items.length} lines</h3>
+                            </div>
+                          </div>
+
+                          <IonItem lines="none" className="app-item" style={{ marginTop: '16px' }}>
+                            <IonLabel position="stacked">Payment Method</IonLabel>
+                            <IonSelect 
+                              value={paymentMethod} 
+                              onIonChange={(e) => setPaymentMethod(e.detail.value)}
+                              interface="popover"
+                            >
+                                <IonSelectOption value="Cash">Cash</IonSelectOption>
+                                <IonSelectOption value="Mobile Money">Mobile Money</IonSelectOption>
+                            </IonSelect>
+                          </IonItem>
+
+                          <IonItem lines="none" className="app-item">
+                            <IonLabel position="stacked">Amount Paid Now ({currency})</IonLabel>
+                            <IonInput
+                              type="number"
+                              placeholder="0.00"
+                              value={paidAmountInput}
+                              onIonInput={(e) => setPaidAmountInput(e.detail.value ?? '')}
+                            />
+                          </IonItem>
+                          <IonNote color="medium" style={{ padding: '0 8px' }}>
+                            Remaining balance will be added to the customer's ledger automatically.
+                          </IonNote>
+                        </SectionCard>
+                        
+                        <IonButton expand="block" onClick={handleConvertQuotation}>
+                          Confirm & Generate Bulk Invoices
+                        </IonButton>
+                      </div>
+                    ) : null}
+                  </IonContent>
+                </IonModal>
 
                 <div className="dual-stat">
                   <IonItem lines="none" className="app-item">
@@ -446,7 +582,8 @@ const SalesPage: React.FC = () => {
             <IonSearchbar 
               placeholder="Search invoices by number, customer, or product..." 
               value={invoiceSearchTerm}
-              onIonInput={(e) => setInvoiceSearchTerm(e.detail.value ?? '')}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              onIonInput={(e: any) => setInvoiceSearchTerm(e.detail.value ?? '')}
               style={{ padding: '0 8px 16px 8px' }}
             />
             {recentSales.length === 0 ? (
@@ -497,6 +634,33 @@ const SalesPage: React.FC = () => {
               </div>
             )}
           </SectionCard>
+          {latestConversionReceipts.length > 0 && (
+            <SectionCard title="Converted Invoices" subtitle={`Successfully converted ${latestConversionReceipts.length} items from the quotation.`}>
+               <div className="list-block">
+                  {latestConversionReceipts.map((receipt, idx) => (
+                    <div className="selected-product" key={`${receipt.receiptId}-${idx}`} style={{ marginBottom: '12px' }}>
+                       <div className="list-row" style={{ width: '100%', borderBottom: 'none' }}>
+                          <div>
+                            <strong style={{ display: 'block' }}>{receipt.productName}</strong>
+                            <span className="code-label" style={{ display: 'block', margin: '4px 0' }}>{receipt.receiptId}</span>
+                            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                                {receipt.quantity} units · {formatCurrency(receipt.totalAmount, currency)}
+                            </span>
+                          </div>
+                          <div className="right-meta">
+                             <IonButton fill="clear" color="primary" onClick={() => history.push(`/invoices/${receipt.receiptId}`)}>
+                               View Detail
+                             </IonButton>
+                          </div>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+               <IonButton expand="block" fill="outline" color="medium" style={{ marginTop: '14px' }} onClick={() => setLatestConversionReceipts([])}>
+                  Clear batch view
+               </IonButton>
+            </SectionCard>
+          )}
         </div>
       </IonContent>
       <IonToast
@@ -508,15 +672,23 @@ const SalesPage: React.FC = () => {
         onDidDismiss={() => setSaleSuccessMessage('')}
       />
       <IonToast
-        isOpen={showLowStockToast}
+        isOpen={!!lowStockMessage}
         message={lowStockMessage}
-        duration={2200}
-        color="warning"
-        position="top"
+        duration={3000}
         onDidDismiss={() => {
-          setShowLowStockToast(false);
           setLowStockMessage('');
         }}
+        position="bottom"
+        color="warning"
+      />
+
+      <IonToast
+        isOpen={!!conversionMessage}
+        message={conversionMessage}
+        duration={4000}
+        onDidDismiss={() => setConversionMessage('')}
+        position="bottom"
+        color="success"
       />
     </IonPage>
   );
