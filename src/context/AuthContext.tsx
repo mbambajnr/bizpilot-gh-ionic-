@@ -114,9 +114,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
 
     const { data: listener } = auth.onAuthStateChange((_event, nextSession) => {
-      if (nextSession) {
-        setSession(nextSession);
-      }
+      setSession(nextSession);
       setLoading(false);
 
       if (!nextSession && !window.localStorage.getItem('bizpilot-local-session')) {
@@ -327,6 +325,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
 
         const { error } = await getAuthClient().signOut();
+        setSession(null);
 
         if (error) {
           return { ok: false, message: error.message };
