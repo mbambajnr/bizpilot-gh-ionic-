@@ -151,6 +151,7 @@ const InvoiceDetailPage: React.FC = () => {
                 <div className="receipt-row header">
                   <span>Description</span>
                   <span style={{ textAlign: 'center' }}>Qty</span>
+                  <span style={{ textAlign: 'right' }}>Unit Price</span>
                   <span style={{ textAlign: 'right' }}>Total</span>
                 </div>
                 <div className="receipt-row">
@@ -159,6 +160,7 @@ const InvoiceDetailPage: React.FC = () => {
                     <span className="muted-label" style={{ fontSize: '0.7rem' }}>{product?.inventoryId}</span>
                   </div>
                   <span style={{ textAlign: 'center' }}>{sale.quantity}</span>
+                  <span style={{ textAlign: 'right' }}>{formatCurrency(sale.totalAmount / sale.quantity, currency)}</span>
                   <span style={{ textAlign: 'right' }}>{formatCurrency(sale.totalAmount, currency)}</span>
                 </div>
               </div>

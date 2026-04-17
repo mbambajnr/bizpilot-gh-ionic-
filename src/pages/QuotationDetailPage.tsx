@@ -116,27 +116,27 @@ const QuotationDetailPage: React.FC = () => {
 
               <div className="receipt-divider" />
 
-              <div className="list-block">
-                <div className="list-row no-border">
-                  <div style={{ flex: 2 }}><strong>Item Description</strong></div>
-                  <div style={{ flex: 1, textAlign: 'center' }}><strong>Qty</strong></div>
-                  <div style={{ flex: 1, textAlign: 'right' }}><strong>Price</strong></div>
-                  <div style={{ flex: 1, textAlign: 'right' }}><strong>Total</strong></div>
+              <div className="receipt-table">
+                <div className="receipt-row header">
+                  <span>Item Description</span>
+                  <span style={{ textAlign: 'center' }}>Qty</span>
+                  <span style={{ textAlign: 'right' }}>Price</span>
+                  <span style={{ textAlign: 'right' }}>Total</span>
                 </div>
                 {quotation.items.map((item, idx) => (
-                  <div className="list-row no-border" key={`${quotation.id}-item-${idx}`}>
-                    <div style={{ flex: 2 }}>
-                      <p>{item.productName}</p>
-                      <p className="code-label">{item.inventoryId}</p>
+                  <div className="receipt-row" key={`${quotation.id}-item-${idx}`}>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: '600' }}>{item.productName}</p>
+                      <p className="code-label" style={{ margin: 0 }}>{item.inventoryId}</p>
                     </div>
-                    <div style={{ flex: 1, textAlign: 'center' }}>
-                      <p>{item.quantity}</p>
+                    <div style={{ textAlign: 'center' }}>
+                      <p style={{ margin: 0 }}>{item.quantity}</p>
                     </div>
-                    <div style={{ flex: 1, textAlign: 'right' }}>
-                      <p>{formatCurrency(item.unitPrice, currency)}</p>
+                    <div style={{ textAlign: 'right' }}>
+                      <p style={{ margin: 0 }}>{formatCurrency(item.unitPrice, currency)}</p>
                     </div>
-                    <div style={{ flex: 1, textAlign: 'right' }}>
-                      <strong>{formatCurrency(item.total, currency)}</strong>
+                    <div style={{ textAlign: 'right' }}>
+                      <strong style={{ margin: 0 }}>{formatCurrency(item.total, currency)}</strong>
                     </div>
                   </div>
                 ))}
