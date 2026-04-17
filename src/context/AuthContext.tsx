@@ -27,6 +27,16 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function useAuth() {
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    throw new Error('useAuth must be used inside AuthProvider');
+  }
+
+  return context;
+}
+
 function getAuthClient() {
   return getSupabaseClient().auth;
 }
@@ -132,6 +142,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
       return;
     }
 
+    // Skip cloud bootstrap for local/demo accounts
+    if (ownerId.startsWith('u-')) {
+      bootstrappedOwnerRef.current = ownerId;
+      setBusinessBootstrapStatus({
+        loading: false,
+        ready: true,
+        message: 'Using local demo profile.',
+      });
+      return;
+    }
+
     let cancelled = false;
     const activeOwnerId = ownerId;
     const ownerEmail = session.user.email;
@@ -147,6 +168,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
     });
 
     async function bootstrapBusiness() {
+      const timeoutId = setTimeout(() => {
+        if (!cancelled) {
+          setBusinessBootstrapStatus({
+            loading: false,
+            ready: false,
+            message: 'Cloud sync timed out. Proceeding with local data.',
+          });
+        }
+      }, 5500);
+
       const result = await ensureBusinessProfileForOwner({
         ownerId: activeOwnerId,
         email: ownerEmail,
@@ -154,9 +185,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
       });
 
       if (cancelled) {
+        clearTimeout(timeoutId);
         return;
       }
 
+      clearTimeout(timeoutId);
       setBusinessBootstrapStatus({
         loading: false,
         ready: result.status === 'ready',
@@ -308,13 +341,4 @@ export function AuthProvider({ children }: PropsWithChildren) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
-export function useAuth() {
-  const context = useContext(AuthContext);
-
-  if (!context) {
-    throw new Error('useAuth must be used inside AuthProvider');
-  }
-
-  return context;
-}
+export { useAuth };

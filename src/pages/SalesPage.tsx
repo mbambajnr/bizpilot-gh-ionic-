@@ -11,12 +11,14 @@ import {
   IonToast,
   IonTitle,
   IonToolbar,
+  IonSearchbar,
 } from '@ionic/react';
 import { useEffect, useMemo, useState } from 'react';
 import { useHistory, useLocation } from 'react-router-dom';
 
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
+import SearchablePicker, { PickerItem } from '../components/SearchablePicker';
 import { useBusiness } from '../context/BusinessContext';
 import {
   selectDashboardMetrics,
@@ -41,6 +43,7 @@ type ReceiptView = {
   amountPaid: number;
   balanceRemaining: number;
   paymentMethod: string;
+  paymentReference?: string;
 };
 
 const SalesPage: React.FC = () => {
@@ -58,6 +61,10 @@ const SalesPage: React.FC = () => {
   const [lowStockMessage, setLowStockMessage] = useState('');
   const [showLowStockToast, setShowLowStockToast] = useState(false);
   const [latestReceipt, setLatestReceipt] = useState<ReceiptView | null>(null);
+  const [invoiceSearchTerm, setInvoiceSearchTerm] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [showCustomerPicker, setShowCustomerPicker] = useState(false);
+  const [showProductPicker, setShowProductPicker] = useState(false);
   const hasCustomers = state.customers.length > 0;
   const hasProducts = state.products.length > 0;
   const canRecordSale = hasCustomers && hasProducts;
@@ -87,9 +94,48 @@ const SalesPage: React.FC = () => {
   const saleTotal = selectedProduct ? selectedProduct.price * quantity : 0;
   const normalizedPaidAmount = toValidPaidAmount(paidAmountInput, saleTotal);
   const outstandingAmount = Math.max(0, saleTotal - normalizedPaidAmount);
-  const quantityOnHand = selectedProduct ? selectProductQuantityOnHand(state, selectedProduct.id) : 0;
+  const selectedCustomer = useMemo(
+    () => state.customers.find((c) => c.id === customerId) ?? null,
+    [customerId, state.customers]
+  );
+
+  const customerPickerItems = useMemo<PickerItem[]>(
+    () => state.customers.map((c) => ({
+      id: c.id,
+      title: c.name,
+      subtitle: c.clientId,
+      meta: c.phone || 'No phone',
+    })),
+    [state.customers]
+  );
+
+  const productPickerItems = useMemo<PickerItem[]>(
+    () => state.products.map((p) => ({
+      id: p.id,
+      title: p.name,
+      subtitle: p.inventoryId,
+      meta: `${selectProductQuantityOnHand(state, p.id)} left`,
+      image: p.image,
+    })),
+    [state]
+  );
+  
   const metrics = useMemo(() => selectDashboardMetrics(state), [state]);
-  const recentSales = useMemo(() => selectRecentSales(state).slice(0, 6), [state]);
+  const recentSales = useMemo(() => {
+    const all = selectRecentSales(state);
+    if (!invoiceSearchTerm.trim()) return all.slice(0, 8);
+    const lower = invoiceSearchTerm.toLowerCase();
+    return all.filter((sale) => {
+      const customer = state.customers.find((c) => c.id === sale.customerId);
+      const product = state.products.find((p) => p.id === sale.productId);
+      return (
+        sale.invoiceNumber.toLowerCase().includes(lower) ||
+        sale.receiptId.toLowerCase().includes(lower) ||
+        (customer && customer.name.toLowerCase().includes(lower)) ||
+        (product && product.name.toLowerCase().includes(lower))
+      );
+    });
+  }, [state, invoiceSearchTerm]);
 
   useEffect(() => {
     const incomingCorrectionId = location.state?.correctionSourceSaleId;
@@ -129,6 +175,7 @@ const SalesPage: React.FC = () => {
       quantity,
       paymentMethod,
       paidAmount: normalizedPaidAmount,
+      paymentReference: paymentReference.trim() || undefined,
       correctionOfSaleId: correctionSourceSaleId || undefined,
     });
 
@@ -154,6 +201,7 @@ const SalesPage: React.FC = () => {
 
     setQuantityInput('1');
     setPaidAmountInput('');
+    setPaymentReference('');
     setCorrectionSourceSaleId('');
   };
 
@@ -191,40 +239,46 @@ const SalesPage: React.FC = () => {
                   </div>
                 ) : null}
 
-                {selectedProduct ? (
-                  <div className="selected-product">
-                    <img className="product-hero" src={selectedProduct.image} alt={selectedProduct.name} />
-                    <div>
-                      <p className="muted-label">Selected item</p>
-                      <h3>{selectedProduct.name}</h3>
-                      <p className="muted-label">
-                        {selectedProduct.inventoryId} • {quantityOnHand} left in stock • {formatCurrency(selectedProduct.price, currency)} each
-                      </p>
-                    </div>
+                <div className="dual-stat">
+                  <div className="picker-container">
+                    <p className="muted-label">Buyer</p>
+                    <IonButton 
+                      expand="block" 
+                      fill="outline" 
+                      onClick={() => setShowCustomerPicker(true)}
+                    >
+                      {selectedCustomer ? selectedCustomer.name : 'Select Customer'}
+                    </IonButton>
                   </div>
-                ) : null}
+                  <div className="picker-container">
+                    <p className="muted-label">Stock Item</p>
+                    <IonButton 
+                      expand="block" 
+                      fill="outline" 
+                      onClick={() => setShowProductPicker(true)}
+                    >
+                      {selectedProduct ? selectedProduct.name : 'Select Item'}
+                    </IonButton>
+                  </div>
+                </div>
 
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Buyer</IonLabel>
-                  <IonSelect data-testid="customer-select" value={customerId} onIonChange={(event) => setCustomerId(event.detail.value)} interface="popover">
-                    {state.customers.map((customer) => (
-                      <IonSelectOption key={customer.id} value={customer.id}>
-                        {customer.clientId} · {customer.name}
-                      </IonSelectOption>
-                    ))}
-                  </IonSelect>
-                </IonItem>
+                <SearchablePicker
+                  isOpen={showCustomerPicker}
+                  title="Select Customer"
+                  placeholder="Search name, ID or phone..."
+                  items={customerPickerItems}
+                  onDismiss={() => setShowCustomerPicker(false)}
+                  onSelect={(item) => setCustomerId(item.id)}
+                />
 
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Item sold</IonLabel>
-                  <IonSelect data-testid="product-select" value={productId} onIonChange={(event) => setProductId(event.detail.value)} interface="popover">
-                    {state.products.map((product) => (
-                      <IonSelectOption key={product.id} value={product.id}>
-                        {product.inventoryId} · {product.name} ({selectProductQuantityOnHand(state, product.id)} left)
-                      </IonSelectOption>
-                    ))}
-                  </IonSelect>
-                </IonItem>
+                <SearchablePicker
+                  isOpen={showProductPicker}
+                  title="Select Stock Item"
+                  placeholder="Search name or ID..."
+                  items={productPickerItems}
+                  onDismiss={() => setShowProductPicker(false)}
+                  onSelect={(item) => setProductId(item.id)}
+                />
 
                 <div className="dual-stat">
                   <IonItem lines="none" className="app-item">
@@ -261,6 +315,15 @@ const SalesPage: React.FC = () => {
                     onIonInput={(event) => {
                       setPaidAmountInput(event.detail.value ?? '');
                     }}
+                  />
+                </IonItem>
+
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">Payment Reference (e.g. MoMo ID)</IonLabel>
+                  <IonInput
+                    placeholder="Optional reference number"
+                    value={paymentReference}
+                    onIonInput={(event) => setPaymentReference(event.detail.value ?? '')}
                   />
                 </IonItem>
 
@@ -354,6 +417,14 @@ const SalesPage: React.FC = () => {
                     <p>Balance Remaining</p>
                   </div>
                 </div>
+                {latestReceipt.paymentReference && (
+                  <div className="list-row">
+                    <div>
+                      <strong>Payment Reference</strong>
+                      <p>{latestReceipt.paymentReference}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </SectionCard>
           ) : null}
@@ -372,6 +443,12 @@ const SalesPage: React.FC = () => {
           </SectionCard>
 
           <SectionCard title="Recent invoices" subtitle="Each recorded sale creates an invoice record that feeds the dashboard automatically.">
+            <IonSearchbar 
+              placeholder="Search invoices by number, customer, or product..." 
+              value={invoiceSearchTerm}
+              onIonInput={(e) => setInvoiceSearchTerm(e.detail.value ?? '')}
+              style={{ padding: '0 8px 16px 8px' }}
+            />
             {recentSales.length === 0 ? (
               <EmptyState
                 eyebrow="No invoices yet"

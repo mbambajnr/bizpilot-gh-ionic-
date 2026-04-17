@@ -29,7 +29,16 @@ export type AppPermission =
   | 'reports.financial.view'
   | 'reports.dashboard.view'
   | 'reports.sales.view'
-  | 'reports.inventory.view';
+  | 'reports.inventory.view'
+  | 'restockRequests.view'
+  | 'restockRequests.create'
+  | 'restockRequests.manage'
+  | 'invoices.print'
+  | 'invoices.export_pdf'
+  | 'quotations.print'
+  | 'quotations.export_pdf'
+  | 'branding.view'
+  | 'branding.manage';
 
 export interface UserAccessProfile {
   userId: string;

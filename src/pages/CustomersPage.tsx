@@ -10,6 +10,7 @@ import {
   IonToast,
   IonTitle,
   IonToolbar,
+  IonSearchbar,
 } from '@ionic/react';
 import { logoWhatsapp } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
@@ -40,7 +41,17 @@ const CustomersPage: React.FC = () => {
   const [formMessage, setFormMessage] = useState('');
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [savedCustomerName, setSavedCustomerName] = useState('');
-  const customerSummaries = useMemo(() => selectCustomerSummaries(state), [state]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const customerSummaries = useMemo(() => {
+    const all = selectCustomerSummaries(state);
+    if (!searchTerm.trim()) return all;
+    const lower = searchTerm.toLowerCase();
+    return all.filter(({ customer }) => 
+      customer.name.toLowerCase().includes(lower) || 
+      customer.clientId.toLowerCase().includes(lower) ||
+      (customer.phone && customer.phone.includes(lower))
+    );
+  }, [state, searchTerm]);
   const currency = state.businessProfile.currency;
 
   useEffect(() => {
@@ -190,6 +201,12 @@ const CustomersPage: React.FC = () => {
             title="Customer balances"
             subtitle="Outstanding balances now derive from customer ledger entries rather than stored balance fields."
           >
+            <IonSearchbar 
+              placeholder="Search by name, ID or phone..." 
+              value={searchTerm}
+              onIonInput={(e) => setSearchTerm(e.detail.value ?? '')}
+              style={{ padding: '0 8px 16px 8px' }}
+            />
             {customerSummaries.length === 0 ? (
               <EmptyState
                 eyebrow="No clients yet"

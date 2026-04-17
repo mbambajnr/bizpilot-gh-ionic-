@@ -8,8 +8,11 @@ import type {
   Product,
   Quotation,
   QuotationLine,
+  RestockRequest,
+  RestockRequestStatus,
   Sale,
   SaleAuditEvent,
+  Expense,
   StockMovement,
 } from '../data/seedBusiness';
 import { seedState } from '../data/seedBusiness';
@@ -48,6 +51,7 @@ export type NewSaleInput = {
   quantity: number;
   paymentMethod: PaymentMethod;
   paidAmount: number;
+  paymentReference?: string;
   correctionOfSaleId?: string;
   quotationId?: string;
 };
@@ -82,12 +86,30 @@ export type ConvertedSaleReceipt = {
   amountPaid: number;
   balanceRemaining: number;
   paymentMethod: PaymentMethod;
+  paymentReference?: string;
 };
 
 export type ConvertQuotationResult = {
   data: BusinessState;
   receipts: ConvertedSaleReceipt[];
   quotationNumber: string;
+};
+
+export type NewRestockRequestInput = {
+  productId: string;
+  requestedByUserId: string;
+  requestedByName: string;
+  requestedQuantity: number;
+  urgency: 'Low' | 'Medium' | 'High';
+  note?: string;
+};
+
+export type ReviewRestockRequestInput = {
+  requestId: string;
+  status: RestockRequestStatus;
+  reviewedByUserId: string;
+  reviewedByName: string;
+  reviewNote?: string;
 };
 
 export type ReverseSaleInput = {
@@ -454,6 +476,8 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     activityLogEntries,
     users: raw.users ?? seedState.users,
     currentUserId: raw.currentUserId ?? seedState.currentUserId,
+    restockRequests: raw.restockRequests ?? [],
+    expenses: raw.expenses ?? [],
   };
 }
 
@@ -804,6 +828,7 @@ export function convertQuotationToSalesState(
       amountPaid: createdSale.paidAmount,
       balanceRemaining: selectSaleBalanceRemaining(createdSale),
       paymentMethod: createdSale.paymentMethod,
+      paymentReference: createdSale.paymentReference,
     });
 
     relatedSaleIds.push(createdSale.id);
@@ -907,6 +932,7 @@ export function addSaleToState(current: BusinessState, input: NewSaleInput): Act
     quantity: input.quantity,
     paymentMethod: input.paymentMethod,
     paidAmount: input.paidAmount,
+    paymentReference: input.paymentReference,
     totalAmount,
     createdAt,
     status: 'Completed',
@@ -1105,4 +1131,165 @@ export function reverseSaleInState(current: BusinessState, input: ReverseSaleInp
 
 export function selectLegacySaleAuditEvents(state: BusinessState) {
   return toSaleAuditEvents(state.activityLogEntries);
+}
+
+export function addRestockRequestToState(
+  current: BusinessState,
+  input: NewRestockRequestInput
+): ActionResult<BusinessState> {
+  const product = current.products.find((p) => p.id === input.productId);
+  if (!product) return { ok: false, message: 'Product not found.' };
+
+  const qoh = selectProductQuantityOnHand(current, product.id);
+  const request: RestockRequest = {
+    id: `req-${crypto.randomUUID()}`,
+    productId: product.id,
+    productName: product.name,
+    requestedByUserId: input.requestedByUserId,
+    requestedByName: input.requestedByName,
+    currentQuantity: qoh,
+    requestedQuantity: input.requestedQuantity,
+    urgency: input.urgency,
+    note: input.note,
+    status: 'Pending',
+    createdAt: new Date().toISOString(),
+  };
+
+  return {
+    ok: true,
+    data: {
+      ...current,
+      restockRequests: [request, ...(current.restockRequests ?? [])],
+    },
+  };
+}
+
+export function reviewRestockRequestInState(
+  current: BusinessState,
+  input: ReviewRestockRequestInput
+): ActionResult<BusinessState> {
+  const restockRequests = current.restockRequests ?? [];
+  const request = restockRequests.find((r) => r.id === input.requestId);
+  if (!request) return { ok: false, message: 'Restock request not found.' };
+
+  if (request.status === 'Fulfilled') {
+    return { ok: false, message: 'This request has already been fulfilled.' };
+  }
+
+  const updated: RestockRequest = {
+    ...request,
+    status: input.status,
+    reviewedAt: new Date().toISOString(),
+    reviewedByUserId: input.reviewedByUserId,
+    reviewedByName: input.reviewedByName,
+    reviewNote: input.reviewNote,
+  };
+
+  let nextState: BusinessState = {
+    ...current,
+    restockRequests: restockRequests.map((r) => (r.id === input.requestId ? updated : r)),
+  };
+
+  if (input.status === 'Fulfilled') {
+    const product = current.products.find((p) => p.id === request.productId);
+    if (!product) return { ok: false, message: 'Product linked to request not found.' };
+
+    const qoh = selectProductQuantityOnHand(current, product.id);
+    const movement = createStockMovement(current, {
+      productId: product.id,
+      type: 'restock',
+      quantityDelta: request.requestedQuantity,
+      quantityAfter: qoh + request.requestedQuantity,
+      createdAt: updated.reviewedAt!,
+      referenceNumber: `REQ-${request.id.slice(0, 8).toUpperCase()}`,
+      note: `Fulfilled restock request by ${input.reviewedByName}`,
+    });
+
+    const activity = createActivityLogEntry(current, {
+      entityType: 'product',
+      entityId: product.id,
+      actionType: 'restock_fulfilled',
+      title: 'Stock replenished',
+      detail: `${request.requestedQuantity} ${product.unit} of ${product.name} added to stock via restock request.`,
+      status: 'success',
+      createdAt: updated.reviewedAt!,
+      referenceNumber: movement.movementNumber,
+    });
+
+    nextState = {
+      ...nextState,
+      stockMovements: [movement, ...current.stockMovements],
+      activityLogEntries: [activity, ...current.activityLogEntries],
+    };
+  }
+
+  return {
+    ok: true,
+    data: nextState,
+  };
+}
+
+export function updateBrandingInState(
+  current: BusinessState,
+  input: { logoUrl?: string; signatureUrl?: string }
+): ActionResult<BusinessState> {
+  return {
+    ok: true,
+    data: {
+      ...current,
+      businessProfile: {
+        ...current.businessProfile,
+        ...input,
+      },
+    },
+  };
+}
+
+export type NewExpenseInput = {
+  category: string;
+  amount: number;
+  note?: string;
+  recordedByUserId: string;
+  recordedByName: string;
+};
+
+export function addExpenseToState(
+  current: BusinessState,
+  input: NewExpenseInput
+): ActionResult<BusinessState> {
+  if (!input.category.trim()) return { ok: false, message: 'Category is required.' };
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    return { ok: false, message: 'Amount must be a positive number.' };
+  }
+
+  const createdAt = new Date().toISOString();
+  const expense: Expense = {
+    id: `exp-${crypto.randomUUID()}`,
+    category: input.category.trim(),
+    amount: input.amount,
+    note: input.note?.trim() || '',
+    createdAt,
+    recordedByUserId: input.recordedByUserId,
+    recordedByName: input.recordedByName,
+  };
+
+  const activity = createActivityLogEntry(current, {
+    entityType: 'business',
+    entityId: 'expenses',
+    actionType: 'expense_logged',
+    title: 'Expense recorded',
+    detail: `${expense.category}: ${expense.amount} was logged.`,
+    status: 'info',
+    createdAt,
+    referenceNumber: `EXP-${expense.id.slice(0, 8).toUpperCase()}`,
+  });
+
+  return {
+    ok: true,
+    data: {
+      ...current,
+      expenses: [expense, ...(current.expenses ?? [])],
+      activityLogEntries: [activity, ...current.activityLogEntries],
+    },
+  };
 }

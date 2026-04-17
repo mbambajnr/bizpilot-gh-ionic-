@@ -111,6 +111,14 @@ export async function ensureBusinessProfileForOwner(
     };
   }
 
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.ownerId);
+  if (!isUuid) {
+    return {
+      status: 'skipped',
+      message: 'ID is not a valid Supabase UUID. Skipping cloud bootstrap.',
+    };
+  }
+
   const existing = await loadBusinessProfileFromSupabase(input.ownerId);
 
   if (existing.status === 'loaded') {

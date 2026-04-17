@@ -124,6 +124,14 @@ export function selectStockMovementDisplay(movement: StockMovement): StatusDispl
     };
   }
 
+  if (movement.type === 'restock') {
+    return {
+      label: 'Stock replenishment',
+      helper: 'Quantity added via fulfilled restock request',
+      tone: 'success',
+    };
+  }
+
   return {
     label: 'Reversal restored stock',
     helper: 'Quantity restored after invoice reversal',

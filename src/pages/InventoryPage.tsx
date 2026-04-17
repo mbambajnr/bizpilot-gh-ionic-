@@ -9,6 +9,7 @@ import {
   IonToast,
   IonTitle,
   IonToolbar,
+  IonSearchbar,
 } from '@ionic/react';
 import { useMemo, useState } from 'react';
 import { resizeImage } from '../utils/imageUtils';
@@ -24,7 +25,7 @@ import {
 import { formatCurrency, formatReceiptDate, formatRelativeDate } from '../utils/format';
 
 const InventoryPage: React.FC = () => {
-  const { state, addProduct, hasPermission } = useBusiness();
+  const { state, addProduct, addRestockRequest, currentUser, hasPermission } = useBusiness();
   const [name, setName] = useState('');
   const [inventoryId, setInventoryId] = useState('');
   const [unit, setUnit] = useState('');
@@ -36,6 +37,14 @@ const InventoryPage: React.FC = () => {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [savedItemName, setSavedItemName] = useState('');
   const [formMessage, setFormMessage] = useState('');
+
+  // Restock form state
+  const [restockQty, setRestockQty] = useState<number | ''>('');
+  const [urgency, setUrgency] = useState<'Low' | 'Medium' | 'High'>('Medium');
+  const [restockNote, setRestockNote] = useState('');
+  const [restockMessage, setRestockMessage] = useState('');
+  const [showRestockSuccess, setShowRestockSuccess] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -57,8 +66,21 @@ const InventoryPage: React.FC = () => {
     }
   };
   const [selectedProductId, setSelectedProductId] = useState(state.products[0]?.id ?? '');
-  const inventorySummaries = useMemo(() => selectInventorySummaries(state), [state]);
-  const selectedSummary = inventorySummaries.find((item) => item.product.id === selectedProductId) ?? inventorySummaries[0] ?? null;
+  const inventorySummaries = useMemo(() => {
+    const all = selectInventorySummaries(state);
+    if (!searchTerm.trim()) return all;
+    const lower = searchTerm.toLowerCase();
+    return all.filter(({ product }) => 
+      product.name.toLowerCase().includes(lower) || 
+      product.inventoryId.toLowerCase().includes(lower)
+    );
+  }, [state, searchTerm]);
+  const selectedSummary = useMemo(() => {
+    return inventorySummaries.find((item) => item.product.id === selectedProductId) ?? 
+           inventorySummaries[0] ?? 
+           selectInventorySummaries(state).find(item => item.product.id === selectedProductId) ??
+           null;
+  }, [inventorySummaries, selectedProductId, state]);
   const selectedMovements = useMemo(
     () => (selectedSummary ? selectProductMovements(state, selectedSummary.product.id) : []),
     [selectedSummary, state]
@@ -100,6 +122,33 @@ const InventoryPage: React.FC = () => {
     setSavedItemName(itemName);
     setFormMessage('');
     setShowSuccessToast(true);
+  };
+
+  const handleRequestRestock = () => {
+    if (!selectedProductId || restockQty === '') {
+      setRestockMessage('Enter a valid quantity.');
+      return;
+    }
+
+    const result = addRestockRequest({
+      productId: selectedProductId,
+      requestedByUserId: currentUser.userId,
+      requestedByName: currentUser.name,
+      requestedQuantity: Number(restockQty),
+      urgency,
+      note: restockNote,
+    });
+
+    if (!result.ok) {
+      setRestockMessage(result.message);
+      return;
+    }
+
+    setRestockQty('');
+    setRestockNote('');
+    setUrgency('Medium');
+    setRestockMessage('');
+    setShowRestockSuccess(true);
   };
 
   return (
@@ -228,6 +277,12 @@ const InventoryPage: React.FC = () => {
           )}
 
           <SectionCard title="Stock control" subtitle="Quantities now come from explicit stock movements instead of a loose on-hand counter.">
+            <IonSearchbar 
+              placeholder="Search by name or ID..." 
+              value={searchTerm}
+              onIonInput={(e) => setSearchTerm(e.detail.value ?? '')}
+              style={{ padding: '0 8px 16px 8px' }}
+            />
             {inventorySummaries.length === 0 ? (
               <EmptyState
                 eyebrow="No stock yet"
@@ -355,6 +410,80 @@ const InventoryPage: React.FC = () => {
               />
             )}
           </SectionCard>
+
+          {selectedProductId && hasPermission('restockRequests.create') && (
+            <SectionCard 
+              title="Request Restock" 
+              subtitle={`Request more ${selectedSummary?.product.name ?? 'stock'} for this shop.`}
+            >
+              <div className="form-grid">
+                <div className="dual-stat">
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Requested quantity</IonLabel>
+                    <IonInput 
+                      type="number" 
+                      value={restockQty} 
+                      placeholder="0"
+                      onIonInput={(e) => setRestockQty(e.detail.value === '' ? '' : Number(e.detail.value))} 
+                    />
+                  </IonItem>
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Urgency</IonLabel>
+                    <IonInput 
+                      value={urgency} 
+                      readonly 
+                      onClick={() => {
+                        const next: Record<string, 'Low'|'Medium'|'High'> = { 'Low': 'Medium', 'Medium': 'High', 'High': 'Low' };
+                        setUrgency(next[urgency]);
+                      }} 
+                    />
+                  </IonItem>
+                </div>
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">Notes (reason for restock)</IonLabel>
+                  <IonInput 
+                    value={restockNote} 
+                    placeholder="e.g. Sudden demand spike"
+                    onIonInput={(e) => setRestockNote(e.detail.value ?? '')} 
+                  />
+                </IonItem>
+                <IonButton fill="outline" expand="block" onClick={handleRequestRestock}>
+                  Submit Request
+                </IonButton>
+                {restockMessage && <p className="form-message">{restockMessage}</p>}
+              </div>
+            </SectionCard>
+          )}
+
+          {selectedProductId && hasPermission('restockRequests.view') && (state.restockRequests ?? []).some(r => r.productId === selectedProductId) && (
+            <SectionCard title="Active Restock Requests" subtitle="Track the progress of replenishment requests for this item.">
+              <div className="list-block">
+                {(state.restockRequests ?? []).filter(r => r.productId === selectedProductId).map(req => (
+                  <div className="list-row" key={req.id}>
+                    <div>
+                      <strong>{req.requestedQuantity} {selectedSummary?.product.unit}</strong>
+                      <p>Requested by: {req.requestedByName}</p>
+                      <p>Urgency: {req.urgency} • {req.note || 'No note'}</p>
+                      <p>Sent: {formatRelativeDate(req.createdAt)}</p>
+                      {req.reviewedByUserId && (
+                        <p>Reviewed by {req.reviewedByName}: {req.reviewNote || 'No comment'}</p>
+                      )}
+                    </div>
+                    <div className="right-meta">
+                      <strong className={
+                        req.status === 'Approved' ? 'success-text' : 
+                        req.status === 'Rejected' ? 'danger-text' : 
+                        req.status === 'Fulfilled' ? 'primary-text' : 'warning-text'
+                      }>
+                        {req.status}
+                      </strong>
+                      <p>{req.reviewedAt ? `Finalized ${formatRelativeDate(req.reviewedAt)}` : 'Awaiting review'}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          )}
         </div>
       </IonContent>
       <IonToast
@@ -364,6 +493,14 @@ const InventoryPage: React.FC = () => {
         color="success"
         position="top"
         onDidDismiss={() => setShowSuccessToast(false)}
+      />
+      <IonToast
+        isOpen={showRestockSuccess}
+        message="Restock request submitted to administrator."
+        duration={1800}
+        color="success"
+        position="top"
+        onDidDismiss={() => setShowRestockSuccess(false)}
       />
     </IonPage>
   );

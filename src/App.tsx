@@ -26,6 +26,7 @@ import QuotationsPage from './pages/QuotationsPage';
 import SalesPage from './pages/SalesPage';
 import SettingsPage from './pages/SettingsPage';
 import AccountingPage from './pages/AccountingPage';
+import QuotationDetailPage from './pages/QuotationDetailPage';
 
 import '@ionic/react/css/core.css';
 import '@ionic/react/css/normalize.css';
@@ -95,6 +96,9 @@ function AppShell() {
         </Route>
         <Route exact path="/quotations">
           {hasPermission('quotations.view') ? <QuotationsPage /> : <UnauthorizedPage />}
+        </Route>
+        <Route exact path="/quotations/:quotationId">
+          {hasPermission('quotations.view') ? <QuotationDetailPage /> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/accounting">
           {hasPermission('accounting.access') ? <AccountingPage /> : <UnauthorizedPage />}

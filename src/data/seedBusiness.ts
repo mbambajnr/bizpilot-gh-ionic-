@@ -14,6 +14,8 @@ export type BusinessProfile = {
   invoicePrefix: string;
   phone: string;
   email: string;
+  logoUrl?: string;
+  signatureUrl?: string;
 };
 
 export type Product = {
@@ -25,6 +27,26 @@ export type Product = {
   cost: number;
   reorderLevel: number;
   image: string;
+};
+
+export type RestockRequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Fulfilled';
+
+export type RestockRequest = {
+  id: string;
+  productId: string;
+  productName: string;
+  requestedByUserId: string;
+  requestedByName: string;
+  currentQuantity: number;
+  requestedQuantity: number;
+  urgency: 'Low' | 'Medium' | 'High';
+  note?: string;
+  status: RestockRequestStatus;
+  createdAt: string;
+  reviewedAt?: string;
+  reviewedByUserId?: string;
+  reviewedByName?: string;
+  reviewNote?: string;
 };
 
 export type Customer = {
@@ -53,6 +75,7 @@ export type Sale = {
   reversedBy?: string;
   correctionOfSaleId?: string;
   correctedBySaleId?: string;
+  paymentReference?: string;
 };
 
 export type SaleAuditEvent = {
@@ -93,7 +116,7 @@ export type StockMovement = {
   id: string;
   movementNumber: string;
   productId: string;
-  type: 'opening' | 'sale' | 'reversal';
+  type: 'opening' | 'sale' | 'reversal' | 'restock';
   quantityDelta: number;
   quantityAfter: number;
   createdAt: string;
@@ -129,7 +152,9 @@ export type ActivityLogEntry = {
     | 'receipt_issued'
     | 'invoice_reversed'
     | 'corrected_copy_created'
-    | 'business_profile_updated';
+    | 'business_profile_updated'
+    | 'restock_fulfilled'
+    | 'expense_logged';
   title: string;
   detail: string;
   status: 'info' | 'success' | 'warning';
@@ -137,6 +162,16 @@ export type ActivityLogEntry = {
   referenceNumber?: string;
   relatedEntityId?: string;
   relatedSaleId?: string;
+};
+
+export type Expense = {
+  id: string;
+  category: string;
+  amount: number;
+  note: string;
+  createdAt: string;
+  recordedByUserId: string;
+  recordedByName: string;
 };
 
 export type BusinessState = {
@@ -150,6 +185,8 @@ export type BusinessState = {
   activityLogEntries: ActivityLogEntry[];
   users: UserAccessProfile[];
   currentUserId: string;
+  restockRequests: RestockRequest[];
+  expenses: Expense[];
 };
 
 const now = new Date();
@@ -262,6 +299,11 @@ export const seedState: BusinessState = {
     },
   ],
   currentUserId: 'u-admin',
+  restockRequests: [],
+  expenses: [
+    { id: 'exp-1', category: 'Rent', amount: 500, note: 'Monthly shop rent', createdAt: isoDaysAgoAt(5, 10, 0), recordedByUserId: 'u-admin', recordedByName: 'Admin User' },
+    { id: 'exp-2', category: 'Utility', amount: 85, note: 'Electricity bill', createdAt: isoDaysAgoAt(2, 16, 30), recordedByUserId: 'u-admin', recordedByName: 'Admin User' },
+  ],
 };
 
 export const priorityQuestions = [

@@ -11,11 +11,14 @@ import {
   IonTitle,
   IonToast,
   IonToolbar,
+  IonSearchbar,
 } from '@ionic/react';
 import { useEffect, useMemo, useState } from 'react';
+import { useHistory } from 'react-router-dom';
 
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
+import SearchablePicker, { PickerItem } from '../components/SearchablePicker';
 import { useBusiness } from '../context/BusinessContext';
 import { selectQuotationStatusDisplay } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate } from '../utils/format';
@@ -27,6 +30,7 @@ type DraftLine = {
   quantityInput: string;
 };
 
+
 const createDraftLine = (productId = ''): DraftLine => ({
   id: crypto.randomUUID(),
   productId,
@@ -34,6 +38,7 @@ const createDraftLine = (productId = ''): DraftLine => ({
 });
 
 const QuotationsPage: React.FC = () => {
+  const history = useHistory();
   const { state, addQuotation, convertQuotationToSale } = useBusiness();
   const [customerId, setCustomerId] = useState(state.customers[0]?.id ?? '');
   const [lines, setLines] = useState<DraftLine[]>([createDraftLine(state.products[0]?.id ?? '')]);
@@ -62,6 +67,10 @@ const QuotationsPage: React.FC = () => {
       paymentMethod: string;
     }>
   >([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showCustomerPicker, setShowCustomerPicker] = useState(false);
+  const [showProductPicker, setShowProductPicker] = useState(false);
+  const [activePickingLineId, setActivePickingLineId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!state.customers.some((customer) => customer.id === customerId)) {
@@ -131,6 +140,36 @@ const QuotationsPage: React.FC = () => {
   const handleRemoveLine = (lineId: string) => {
     setLines((current) => (current.length === 1 ? current : current.filter((line) => line.id !== lineId)));
   };
+
+  const filteredQuotations = useMemo(() => {
+    const all = [...state.quotations].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    if (!searchTerm.trim()) return all;
+    const lower = searchTerm.toLowerCase();
+    return all.filter((q) => {
+      return q.quotationNumber.toLowerCase().includes(lower) || q.customerName.toLowerCase().includes(lower);
+    });
+  }, [state.quotations, searchTerm]);
+
+  const customerPickerItems = useMemo<PickerItem[]>(
+    () => state.customers.map((c) => ({
+      id: c.id,
+      title: c.name,
+      subtitle: c.clientId,
+      meta: c.phone || 'No phone',
+    })),
+    [state.customers]
+  );
+
+  const productPickerItems = useMemo<PickerItem[]>(
+    () => state.products.map((p) => ({
+      id: p.id,
+      title: p.name,
+      subtitle: p.inventoryId,
+      meta: `${formatCurrency(p.price)}`,
+      image: p.image,
+    })),
+    [state.products]
+  );
 
   const handleCreateQuotation = () => {
     const result = addQuotation({
@@ -210,16 +249,41 @@ const QuotationsPage: React.FC = () => {
               />
             ) : (
               <div className="form-grid">
-                <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Client</IonLabel>
-                  <IonSelect value={customerId} onIonChange={(event) => setCustomerId(event.detail.value)} interface="popover">
-                    {state.customers.map((customer) => (
-                      <IonSelectOption key={customer.id} value={customer.id}>
-                        {customer.clientId} · {customer.name}
-                      </IonSelectOption>
-                    ))}
-                  </IonSelect>
-                </IonItem>
+                <div className="picker-container">
+                    <p className="muted-label">Client</p>
+                    <IonButton 
+                        expand="block" 
+                        fill="outline" 
+                        onClick={() => setShowCustomerPicker(true)}
+                    >
+                        {selectedCustomer ? selectedCustomer.name : 'Select Client'}
+                    </IonButton>
+                </div>
+
+                <SearchablePicker
+                    isOpen={showCustomerPicker}
+                    title="Select Client"
+                    placeholder="Search name, ID or phone..."
+                    items={customerPickerItems}
+                    onDismiss={() => setShowCustomerPicker(false)}
+                    onSelect={(item) => setCustomerId(item.id)}
+                />
+
+                <SearchablePicker
+                    isOpen={showProductPicker}
+                    title="Select Product"
+                    placeholder="Search name or ID..."
+                    items={productPickerItems}
+                    onDismiss={() => {
+                        setShowProductPicker(false);
+                        setActivePickingLineId(null);
+                    }}
+                    onSelect={(item) => {
+                        if (activePickingLineId) {
+                            handleLineChange(activePickingLineId, { productId: item.id });
+                        }
+                    }}
+                />
 
                 {lines.map((line, index) => {
                   const previewItem = quotationPreview.items.find((item) => item?.id === line.id) ?? null;
@@ -228,20 +292,18 @@ const QuotationsPage: React.FC = () => {
                     <div className="selected-product" key={line.id}>
                       <div className="form-grid" style={{ flex: 1 }}>
                         <p className="muted-label">Item line {index + 1}</p>
-                        <IonItem lines="none" className="app-item">
-                          <IonLabel position="stacked">Product</IonLabel>
-                          <IonSelect
-                            value={line.productId}
-                            onIonChange={(event) => handleLineChange(line.id, { productId: event.detail.value })}
-                            interface="popover"
-                          >
-                            {state.products.map((product) => (
-                              <IonSelectOption key={product.id} value={product.id}>
-                                {product.inventoryId} · {product.name}
-                              </IonSelectOption>
-                            ))}
-                          </IonSelect>
-                        </IonItem>
+                        <div className="picker-container">
+                            <IonButton 
+                                expand="block" 
+                                fill="outline" 
+                                onClick={() => {
+                                    setActivePickingLineId(line.id);
+                                    setShowProductPicker(true);
+                                }}
+                            >
+                                {state.products.find(p => p.id === line.productId)?.name || 'Select Product'}
+                            </IonButton>
+                        </div>
 
                         <IonItem lines="none" className="app-item">
                           <IonLabel position="stacked">Quantity</IonLabel>
@@ -304,15 +366,21 @@ const QuotationsPage: React.FC = () => {
             title="Quotation history"
             subtitle="Recently created quotations stay in the app so you can review totals and line items before an invoice is confirmed."
           >
-            {state.quotations.length === 0 ? (
+            <IonSearchbar 
+              placeholder="Search by number or customer..." 
+              value={searchTerm}
+              onIonInput={(e) => setSearchTerm(e.detail.value ?? '')}
+              style={{ padding: '0 8px 16px 8px' }}
+            />
+            {filteredQuotations.length === 0 ? (
               <EmptyState
-                eyebrow="No quotations yet"
-                title="No quotations created yet."
-                message="Once you create a quotation, it will appear here with client details, line items, and the total value."
+                eyebrow={searchTerm ? "No matches" : "No quotations yet"}
+                title={searchTerm ? `No results for "${searchTerm}"` : "No quotations created yet."}
+                message={searchTerm ? "Try searching for a different name or number." : "Once you create a quotation, it will appear here with client details, line items, and the total value."}
               />
             ) : (
               <div className="list-block">
-                {state.quotations.map((quotation) => {
+                {filteredQuotations.map((quotation) => {
                   const quotationStatus = selectQuotationStatusDisplay(quotation);
 
                   return (
@@ -347,11 +415,16 @@ const QuotationsPage: React.FC = () => {
                         </div>
                       ))}
 
-                      {quotation.status === 'Draft' ? (
-                        <IonButton expand="block" onClick={() => handleStartConversion(quotation.id)}>
-                          Convert to Invoice
+                      <div className="dual-stat">
+                        {quotation.status === 'Draft' && (
+                          <IonButton expand="block" onClick={() => handleStartConversion(quotation.id)}>
+                            Convert to Invoice
+                          </IonButton>
+                        )}
+                        <IonButton fill="outline" expand="block" onClick={() => history.push(`/quotations/${quotation.id}`)}>
+                          View Document
                         </IonButton>
-                      ) : null}
+                      </div>
 
                       {convertingQuotationId === quotation.id ? (
                         <div className="form-grid">

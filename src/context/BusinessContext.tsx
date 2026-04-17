@@ -16,12 +16,19 @@ import {
   NewProductInput,
   NewQuotationInput,
   NewSaleInput,
+  addRestockRequestToState,
+  reviewRestockRequestInState,
+  updateBrandingInState,
+  NewRestockRequestInput,
+  ReviewRestockRequestInput,
   restoreBusinessState,
   reverseSaleInState,
   ReverseSaleInput,
   ReverseSaleResult,
   updateBusinessProfileInState,
   UpdateBusinessProfileInput,
+  addExpenseToState,
+  NewExpenseInput,
 } from '../utils/businessLogic';
 import { selectProductQuantityOnHand } from '../selectors/businessSelectors';
 import { AppPermission, UserAccessProfile } from '../authz/types';
@@ -85,10 +92,24 @@ type BusinessContextValue = {
   switchUser: (userId: string) => void;
   updateUserPermissions: (userId: string, granted: AppPermission[], revoked: AppPermission[]) => ActionResult;
   updateUserProfile: (userId: string, profile: Partial<Pick<UserAccessProfile, 'email' | 'password' | 'name'>>) => ActionResult;
+  addRestockRequest: (input: NewRestockRequestInput) => ActionResult;
+  reviewRestockRequest: (input: ReviewRestockRequestInput) => ActionResult;
+  updateBranding: (input: { logoUrl?: string; signatureUrl?: string }) => ActionResult;
   hasPermission: (permission: AppPermission) => boolean;
+  addExpense: (input: NewExpenseInput) => ActionResult;
 };
 
 const BusinessContext = createContext<BusinessContextValue | null>(null);
+
+function useBusiness() {
+  const context = useContext(BusinessContext);
+
+  if (!context) {
+    throw new Error('useBusiness must be used inside BusinessProvider');
+  }
+
+  return context;
+}
 
 function readInitialState(): BusinessState {
   if (typeof window === 'undefined') {
@@ -357,9 +378,49 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         return { ok: true };
       },
+      addRestockRequest(input) {
+        if (!hasPermission(currentUser, 'restockRequests.create')) {
+          return { ok: false, message: 'You are not authorized to create restock requests.' };
+        }
+        const result = addRestockRequestToState(state, input);
+        if (!result.ok) return result;
+        if (!result.data) return { ok: false, message: 'Action failed to update state.' };
+        setState(result.data);
+        return { ok: true };
+      },
+      reviewRestockRequest(input) {
+        if (!hasPermission(currentUser, 'restockRequests.manage')) {
+          return { ok: false, message: 'You are not authorized to manage restock requests.' };
+        }
+        const result = reviewRestockRequestInState(state, input);
+        if (!result.ok) return result;
+        if (!result.data) return { ok: false, message: 'Review failed to update state.' };
+        setState(result.data);
+        return { ok: true };
+      },
+      updateBranding(input) {
+        if (!hasPermission(currentUser, 'branding.manage')) {
+          return { ok: false, message: 'You are not authorized to manage branding.' };
+        }
+        const result = updateBrandingInState(state, input);
+        if (!result.ok) return result;
+        if (!result.data) return { ok: false, message: 'Update failed to update state.' };
+        setState(result.data);
+        return { ok: true };
+      },
       hasPermission(permission) {
         return hasPermission(currentUser, permission);
-      }
+      },
+      addExpense(input) {
+        if (!hasPermission(currentUser, 'accounting.access')) {
+          return { ok: false, message: 'You are not authorized to record expenses.' };
+        }
+        const result = addExpenseToState(state, input);
+        if (!result.ok) return result;
+        if (!result.data) return { ok: false, message: 'Failed to update state with expense.' };
+        setState(result.data);
+        return { ok: true };
+      },
     }),
     [backendStatus, state, currentUser]
   );
@@ -367,13 +428,4 @@ export function BusinessProvider({ children }: PropsWithChildren) {
   return <BusinessContext.Provider value={value}>{children}</BusinessContext.Provider>;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
-export function useBusiness() {
-  const context = useContext(BusinessContext);
-
-  if (!context) {
-    throw new Error('useBusiness must be used inside BusinessProvider');
-  }
-
-  return context;
-}
+export { useBusiness };

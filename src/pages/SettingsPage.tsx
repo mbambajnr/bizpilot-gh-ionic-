@@ -15,16 +15,18 @@ import {
   IonChip,
 } from '@ionic/react';
 import { useEffect, useState } from 'react';
+import { resizeImage } from '../utils/imageUtils';
 
 import SectionCard from '../components/SectionCard';
 import { roadmapSteps } from '../data/seedBusiness';
 import { useAuth } from '../context/AuthContext';
 import { useBusiness } from '../context/BusinessContext';
 import { AppPermission } from '../authz/types';
+import { RestockRequestStatus } from '../data/seedBusiness';
 
 const SettingsPage: React.FC = () => {
   const { user, businessBootstrapStatus, signOut } = useAuth();
-  const { state, currentUser, backendStatus, updateBusinessProfile, switchUser, updateUserPermissions, updateUserProfile, hasPermission } = useBusiness();
+  const { state, currentUser, backendStatus, updateBusinessProfile, switchUser, updateUserPermissions, updateUserProfile, hasPermission, reviewRestockRequest, updateBranding } = useBusiness();
   
   const [businessName, setBusinessName] = useState(state.businessProfile.businessName);
   const [businessType, setBusinessType] = useState(state.businessProfile.businessType);
@@ -63,6 +65,42 @@ const SettingsPage: React.FC = () => {
     setAccountantPassword(accountant?.password ?? '');
     setMyPassword(currentUser.password ?? '');
   }, [state.businessProfile, salesManager, accountant, currentUser]);
+
+  const [brandingMessage, setBrandingMessage] = useState('');
+  const [showBrandingToast, setShowBrandingToast] = useState(false);
+
+  const handleBrandingUpload = async (type: 'logo' | 'signature', file: File) => {
+    try {
+      setBrandingMessage(`Processing ${type}...`);
+      const resized = await resizeImage(file, 400, 400); // Practical size for docs
+      const result = updateBranding({
+        [type === 'logo' ? 'logoUrl' : 'signatureUrl']: resized
+      });
+      if (result.ok) {
+        setShowBrandingToast(true);
+        setBrandingMessage('');
+      } else {
+        setBrandingMessage(result.message);
+      }
+    } catch {
+      setBrandingMessage('Upload failed. Try a different file.');
+    }
+  };
+
+  const handleReviewRequest = (requestId: string, status: RestockRequestStatus, note: string) => {
+    const result = reviewRestockRequest({
+      requestId,
+      status,
+      reviewedByUserId: currentUser.userId,
+      reviewedByName: currentUser.name,
+      reviewNote: note,
+    });
+    if (result.ok) {
+      setShowSuccessToast(true);
+    } else {
+      setFormMessage(result.message);
+    }
+  };
 
   const handleSave = () => {
     const result = updateBusinessProfile({
@@ -193,7 +231,6 @@ const SettingsPage: React.FC = () => {
             </div>
           </SectionCard>
 
-           {hasPermission('permissions.manage') && (
             <SectionCard
                title="Demo access"
                subtitle="Switch between identities to test Role-Based Access Control and permission gating."
@@ -210,7 +247,6 @@ const SettingsPage: React.FC = () => {
                   ))}
                </div>
              </SectionCard>
-           )}
 
            {hasPermission('permissions.manage') && (
              <SectionCard
@@ -362,6 +398,58 @@ const SettingsPage: React.FC = () => {
             </SectionCard>
           )}
 
+          {hasPermission('branding.manage') && (
+            <SectionCard title="Brand identity" subtitle="Manage your company's visual identifiers for official invoices and quotations.">
+              <div className="form-grid">
+                <div className="branding-upload-grid">
+                  <div className="branding-item">
+                    <IonLabel>Company logo</IonLabel>
+                    <div className="asset-preview">
+                      {state.businessProfile.logoUrl ? <img src={state.businessProfile.logoUrl} alt="Logo" /> : <p>No logo</p>}
+                    </div>
+                    <input type="file" hidden id="logo-input" accept="image/*" onChange={(e) => e.target.files?.[0] && handleBrandingUpload('logo', e.target.files[0])} />
+                    <IonButton fill="outline" size="small" onClick={() => document.getElementById('logo-input')?.click()}>Upload Logo</IonButton>
+                  </div>
+                  <div className="branding-item">
+                    <IonLabel>Owner signature</IonLabel>
+                    <div className="asset-preview signature">
+                      {state.businessProfile.signatureUrl ? <img src={state.businessProfile.signatureUrl} alt="Signature" /> : <p>No signature</p>}
+                    </div>
+                    <input type="file" hidden id="sig-input" accept="image/*" onChange={(e) => e.target.files?.[0] && handleBrandingUpload('signature', e.target.files[0])} />
+                    <IonButton fill="outline" size="small" onClick={() => document.getElementById('sig-input')?.click()}>Upload Signature</IonButton>
+                  </div>
+                </div>
+                {brandingMessage && <p className="form-message">{brandingMessage}</p>}
+              </div>
+            </SectionCard>
+          )}
+
+          {hasPermission('restockRequests.manage') && state.restockRequests.length > 0 && (
+            <SectionCard title="Restock requests queue" subtitle="Review and fulfill inventory replenishment requests from your Sales Managers.">
+              <div className="list-block">
+                {state.restockRequests.map(req => (
+                  <div className="list-row" key={req.id}>
+                    <div>
+                      <strong>{req.productName} ({req.requestedQuantity})</strong>
+                      <p>By {req.requestedByName} • {req.urgency} urgency</p>
+                      <p>QOH: {req.currentQuantity} • Note: {req.note || 'None'}</p>
+                      <p>Status: <span className={req.status === 'Pending' ? 'warning-text' : 'primary-text'}>{req.status}</span></p>
+                    </div>
+                    {req.status === 'Pending' && (
+                      <div className="action-stack">
+                        <IonButton size="small" color="success" onClick={() => handleReviewRequest(req.id, 'Approved', 'Stocking soon')}>Approve</IonButton>
+                        <IonButton size="small" color="danger" onClick={() => handleReviewRequest(req.id, 'Rejected', 'Not needed now')}>Reject</IonButton>
+                      </div>
+                    )}
+                    {req.status === 'Approved' && (
+                      <IonButton size="small" color="primary" onClick={() => handleReviewRequest(req.id, 'Fulfilled', 'Stock added')}>Mark Fulfilled</IonButton>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          )}
+
           <SectionCard
             title="Product roadmap"
             subtitle="This stays as a quick local reminder of the current BizPilot implementation milestones."
@@ -387,6 +475,14 @@ const SettingsPage: React.FC = () => {
         color="success"
         position="top"
         onDidDismiss={() => setShowSuccessToast(false)}
+      />
+      <IonToast
+        isOpen={showBrandingToast}
+        message="Brand identity updated successfully."
+        duration={1800}
+        color="success"
+        position="top"
+        onDidDismiss={() => setShowBrandingToast(false)}
       />
     </IonPage>
   );

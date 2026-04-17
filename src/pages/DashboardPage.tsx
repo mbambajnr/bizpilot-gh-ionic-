@@ -102,7 +102,7 @@ const DashboardPage: React.FC = () => {
 
           <SectionCard
             title="Attention needed"
-            subtitle="A quick view of unpaid balances and stock pressure that may need owner follow-up."
+            subtitle="A quick view of unpaid balances, stock pressure, and pending requests needing follow-up."
           >
             <div className="dual-stat">
               <div>
@@ -114,6 +114,15 @@ const DashboardPage: React.FC = () => {
                 <h3>{metrics.lowStockCount}</h3>
               </div>
             </div>
+            {state.restockRequests && state.restockRequests.filter(r => r.status === 'Pending').length > 0 && (
+              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                <p className="muted-label">Pending restock requests</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 className="warning-text">{state.restockRequests.filter(r => r.status === 'Pending').length}</h3>
+                  <p className="muted-label">awaiting review</p>
+                </div>
+              </div>
+            )}
           </SectionCard>
 
           <SectionCard
