@@ -13,6 +13,8 @@ import {
   IonToolbar,
   IonToggle,
   IonChip,
+  IonSegment,
+  IonSegmentButton,
 } from '@ionic/react';
 import { useEffect, useState } from 'react';
 import { resizeImage } from '../utils/imageUtils';
@@ -26,7 +28,7 @@ import { RestockRequestStatus } from '../data/seedBusiness';
 
 const SettingsPage: React.FC = () => {
   const { user, businessBootstrapStatus, signOut } = useAuth();
-  const { state, currentUser, backendStatus, updateBusinessProfile, switchUser, updateUserPermissions, updateUserProfile, hasPermission, reviewRestockRequest, updateBranding } = useBusiness();
+  const { state, currentUser, backendStatus, updateBusinessProfile, switchUser, updateUserPermissions, updateUserProfile, hasPermission, reviewRestockRequest, updateBranding, updateThemePreference } = useBusiness();
   
   const [businessName, setBusinessName] = useState(state.businessProfile.businessName);
   const [businessType, setBusinessType] = useState(state.businessProfile.businessType);
@@ -231,22 +233,47 @@ const SettingsPage: React.FC = () => {
             </div>
           </SectionCard>
 
-            <SectionCard
-               title="Demo access"
-               subtitle="Switch between identities to test Role-Based Access Control and permission gating."
-             >
-               <div className="tab-group" style={{ padding: '4px' }}>
-                  {state.users.map((u) => (
-                    <IonChip
-                      key={u.userId}
-                      color={state.currentUserId === u.userId ? 'primary' : 'medium'}
-                      onClick={() => switchUser(u.userId)}
-                    >
-                      <IonLabel>{u.name} ({u.role})</IonLabel>
-                    </IonChip>
-                  ))}
-               </div>
-             </SectionCard>
+          <SectionCard
+            title="Demo access"
+            subtitle="Switch between identities to test Role-Based Access Control and permission gating."
+          >
+            <div className="tab-group" style={{ padding: '4px' }}>
+              {state.users.map((u) => (
+                <IonChip
+                  key={u.userId}
+                  color={state.currentUserId === u.userId ? 'primary' : 'medium'}
+                  onClick={() => switchUser(u.userId)}
+                >
+                  <IonLabel>
+                    {u.name} ({u.role})
+                  </IonLabel>
+                </IonChip>
+              ))}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Appearance"
+            subtitle="Choose how BizPilot looks for you. Light mode can improve readability in bright environments."
+          >
+            <div className="form-grid" style={{ paddingTop: '8px' }}>
+              <IonSegment
+                value={state.themePreference}
+                onIonChange={(e) => updateThemePreference(e.detail.value as 'system' | 'light' | 'dark')}
+                className="app-segment"
+              >
+                <IonSegmentButton value="system">
+                  <IonLabel>System</IonLabel>
+                </IonSegmentButton>
+                <IonSegmentButton value="light">
+                  <IonLabel>Light</IonLabel>
+                </IonSegmentButton>
+                <IonSegmentButton value="dark">
+                  <IonLabel>Dark</IonLabel>
+                </IonSegmentButton>
+              </IonSegment>
+            </div>
+          </SectionCard>
 
            {hasPermission('permissions.manage') && (
              <SectionCard

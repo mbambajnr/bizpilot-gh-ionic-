@@ -187,6 +187,7 @@ export type BusinessState = {
   currentUserId: string;
   restockRequests: RestockRequest[];
   expenses: Expense[];
+  themePreference: 'system' | 'light' | 'dark';
 };
 
 const now = new Date();
@@ -301,9 +302,9 @@ export const seedState: BusinessState = {
   currentUserId: 'u-admin',
   restockRequests: [],
   expenses: [
-    { id: 'exp-1', category: 'Rent', amount: 500, note: 'Monthly shop rent', createdAt: isoDaysAgoAt(5, 10, 0), recordedByUserId: 'u-admin', recordedByName: 'Admin User' },
     { id: 'exp-2', category: 'Utility', amount: 85, note: 'Electricity bill', createdAt: isoDaysAgoAt(2, 16, 30), recordedByUserId: 'u-admin', recordedByName: 'Admin User' },
   ],
+  themePreference: 'system',
 };
 
 export const priorityQuestions = [

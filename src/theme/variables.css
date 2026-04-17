@@ -1,43 +1,7 @@
 :root {
   --ion-font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif;
-  
-  /* Hierarchy: Page > Card > Modal / Elevated > Input */
-  
-  /* 1. Page Background (Darkest) */
-  --ion-background-color: #111827;
-  --ion-background-color-rgb: 17, 24, 39;
-  
-  /* 2. Card Background */
-  --surface-card: #1B2430;
-  --surface-card-rgb: 27, 36, 48;
-  
-  /* 3. Modal / Elevated Surface (Top of hierarchy) */
-  --surface-modal: #2B3645;
-  --surface-modal-rgb: 43, 54, 69;
-  --surface-modal-row: #344152;
-  --surface-modal-input: #3A4657;
-  --surface-elevated: #243041;
-  
-  /* 4. Input Background (Brightest surface) */
-  --surface-input: #2A3441;
-  --surface-input-rgb: 42, 52, 65;
-  
-  /* Borders */
-  --border-subtle: #2D3748;
-  --border-strong: #3A4657;
-  --border-modal: #465468;
-  --focus-ring: #4A5568;
 
-  /* Text Contrast */
-  --ion-text-color: #F8FAFC;
-  --ion-text-color-rgb: 248, 250, 252;
-  --text-secondary: #CBD5E1;
-  --text-secondary-modal: #D6DEE8;
-  --text-muted: #94A3B8;
-  --text-muted-modal: #A8B4C3;
-  --text-disabled: #64748B;
-  
-  /* Brand Identity (Restrained Green) */
+  /* Brand Identity (Consistent across themes) */
   --ion-color-primary: #2F855A;
   --ion-color-primary-rgb: 47, 133, 90;
   --ion-color-primary-contrast: #FFFFFF;
@@ -45,22 +9,13 @@
   --ion-color-primary-shade: #276749;
   --ion-color-primary-tint: #38A169;
 
-  /* Secondary / Accent (Restrained Gold) */
   --accent-gold: #C89B3C;
   --accent-gold-rgb: 200, 155, 60;
   --ion-color-secondary: #C89B3C;
 
-  /* Ionic Mapping Overrides */
-  --ion-card-background: var(--surface-card);
-  --ion-toolbar-background: var(--ion-background-color);
-  --ion-tab-bar-background: var(--surface-card);
-  --ion-item-background: var(--surface-card);
-  --ion-item-color: var(--ion-text-color);
-  --ion-border-color: var(--border-subtle);
-
   /* Semantic Status Colors */
-  --ion-color-success: #38A169;
-  --ion-color-success-rgb: 56, 161, 105;
+  --ion-color-success: #2F855A;
+  --ion-color-success-rgb: 47, 133, 90;
   
   --ion-color-warning: #D69E2E;
   --ion-color-warning-rgb: 214, 158, 46;
@@ -70,8 +25,98 @@
   
   --ion-color-info: #3182CE;
   --ion-color-info-rgb: 49, 130, 206;
+}
 
-  /* Progressive Steps for backgrounds and gradients */
+/* Light Mode Tokens */
+body.light,
+body[data-theme="light"] {
+  --ion-background-color: #F4F7FB;
+  --ion-background-color-rgb: 244, 247, 251;
+
+  --surface-card: #FFFFFF;
+  --surface-card-rgb: 255, 255, 255;
+  --surface-elevated: #F8FAFC;
+  --surface-modal: #FFFFFF;
+  --surface-modal-row: #F8FAFC;
+  --surface-modal-input: #FFFFFF;
+  --surface-input: #FFFFFF;
+
+  --border-subtle: #E2E8F0;
+  --border-strong: #D7E0EA;
+  --border-modal: #CBD5E1;
+  --focus-ring: #2F855A;
+
+  --ion-text-color: #0F172A;
+  --ion-text-color-rgb: 15, 23, 42;
+  --text-secondary: #334155;
+  --text-secondary-modal: #1E293B;
+  --text-muted: #64748B;
+  --text-muted-modal: #475569;
+  --text-disabled: #94A3B8;
+
+  --ion-card-background: var(--surface-card);
+  --ion-toolbar-background: #FFFFFF;
+  --ion-tab-bar-background: #FFFFFF;
+  --ion-item-background: var(--surface-card);
+  --ion-item-color: var(--ion-text-color);
+  --ion-border-color: var(--border-subtle);
+
+  --ion-color-step-50: #f0f2f5;
+  --ion-color-step-100: #e6e9ee;
+  --ion-color-step-150: #dce1e7;
+  --ion-color-step-200: #d2d8e0;
+  --ion-color-step-250: #c8cfe9;
+  --ion-color-step-300: #bec7d2;
+  --ion-color-step-350: #b4bdcb;
+  --ion-color-step-400: #aab4c4;
+  --ion-color-step-450: #a0aabd;
+  --ion-color-step-500: #96a1b6;
+  --ion-color-step-550: #8c97af;
+  --ion-color-step-600: #828ea8;
+  --ion-color-step-650: #7884a1;
+  --ion-color-step-700: #6e7ba0;
+  --ion-color-step-750: #647199;
+  --ion-color-step-800: #5a6792;
+  --ion-color-step-850: #505c8b;
+  --ion-color-step-900: #465284;
+  --ion-color-step-950: #3c487d;
+}
+
+/* Dark Mode Tokens (Default or Active) */
+body.dark,
+body[data-theme="dark"] {
+  --ion-background-color: #111827;
+  --ion-background-color-rgb: 17, 24, 39;
+
+  --surface-card: #1B2430;
+  --surface-card-rgb: 27, 36, 48;
+  --surface-modal: #2B3645;
+  --surface-modal-rgb: 43, 54, 69;
+  --surface-modal-row: #344152;
+  --surface-modal-input: #3A4657;
+  --surface-elevated: #243041;
+  --surface-input: #2A3441;
+
+  --border-subtle: #2D3748;
+  --border-strong: #3A4657;
+  --border-modal: #465468;
+  --focus-ring: #4A5568;
+
+  --ion-text-color: #F8FAFC;
+  --ion-text-color-rgb: 248, 250, 252;
+  --text-secondary: #CBD5E1;
+  --text-secondary-modal: #D6DEE8;
+  --text-muted: #94A3B8;
+  --text-muted-modal: #A8B4C3;
+  --text-disabled: #64748B;
+
+  --ion-card-background: var(--surface-card);
+  --ion-toolbar-background: var(--ion-background-color);
+  --ion-tab-bar-background: var(--surface-card);
+  --ion-item-background: var(--surface-card);
+  --ion-item-color: var(--ion-text-color);
+  --ion-border-color: var(--border-subtle);
+
   --ion-color-step-50: #141d2d;
   --ion-color-step-100: #182233;
   --ion-color-step-150: #1c2738;
@@ -91,4 +136,17 @@
   --ion-color-step-850: #567188;
   --ion-color-step-900: #5a768d;
   --ion-color-step-950: #5e7b93;
+}
+
+/* System Default Support */
+@media (prefers-color-scheme: dark) {
+  body:not(.light) {
+    /* Implicitly dark if no light class is present and system says dark */
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  body:not(.dark) {
+    /* Support system-light if no dark class is present */
+  }
 }

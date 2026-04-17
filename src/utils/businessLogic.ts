@@ -478,6 +478,7 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     currentUserId: raw.currentUserId ?? seedState.currentUserId,
     restockRequests: raw.restockRequests ?? [],
     expenses: raw.expenses ?? [],
+    themePreference: raw.themePreference ?? 'system',
   };
 }
 

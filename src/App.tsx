@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Redirect, Route } from 'react-router-dom';
 import {
   IonApp,
@@ -38,14 +39,40 @@ import '@ionic/react/css/text-alignment.css';
 import '@ionic/react/css/text-transformation.css';
 import '@ionic/react/css/flex-utils.css';
 import '@ionic/react/css/display.css';
-import '@ionic/react/css/palettes/dark.system.css';
-
 import './theme/variables.css';
 import './theme/app.css';
 
 setupIonicReact({
   mode: 'ios',
 });
+
+function ThemeManager() {
+  const { state } = useBusiness();
+  const theme = state.themePreference;
+
+  useEffect(() => {
+    const applyTheme = (resolved: 'light' | 'dark') => {
+      document.body.classList.remove('light', 'dark');
+      document.body.classList.add(resolved);
+      document.body.setAttribute('data-theme', resolved);
+    };
+
+    if (theme === 'system') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+      applyTheme(prefersDark.matches ? 'dark' : 'light');
+
+      const handler = (e: MediaQueryListEvent) => {
+        applyTheme(e.matches ? 'dark' : 'light');
+      };
+      prefersDark.addEventListener('change', handler);
+      return () => prefersDark.removeEventListener('change', handler);
+    } else {
+      applyTheme(theme);
+    }
+  }, [theme]);
+
+  return null;
+}
 
 function LoadingScreen({ message }: { message: string }) {
   return (
@@ -171,6 +198,7 @@ function AuthGate() {
 
   return (
     <BusinessProvider>
+      <ThemeManager />
       <AppShell />
     </BusinessProvider>
   );

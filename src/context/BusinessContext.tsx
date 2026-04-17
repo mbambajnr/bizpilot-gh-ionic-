@@ -97,6 +97,7 @@ type BusinessContextValue = {
   updateBranding: (input: { logoUrl?: string; signatureUrl?: string }) => ActionResult;
   hasPermission: (permission: AppPermission) => boolean;
   addExpense: (input: NewExpenseInput) => ActionResult;
+  updateThemePreference: (theme: 'system' | 'light' | 'dark') => void;
 };
 
 const BusinessContext = createContext<BusinessContextValue | null>(null);
@@ -420,6 +421,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         if (!result.data) return { ok: false, message: 'Failed to update state with expense.' };
         setState(result.data);
         return { ok: true };
+      },
+      updateThemePreference(theme) {
+        setState((prev) => ({ ...prev, themePreference: theme }));
       },
     }),
     [backendStatus, state, currentUser]
