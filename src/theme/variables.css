@@ -11,9 +11,11 @@
   --surface-card: #1B2430;
   --surface-card-rgb: 27, 36, 48;
   
-  /* 3. Modal / Elevated Surface */
-  --surface-modal: #243041;
-  --surface-modal-rgb: 36, 48, 65;
+  /* 3. Modal / Elevated Surface (Top of hierarchy) */
+  --surface-modal: #2B3645;
+  --surface-modal-rgb: 43, 54, 69;
+  --surface-modal-row: #344152;
+  --surface-modal-input: #3A4657;
   --surface-elevated: #243041;
   
   /* 4. Input Background (Brightest surface) */
@@ -23,13 +25,16 @@
   /* Borders */
   --border-subtle: #2D3748;
   --border-strong: #3A4657;
+  --border-modal: #465468;
   --focus-ring: #4A5568;
 
   /* Text Contrast */
   --ion-text-color: #F8FAFC;
   --ion-text-color-rgb: 248, 250, 252;
   --text-secondary: #CBD5E1;
+  --text-secondary-modal: #D6DEE8;
   --text-muted: #94A3B8;
+  --text-muted-modal: #A8B4C3;
   --text-disabled: #64748B;
   
   /* Brand Identity (Restrained Green) */

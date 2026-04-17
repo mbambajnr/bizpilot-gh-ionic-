@@ -95,7 +95,7 @@ const SearchablePicker: React.FC<SearchablePickerProps> = ({
                     slot="start"
                     src={item.image}
                     alt={item.title}
-                    style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover' }}
+                    style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }}
                   />
                 )}
                 <IonLabel>

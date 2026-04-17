@@ -396,30 +396,58 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+ion-modal {
+  --border-radius: 20px;
+  --box-shadow: 0 32px 64px rgba(0,0,0,0.6);
+  border: 1px solid var(--border-modal);
+}
+
 ion-modal ion-toolbar {
   --background: var(--surface-modal);
   --color: var(--ion-text-color);
-  --border-color: var(--border-strong);
+  --border-color: var(--border-modal);
 }
 
 ion-modal ion-content {
   --background: var(--surface-modal);
   --color: var(--ion-text-color);
+  padding: 8px;
 }
 
 ion-modal ion-item {
-  --background: transparent;
+  --background: var(--surface-modal-row);
   --color: var(--ion-text-color);
-  --border-color: var(--border-strong);
+  --border-color: var(--border-modal);
+  --padding-start: 16px;
+  --inner-padding-end: 16px;
+  margin: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+ion-modal ion-item::part(native) {
+  border-radius: 12px;
+}
+
+ion-modal ion-label h2 {
+  color: var(--ion-text-color);
+  font-weight: 700;
+}
+
+ion-modal ion-label p {
+  color: var(--text-secondary-modal);
 }
 
 ion-modal ion-searchbar {
-  --background: var(--surface-input);
+  --background: var(--surface-modal-input);
   --color: var(--ion-text-color);
-  --placeholder-color: var(--text-muted);
-  --icon-color: var(--text-muted);
-  --border-radius: 8px;
-  border: 1px solid var(--border-strong);
+  --placeholder-color: var(--text-muted-modal);
+  --icon-color: var(--text-muted-modal);
+  --border-radius: 10px;
+  margin: 12px;
+  width: calc(100% - 24px);
+  border: 1px solid var(--border-modal);
 }
 
 .sync-line {
