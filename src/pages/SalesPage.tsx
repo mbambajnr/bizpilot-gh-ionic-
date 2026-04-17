@@ -15,9 +15,12 @@ import {
   IonToolbar,
   IonTitle,
   IonSearchbar,
+  IonRefresher,
+  IonRefresherContent,
 } from '@ionic/react';
 import { useEffect, useMemo, useState } from 'react';
 import { useHistory, useLocation } from 'react-router-dom';
+import { chevronDownCircleOutline } from 'ionicons/icons';
 
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
@@ -254,6 +257,12 @@ const SalesPage: React.FC = () => {
     setFormMessage('');
   };
 
+    const handleRefresh = (event: CustomEvent) => {
+    setTimeout(() => {
+      event.detail.complete();
+    }, 1500);
+  };
+
   return (
     <IonPage>
       <IonHeader translucent={true}>
@@ -262,6 +271,12 @@ const SalesPage: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>
+        <IonRefresher slot="fixed" onIonRefresh={handleRefresh}>
+          <IonRefresherContent 
+            pullingIcon={chevronDownCircleOutline}
+            refreshingSpinner="circles"
+          />
+        </IonRefresher>
         <div className="page-shell" data-testid="sales-page">
           <SectionCard title="Record a sale" subtitle="Capture the buyer, item sold, quantity, and whether payment came by cash or mobile money.">
             {canRecordSale ? (

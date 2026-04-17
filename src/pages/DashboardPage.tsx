@@ -6,7 +6,10 @@ import {
   IonText,
   IonTitle,
   IonToolbar,
+  IonRefresher,
+  IonRefresherContent,
 } from '@ionic/react';
+import { chevronDownCircleOutline } from 'ionicons/icons';
 
 import SectionCard from '../components/SectionCard';
 import RevenueChart from '../components/RevenueChart';
@@ -31,6 +34,12 @@ const DashboardPage: React.FC = () => {
   const lastActivity = selectActivityFeed(state)[0];
   const currency = state.businessProfile.currency;
 
+  const handleRefresh = (event: CustomEvent) => {
+    setTimeout(() => {
+      event.detail.complete();
+    }, 1500);
+  };
+
   return (
     <IonPage>
       <IonHeader translucent={true}>
@@ -39,29 +48,60 @@ const DashboardPage: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>
+        <IonRefresher slot="fixed" onIonRefresh={handleRefresh}>
+          <IonRefresherContent 
+            pullingIcon={chevronDownCircleOutline}
+            refreshingSpinner="circles"
+          />
+        </IonRefresher>
         <div className="page-shell" data-testid="dashboard-page">
-          <section className="hero-card">
-            <p className="eyebrow">Business health</p>
-            <h1>Run your shop with clarity.</h1>
-            <p className="hero-copy">
-              Dashboard totals now come from recorded sales, customer ledger entries, and stock movement history stored in this app.
-            </p>
+          <section className="hero-card glass-surface">
+            <div className="analytics-headline">
+              <div>
+                <p className="eyebrow">Business overview</p>
+                <h1>Pulse of your operations.</h1>
+                <p className="hero-copy">
+                  Real-time metrics calculated from your secure local-first transaction history.
+                </p>
+              </div>
+              <div className="status-pulse-wrap">
+                <div className="pulse-dot"></div>
+                <span>Active</span>
+              </div>
+            </div>
+            
             <div className="sync-line">
-              <IonBadge color="success">Local-first</IonBadge>
-              <IonText>
-                Last activity {lastActivity ? formatRelativeDate(lastActivity.createdAt) : 'waiting for first business event'}
+              <IonBadge color="success" mode="ios">Local Secured</IonBadge>
+              <IonText color="medium">
+                Last activity {lastActivity ? formatRelativeDate(lastActivity.createdAt) : 'Ready'}
               </IonText>
             </div>
           </section>
 
           <section className="stats-grid">
-            <StatCard label="Sales today" value={formatCurrency(metrics.salesToday, currency)} helper={`${metrics.activeSales.filter((sale) => new Date(sale.createdAt).toDateString() === new Date().toDateString()).length} transactions`} />
-            <StatCard label="Cash in hand" value={formatCurrency(metrics.cashInHand, currency)} helper="Received today" />
-            <StatCard label="MoMo received" value={formatCurrency(metrics.mobileMoneyReceived, currency)} helper="Received today" />
+            <StatCard 
+              label="Sales today" 
+              value={formatCurrency(metrics.salesToday, currency)} 
+              helper={`${metrics.activeSales.filter((sale) => new Date(sale.createdAt).toDateString() === new Date().toDateString()).length} txns`}
+              className="float-effect"
+            />
+            <StatCard 
+              label="Vault (Cash)" 
+              value={formatCurrency(metrics.cashInHand, currency)} 
+              helper="Today's floor" 
+              className="float-effect"
+            />
+            <StatCard 
+              label="MoMo Bank" 
+              value={formatCurrency(metrics.mobileMoneyReceived, currency)} 
+              helper="Digital total" 
+              className="float-effect"
+            />
             <StatCard
-              label="Receivables"
+              label="To Collect"
               value={formatCurrency(metrics.receivables, currency)}
-              helper={metrics.customersOwingCount > 0 ? `${metrics.customersOwingCount} customers still owe` : 'All tracked customers are settled'}
+              helper={metrics.customersOwingCount > 0 ? `${metrics.customersOwingCount} clients owing` : 'Clear balance'}
+              className="float-effect"
             />
           </section>
 

@@ -12,7 +12,10 @@ import {
   IonToast,
   IonToolbar,
   IonSearchbar,
+  IonRefresher,
+  IonRefresherContent,
 } from '@ionic/react';
+import { chevronDownCircleOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useHistory } from 'react-router-dom';
 
@@ -228,6 +231,12 @@ const QuotationsPage: React.FC = () => {
     setConversionFormMessage('');
   };
 
+  const handleRefresh = (event: CustomEvent) => {
+    setTimeout(() => {
+      event.detail.complete();
+    }, 1500);
+  };
+
   return (
     <IonPage>
       <IonHeader translucent={true}>
@@ -236,6 +245,12 @@ const QuotationsPage: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>
+        <IonRefresher slot="fixed" onIonRefresh={handleRefresh}>
+          <IonRefresherContent 
+            pullingIcon={chevronDownCircleOutline}
+            refreshingSpinner="circles"
+          />
+        </IonRefresher>
         <div className="page-shell">
           <SectionCard
             title="Create quotation"
