@@ -4,7 +4,7 @@ BizPilot Product Requirements Document (Final Product)
 1\. Product Name  
 **BizPilot**  
 2\. Product Vision  
-BizPilot is a mobile-first business operating system for small and growing businesses in Africa, starting with Ghana, designed to help merchants, retailers, distributors, and service-led SMEs manage sales, inventory, customer balances, quotations, payments, receipts, and operational visibility from one simple platform.  
+BizPilot is a mobile-first business operating system for your scaling partner in Africa, starting with Ghana, designed to help merchants, retailers, distributors, and service-led SMEs manage sales, inventory, customer balances, quotations, payments, receipts, and operational visibility from one simple platform.  
 BizPilot is built to give small businesses the structure of an ERP without the complexity of enterprise software.  
 3\. Product Mission  
 Enable African small businesses to run daily operations with confidence using a simple, fast, mobile-first system that tracks stock, sales, receivables, payments, and business performance in real time.  
@@ -544,7 +544,7 @@ Phase 4 — Regional product scale
 ───  
 16\. Strategic Product Positioning  
 BizPilot should be positioned as:  
-**“The mobile-first business operating system for African SMEs.”**  
+**“Your scaling partner for African SMEs.”**  
 Not:  
 • just an invoicing app  
 • just a stock app  

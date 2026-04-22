@@ -3,13 +3,23 @@ import {
   IonContent,
   IonHeader,
   IonPage,
+  IonSegment,
+  IonSegmentButton,
   IonText,
   IonTitle,
   IonToolbar,
   IonRefresher,
   IonRefresherContent,
+  IonSpinner,
 } from '@ionic/react';
-import { chevronDownCircleOutline } from 'ionicons/icons';
+import { useState } from 'react';
+import { useHistory } from 'react-router-dom';
+import { 
+  chevronDownCircleOutline, 
+  cartOutline, 
+  documentTextOutline 
+} from 'ionicons/icons';
+import { IonIcon } from '@ionic/react';
 
 import SectionCard from '../components/SectionCard';
 import RevenueChart from '../components/RevenueChart';
@@ -17,19 +27,33 @@ import StatCard from '../components/StatCard';
 import { useBusiness } from '../context/BusinessContext';
 import { formatCurrency, formatRelativeDate } from '../utils/format';
 import {
+  type RevenueTrendPoint,
   selectActivityFeed,
   selectDashboardMetrics,
   selectProductById,
   selectSaleBalanceRemaining,
 } from '../selectors/businessSelectors';
 
+type TrendPeriod = 'weekly' | 'monthly' | 'annual';
+
 const DashboardPage: React.FC = () => {
-  const { state, priorityQuestions } = useBusiness();
+  const history = useHistory();
+  const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('weekly');
+  const { state, priorityQuestions, backendStatus } = useBusiness();
   const metrics = selectDashboardMetrics(state);
-  const weekRevenue = metrics.weeklyRevenueTrend.reduce((sum, point) => sum + point.value, 0);
-  const bestDay = metrics.weeklyRevenueTrend.reduce(
+  const trendPoints: RevenueTrendPoint[] =
+    trendPeriod === 'annual'
+      ? metrics.annualRevenueTrend
+      : trendPeriod === 'monthly'
+        ? metrics.monthlyRevenueTrend
+        : metrics.weeklyRevenueTrend;
+  const trendTotal = trendPoints.reduce((sum, point) => sum + point.value, 0);
+  const averageTrendValue = trendPoints.length
+    ? trendTotal / trendPoints.length
+    : 0;
+  const bestTrendPoint = trendPoints.reduce(
     (current, point) => (point.value > current.value ? point : current),
-    metrics.weeklyRevenueTrend[0]
+    trendPoints[0]
   );
   const lastActivity = selectActivityFeed(state)[0];
   const currency = state.businessProfile.currency;
@@ -72,6 +96,14 @@ const DashboardPage: React.FC = () => {
             
             <div className="sync-line">
               <IonBadge color="success" mode="ios">Local Secured</IonBadge>
+              {backendStatus.loading ? (
+                <IonBadge color="primary" mode="ios" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <IonSpinner name="dots" style={{ width: '14px', height: '14px' }} color="light" />
+                  Syncing
+                </IonBadge>
+              ) : backendStatus.source === 'supabase' && (
+                <IonBadge color="secondary" mode="ios">Cloud Active</IonBadge>
+              )}
               <IonText color="medium">
                 Last activity {lastActivity ? formatRelativeDate(lastActivity.createdAt) : 'Ready'}
               </IonText>
@@ -82,26 +114,30 @@ const DashboardPage: React.FC = () => {
             <StatCard 
               label="Sales today" 
               value={formatCurrency(metrics.salesToday, currency)} 
-              helper={`${metrics.activeSales.filter((sale) => new Date(sale.createdAt).toDateString() === new Date().toDateString()).length} txns`}
+              helper={(count => `${count} ${count === 1 ? 'sale' : 'sales'}`)(metrics.activeSales.filter((sale) => new Date(sale.createdAt).toDateString() === new Date().toDateString()).length)}
               className="float-effect"
+              onClick={() => history.push('/sales')}
             />
             <StatCard 
               label="Vault (Cash)" 
               value={formatCurrency(metrics.cashInHand, currency)} 
               helper="Today's floor" 
               className="float-effect"
+              onClick={() => history.push('/accounting')}
             />
             <StatCard 
               label="MoMo Bank" 
               value={formatCurrency(metrics.mobileMoneyReceived, currency)} 
               helper="Digital total" 
               className="float-effect"
+              onClick={() => history.push('/accounting')}
             />
             <StatCard
               label="To Collect"
               value={formatCurrency(metrics.receivables, currency)}
               helper={metrics.customersOwingCount > 0 ? `${metrics.customersOwingCount} clients owing` : 'Clear balance'}
               className="float-effect"
+              onClick={() => history.push('/customers')}
             />
           </section>
 
@@ -144,14 +180,10 @@ const DashboardPage: React.FC = () => {
             title="Attention needed"
             subtitle="A quick view of unpaid balances, stock pressure, and pending requests needing follow-up."
           >
-            <div className="dual-stat">
+            <div className={`stats-row ${metrics.customersOwingCount > 0 ? 'warning-bg' : ''}`} style={{ padding: '16px', borderRadius: '12px', background: metrics.customersOwingCount > 0 ? 'rgba(255, 196, 0, 0.05)' : 'rgba(0,0,0,0.03)' }}>
               <div>
                 <p className="muted-label">Customers owing</p>
-                <h3>{metrics.customersOwingCount}</h3>
-              </div>
-              <div>
-                <p className="muted-label">Low-stock items</p>
-                <h3>{metrics.lowStockCount}</h3>
+                <h3 className={metrics.customersOwingCount > 0 ? 'warning-text' : ''}>{metrics.customersOwingCount}</h3>
               </div>
             </div>
             {state.restockRequests && state.restockRequests.filter(r => r.status === 'Pending').length > 0 && (
@@ -166,20 +198,35 @@ const DashboardPage: React.FC = () => {
           </SectionCard>
 
           <SectionCard
-            title="Revenue analytics"
-            subtitle="A rolling seven-day view of revenue from active invoice records."
+            title="Weekly sales"
+            subtitle="A clean seven-day sales view built for quick comparisons and daily decision-making."
           >
-            <div className="analytics-headline">
-              <div>
-                <p className="muted-label">This week</p>
-                <h3>{formatCurrency(weekRevenue, currency)}</h3>
+            <IonSegment value={trendPeriod} onIonChange={(event) => setTrendPeriod(event.detail.value as TrendPeriod)}>
+              <IonSegmentButton value="weekly">Weekly</IonSegmentButton>
+              <IonSegmentButton value="monthly">Monthly</IonSegmentButton>
+              <IonSegmentButton value="annual">Annual</IonSegmentButton>
+            </IonSegment>
+            <div className="revenue-summary-row">
+              <div className="revenue-summary-card">
+                <p className="muted-label">
+                  {trendPeriod === 'weekly' ? 'Total sales this week' : trendPeriod === 'monthly' ? 'Total sales this month' : 'Total sales this year'}
+                </p>
+                <h3>{formatCurrency(trendTotal, currency)}</h3>
               </div>
-              <div className="right-meta">
-                <p className="muted-label">Best day</p>
-                <h3>{bestDay ? `${bestDay.label} · ${formatCurrency(bestDay.value, currency)}` : formatCurrency(0, currency)}</h3>
+              <div className="revenue-summary-card">
+                <p className="muted-label">
+                  {trendPeriod === 'annual' ? 'Best month' : trendPeriod === 'monthly' ? 'Best week' : 'Best day'}
+                </p>
+                <h3>{bestTrendPoint ? `${bestTrendPoint.label} · ${formatCurrency(bestTrendPoint.value, currency)}` : formatCurrency(0, currency)}</h3>
+              </div>
+              <div className="revenue-summary-card">
+                <p className="muted-label">
+                  {trendPeriod === 'annual' ? 'Average per month' : trendPeriod === 'monthly' ? 'Average per week' : 'Average per day'}
+                </p>
+                <h3>{formatCurrency(averageTrendValue, currency)}</h3>
               </div>
             </div>
-            <RevenueChart points={metrics.weeklyRevenueTrend} />
+            <RevenueChart points={trendPoints} currency={currency} />
           </SectionCard>
 
           <SectionCard
@@ -196,39 +243,6 @@ const DashboardPage: React.FC = () => {
             </div>
           </SectionCard>
 
-          <SectionCard
-            title="Products to restock"
-            subtitle="Items at or below their reorder point based on movement history, not manual counters."
-          >
-            {metrics.inventorySummaries.filter((item) => item.lowStock).length > 0 ? (
-              <div className="list-block">
-                {metrics.inventorySummaries
-                  .filter((item) => item.lowStock)
-                  .map((item) => (
-                    <div className="list-row" key={item.product.id}>
-                      <div>
-                        <strong>{item.product.name}</strong>
-                        <p className="code-label">{item.product.inventoryId}</p>
-                        <p>Reorder level {item.product.reorderLevel}</p>
-                      </div>
-                      <div className="right-meta">
-                        <strong className="warning-text">{item.stockStatusDisplay.label}</strong>
-                        <p>{item.quantityOnHand} left</p>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            ) : (
-              <div className="list-block">
-                <div className="list-row">
-                  <div>
-                    <strong>Stock levels look healthy</strong>
-                    <p>No products are currently at or below their reorder level.</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </SectionCard>
 
           <SectionCard
             title="Recent activity"
@@ -269,6 +283,21 @@ const DashboardPage: React.FC = () => {
                   </div>
                 </div>
               ) : null}
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Quick Actions" subtitle="Fast track your routine business operations.">
+            <div className="stats-grid">
+               <div className="stat-card" onClick={() => history.push('/sales')} style={{ cursor: 'pointer', textAlign: 'center' }}>
+                  <IonIcon icon={cartOutline} color="primary" style={{ fontSize: '2rem', marginBottom: '8px' }} />
+                  <h3 style={{ fontSize: '1.2rem', margin: '4px 0' }}>New Sale</h3>
+                  <p style={{ fontSize: '0.85rem' }}>Process transaction</p>
+               </div>
+               <div className="stat-card" onClick={() => history.push('/export/batch')} style={{ cursor: 'pointer', textAlign: 'center', border: '1px solid var(--ion-color-primary)' }}>
+                  <IonIcon icon={documentTextOutline} color="primary" style={{ fontSize: '2rem', marginBottom: '8px' }} />
+                  <h3 style={{ fontSize: '1.2rem', margin: '4px 0' }}>Batch Export</h3>
+                  <p style={{ fontSize: '0.85rem' }}>Document packs</p>
+               </div>
             </div>
           </SectionCard>
         </div>

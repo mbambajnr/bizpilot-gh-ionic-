@@ -42,8 +42,20 @@ function getAuthClient() {
 }
 
 export function AuthProvider({ children }: PropsWithChildren) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(() => {
+    const local = window.localStorage.getItem('bizpilot-local-session');
+    if (local) {
+      try {
+        return JSON.parse(local);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState(() => {
+    return !window.localStorage.getItem('bizpilot-local-session');
+  });
   const [businessBootstrapStatus, setBusinessBootstrapStatus] = useState<BusinessBootstrapStatus>({
     loading: false,
     ready: false,
@@ -70,7 +82,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         user: { 
           id: 'test-user', 
           email: 'test@example.com', 
-          user_metadata: { business_name: 'BizPilot GH Demo Shop' } 
+          user_metadata: { business_name: '' } 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any,
         access_token: 'fake-token',
@@ -111,6 +123,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
         setLoading(false);
       });
+
+      // Safety timeout: Never stay stuck on \"Checking session\" for more than 2s
+      setTimeout(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      }, 2000);
     }
 
     const { data: listener } = auth.onAuthStateChange((_event, nextSession) => {
@@ -162,7 +181,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setBusinessBootstrapStatus({
       loading: true,
       ready: false,
-      message: 'Preparing business profile for this owner.',
+      message: 'Syncing your business profile...',
     });
 
     async function bootstrapBusiness() {
@@ -171,28 +190,40 @@ export function AuthProvider({ children }: PropsWithChildren) {
           setBusinessBootstrapStatus({
             loading: false,
             ready: false,
-            message: 'Cloud sync timed out. Proceeding with local data.',
+            message: 'Starting with local data...',
           });
         }
-      }, 5500);
+      }, 2000);
 
-      const result = await ensureBusinessProfileForOwner({
-        ownerId: activeOwnerId,
-        email: ownerEmail,
-        businessName,
-      });
+      try {
+        const result = await ensureBusinessProfileForOwner({
+          ownerId: activeOwnerId,
+          email: ownerEmail,
+          businessName,
+        });
 
-      if (cancelled) {
+        if (cancelled) {
+          clearTimeout(timeoutId);
+          return;
+        }
+
         clearTimeout(timeoutId);
-        return;
+        setBusinessBootstrapStatus({
+          loading: false,
+          ready: result.status === 'ready',
+          message: result.message,
+        });
+      } catch (err: unknown) {
+        if (!cancelled) {
+          clearTimeout(timeoutId);
+          setBusinessBootstrapStatus({
+            loading: false,
+            ready: false,
+            message: 'We encountered a connection issue while preparing your cloud profile. Your local data is safe and ready to use.',
+          });
+          console.error('[Bootstrap] Failed to prepare business profile:', err);
+        }
       }
-
-      clearTimeout(timeoutId);
-      setBusinessBootstrapStatus({
-        loading: false,
-        ready: result.status === 'ready',
-        message: result.message,
-      });
     }
 
     void bootstrapBusiness();
@@ -215,8 +246,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (storedState) {
           try {
             const state = JSON.parse(storedState);
+            const matchedEmailUser = state.users.find((u: UserAccessProfile) =>
+              u.email.toLowerCase() === email.trim().toLowerCase()
+            );
+            if (matchedEmailUser && (matchedEmailUser.accountStatus ?? 'active') === 'deactivated') {
+              return { ok: false, message: 'This employee account has been deactivated. Ask an admin to reactivate it.' };
+            }
             const matchedUser = state.users.find((u: UserAccessProfile) => 
               u.email.toLowerCase() === email.trim().toLowerCase() && 
+              (u.accountStatus ?? 'active') !== 'deactivated' &&
               u.password === password
             );
 

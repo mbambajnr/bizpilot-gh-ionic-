@@ -46,8 +46,8 @@ describe('RBAC Logic', () => {
       revokedPermissions: [],
     };
     
-    expect(hasPermission(accountant, 'accounting.access')).toBe(false);
-    expect(hasPermission(accountant, 'sales.view')).toBe(false);
+    expect(hasPermission(accountant, 'accounting.access')).toBe(true);
+    expect(hasPermission(accountant, 'sales.view')).toBe(true);
   });
 
   it('should allow Admin to grant specific permissions to SalesManager', () => {

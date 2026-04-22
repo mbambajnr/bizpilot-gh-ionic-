@@ -17,6 +17,7 @@ import { useParams } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
 import { useBusiness } from '../context/BusinessContext';
+import DocumentHeader from '../components/DocumentHeader';
 import { selectQuotationStatusDisplay } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate } from '../utils/format';
 
@@ -61,8 +62,20 @@ const QuotationDetailPage: React.FC = () => {
   }
 
   const statusDisplay = selectQuotationStatusDisplay(quotation);
+  const canPrintQuotation = hasPermission('quotations.print');
+  const canExportQuotationPdf = hasPermission('quotations.export_pdf');
 
   const handlePrint = () => {
+    if (!canPrintQuotation) {
+      return;
+    }
+    window.print();
+  };
+
+  const handleExportPdf = () => {
+    if (!canExportQuotationPdf) {
+      return;
+    }
     window.print();
   };
 
@@ -74,31 +87,26 @@ const QuotationDetailPage: React.FC = () => {
             <IonBackButton defaultHref="/quotations" />
           </IonButtons>
           <IonTitle>Quotation Detail</IonTitle>
-          <IonButtons slot="end">
-            <IonButton onClick={handlePrint}>
-              <IonIcon slot="icon-only" icon={shareSocialOutline} />
-            </IonButton>
+          <IonButtons slot="end" className="toolbar-action-group">
+            {canPrintQuotation ? (
+              <IonButton onClick={handlePrint} className="toolbar-action-button" aria-label="Print Quotation">
+                <IonIcon slot="icon-only" icon={shareSocialOutline} />
+              </IonButton>
+            ) : null}
           </IonButtons>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>
         <div className="page-shell">
           <SectionCard title="Sales Quotation" subtitle="Official price estimate for goods or services. This document is valid for 7 days.">
-            <div className="list-block receipt-container">
-              <div className="receipt-header">
-                <div className="business-auth">
-                  {state.businessProfile.logoUrl && (
-                    <img src={state.businessProfile.logoUrl} alt="Logo" className="receipt-logo" />
-                  )}
-                  <h2>{state.businessProfile.businessName}</h2>
-                  <p>{state.businessProfile.country} • {state.businessProfile.phone}</p>
-                </div>
-                <div className="receipt-meta-box">
-                  <strong>{quotation.quotationNumber}</strong>
-                  <p>{formatReceiptDate(quotation.createdAt)}</p>
-                  <IonBadge color={statusDisplay.tone}>{statusDisplay.label}</IonBadge>
-                </div>
-              </div>
+            <div className="document-scroll-shell">
+              <div className="list-block receipt-container document-mobile-sheet">
+                <DocumentHeader 
+                  profile={state.businessProfile}
+                  type="Quotation"
+                  referenceNumber={quotation.quotationNumber}
+                  date={formatReceiptDate(quotation.createdAt)}
+                />
 
               <div className="receipt-divider" />
 
@@ -124,40 +132,46 @@ const QuotationDetailPage: React.FC = () => {
                   <span style={{ textAlign: 'right' }}>Total</span>
                 </div>
                 {quotation.items.map((item, idx) => (
-                  <div className="receipt-row" key={`${quotation.id}-item-${idx}`}>
-                    <div>
-                      <p style={{ margin: 0, fontWeight: '600' }}>{item.productName}</p>
-                      <p className="code-label" style={{ margin: 0 }}>{item.inventoryId}</p>
+                  <div className="receipt-row" key={`${quotation.id}-item-${idx}`} style={{ padding: '12px 0', borderBottom: '1px solid #eee' }}>
+                    <div style={{ flex: 2 }}>
+                      <p style={{ margin: '0 0 2px', fontWeight: '700', fontSize: '1rem' }}>{item.productName}</p>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: '#666', fontStyle: 'italic' }}>Ref: {item.inventoryId}</p>
                     </div>
-                    <div style={{ textAlign: 'center' }}>
+                    <div style={{ textAlign: 'center', flex: 0.5 }}>
                       <p style={{ margin: 0 }}>{item.quantity}</p>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ textAlign: 'right', flex: 1 }}>
                       <p style={{ margin: 0 }}>{formatCurrency(item.unitPrice, currency)}</p>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ textAlign: 'right', flex: 1 }}>
                       <strong style={{ margin: 0 }}>{formatCurrency(item.total, currency)}</strong>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="receipt-divider" />
-
-              <div className="receipt-footer">
-                <div className="footer-row grand-total">
-                  <p>Quotation Total</p>
-                  <p>{formatCurrency(quotation.totalAmount, currency)}</p>
+              <div className="receipt-summary" style={{ width: '100%', maxWidth: '300px' }}>
+                <div className="summary-line">
+                  <span>Subtotal</span>
+                  <strong>{formatCurrency(quotation.totalAmount, currency)}</strong>
                 </div>
-                <p className="payment-note" style={{ marginTop: '12px' }}>
-                  This is a formal quotation and not an invoice. Prices are subject to stock availability at the time of conversion.
+                <div className="summary-line highlight">
+                  <span>Quotation Total</span>
+                  <strong>{formatCurrency(quotation.totalAmount, currency)}</strong>
+                </div>
+              </div>
+
+              <div className="receipt-footer" style={{ marginTop: '32px' }}>
+                <p className="payment-note">
+                  This is a formal quotation and not an invoice. Prices are subject to stock availability at the time of conversion. This estimate is valid for 7 days.
                 </p>
                 {state.businessProfile.signatureUrl && (
-                  <div className="receipt-signature">
-                    <p className="muted-label">Authorized Signature</p>
-                    <img src={state.businessProfile.signatureUrl} alt="Signature" />
+                  <div className="receipt-signature" style={{ marginTop: '24px' }}>
+                    <p className="muted-label" style={{ fontSize: '0.7rem', textTransform: 'uppercase' }}>Authorized Signature</p>
+                    <img src={state.businessProfile.signatureUrl} alt="Signature" style={{ maxHeight: '60px', marginTop: '8px' }} />
                   </div>
                 )}
+              </div>
               </div>
             </div>
           </SectionCard>
@@ -171,7 +185,7 @@ const QuotationDetailPage: React.FC = () => {
                   </IonButton>
                 )}
                 {hasPermission('quotations.export_pdf') && (
-                  <IonButton fill="outline" expand="block" onClick={handlePrint}>
+                  <IonButton fill="outline" expand="block" onClick={handleExportPdf}>
                     Export PDF
                   </IonButton>
                 )}

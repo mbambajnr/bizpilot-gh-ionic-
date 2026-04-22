@@ -10,6 +10,8 @@
 
 # production
 /dist
+/out
+/BisaPilot*.mp4
 
 # accidental nested repos / local worktrees
 /bizpilot/
@@ -17,9 +19,14 @@
 # misc
 .DS_Store
 .env.local
+.env.server
 .env.development.local
 .env.test.local
 .env.production.local
+/server/data/
+/cypress/screenshots-mobile/
+/cypress/screenshots-mobile-after/
+/cypress/screenshots-mobile-docs-after/
 /.nx
 /.nx/cache
 /.vscode/*

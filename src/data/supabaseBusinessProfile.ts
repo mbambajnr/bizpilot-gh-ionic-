@@ -9,8 +9,13 @@ type BusinessProfileRow = {
   country: string;
   receipt_prefix: string;
   invoice_prefix: string;
+  waybill_prefix: string | null;
   phone: string | null;
   email: string | null;
+  logo_url: string | null;
+  signature_url: string | null;
+  address: string | null;
+  website: string | null;
 };
 
 export type BusinessProfileLoadResult =
@@ -38,6 +43,11 @@ function mapBusinessProfile(row: BusinessProfileRow): BusinessProfile {
     invoicePrefix: row.invoice_prefix,
     phone: row.phone ?? '',
     email: row.email ?? '',
+    address: row.address ?? '',
+    website: row.website ?? '',
+    logoUrl: row.logo_url ?? undefined,
+    signatureUrl: row.signature_url ?? undefined,
+    waybillPrefix: row.waybill_prefix ?? 'WAY-',
   };
 }
 
@@ -45,7 +55,7 @@ export async function loadBusinessProfileFromSupabase(ownerId?: string): Promise
   if (!hasSupabaseConfig) {
     return {
       status: 'skipped',
-      message: 'Supabase env vars are not configured, so BizPilot is using local business settings.',
+      message: 'Supabase env vars are not configured, so BisaPilot is using local business settings.',
     };
   }
 
@@ -68,13 +78,13 @@ export async function loadBusinessProfileFromSupabase(ownerId?: string): Promise
   if (!userId) {
     return {
       status: 'skipped',
-      message: 'No signed-in Supabase user yet, so BizPilot is using local business settings.',
+      message: 'No signed-in Supabase user yet, so BisaPilot is using local business settings.',
     };
   }
 
   const { data, error } = await supabase
     .from('businesses')
-    .select('id, business_name, business_type, currency, country, receipt_prefix, invoice_prefix, phone, email')
+    .select('id, business_name, business_type, currency, country, receipt_prefix, invoice_prefix, waybill_prefix, phone, email, logo_url, signature_url, address, website')
     .eq('owner_id', userId)
     .order('created_at', { ascending: true })
     .limit(1)
@@ -137,7 +147,7 @@ export async function ensureBusinessProfileForOwner(
   }
 
   const supabase = getSupabaseClient();
-  const fallbackName = input.businessName?.trim() || input.email?.split('@')[0] || 'BizPilot Business';
+  const fallbackName = input.businessName?.trim() || '';
   const { data, error } = await supabase
     .from('businesses')
     .insert({
@@ -151,8 +161,11 @@ export async function ensureBusinessProfileForOwner(
       invoice_prefix: 'INV-',
       phone: '',
       email: input.email ?? '',
+      address: '',
+      website: '',
+      waybill_prefix: 'WAY-',
     })
-    .select('id, business_name, business_type, currency, country, receipt_prefix, invoice_prefix, phone, email')
+    .select('id, business_name, business_type, currency, country, receipt_prefix, invoice_prefix, waybill_prefix, phone, email, logo_url, signature_url, address, website')
     .single<BusinessProfileRow>();
 
   if (error) {

@@ -23,6 +23,7 @@ import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
 import SearchablePicker, { PickerItem } from '../components/SearchablePicker';
 import { useBusiness } from '../context/BusinessContext';
+import type { PaymentMethod } from '../data/seedBusiness';
 import { selectQuotationStatusDisplay } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate } from '../utils/format';
 import { toPositiveInteger, toValidPaidAmount } from '../utils/salesMath';
@@ -42,8 +43,14 @@ const createDraftLine = (productId = ''): DraftLine => ({
 
 const QuotationsPage: React.FC = () => {
   const history = useHistory();
-  const { state, addQuotation, convertQuotationToSale } = useBusiness();
-  const [customerId, setCustomerId] = useState(state.customers[0]?.id ?? '');
+  const { state, addQuotation, convertQuotationToSale, hasPermission } = useBusiness();
+  const canCreateQuotations = hasPermission('quotations.create');
+  const canConvertQuotations = hasPermission('quotations.convert');
+  const activeCustomers = useMemo(
+    () => state.customers.filter((customer) => customer.status !== 'terminated'),
+    [state.customers]
+  );
+  const [customerId, setCustomerId] = useState(activeCustomers[0]?.id ?? '');
   const [lines, setLines] = useState<DraftLine[]>([createDraftLine(state.products[0]?.id ?? '')]);
   const [formMessage, setFormMessage] = useState('');
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -51,7 +58,7 @@ const QuotationsPage: React.FC = () => {
   const [conversionMessage, setConversionMessage] = useState('');
   const [showConversionToast, setShowConversionToast] = useState(false);
   const [convertingQuotationId, setConvertingQuotationId] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Mobile Money'>('Cash');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [amountPaidInput, setAmountPaidInput] = useState('');
   const [conversionFormMessage, setConversionFormMessage] = useState('');
   const [latestConversionReceipts, setLatestConversionReceipts] = useState<
@@ -76,10 +83,10 @@ const QuotationsPage: React.FC = () => {
   const [activePickingLineId, setActivePickingLineId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!state.customers.some((customer) => customer.id === customerId)) {
-      setCustomerId(state.customers[0]?.id ?? '');
+    if (!activeCustomers.some((customer) => customer.id === customerId)) {
+      setCustomerId(activeCustomers[0]?.id ?? '');
     }
-  }, [customerId, state.customers]);
+  }, [activeCustomers, customerId]);
 
   useEffect(() => {
     setLines((current) =>
@@ -97,8 +104,8 @@ const QuotationsPage: React.FC = () => {
   }, [state.products]);
 
   const selectedCustomer = useMemo(
-    () => state.customers.find((customer) => customer.id === customerId) ?? null,
-    [customerId, state.customers]
+    () => activeCustomers.find((customer) => customer.id === customerId) ?? null,
+    [activeCustomers, customerId]
   );
 
   const quotationPreview = useMemo(() => {
@@ -154,13 +161,13 @@ const QuotationsPage: React.FC = () => {
   }, [state.quotations, searchTerm]);
 
   const customerPickerItems = useMemo<PickerItem[]>(
-    () => state.customers.map((c) => ({
+    () => activeCustomers.map((c) => ({
       id: c.id,
       title: c.name,
       subtitle: c.clientId,
       meta: c.phone || 'No phone',
     })),
-    [state.customers]
+    [activeCustomers]
   );
 
   const productPickerItems = useMemo<PickerItem[]>(
@@ -175,6 +182,11 @@ const QuotationsPage: React.FC = () => {
   );
 
   const handleCreateQuotation = () => {
+    if (!canCreateQuotations) {
+      setFormMessage('This role can view quotations but cannot create a new one.');
+      return;
+    }
+
     const result = addQuotation({
       customerId,
       items: lines
@@ -200,6 +212,11 @@ const QuotationsPage: React.FC = () => {
   };
 
   const handleStartConversion = (quotationId: string) => {
+    if (!canConvertQuotations) {
+      setConversionFormMessage('This role is not allowed to convert quotations.');
+      return;
+    }
+
     setConvertingQuotationId(quotationId);
     setPaymentMethod('Cash');
     setAmountPaidInput('');
@@ -207,6 +224,11 @@ const QuotationsPage: React.FC = () => {
   };
 
   const handleConvertQuotation = () => {
+    if (!canConvertQuotations) {
+      setConversionFormMessage('This role is not allowed to convert quotations.');
+      return;
+    }
+
     if (!activeQuotation) {
       setConversionFormMessage('Choose a quotation to convert first.');
       return;
@@ -256,11 +278,17 @@ const QuotationsPage: React.FC = () => {
             title="Create quotation"
             subtitle="Prepare a pre-sale document for a customer before recording the final invoice."
           >
-            {state.customers.length === 0 || state.products.length === 0 ? (
+            {!canCreateQuotations ? (
+              <EmptyState
+                eyebrow="View-only access"
+                title="This role cannot create new quotations."
+                message="Quotation history is still available below, but an admin must grant quotation creation before this employee can draft new quotes."
+              />
+            ) : activeCustomers.length === 0 || state.products.length === 0 ? (
               <EmptyState
                 eyebrow="Quotation setup"
                 title="Add customers and products first"
-                message="Quotations need an existing customer and at least one product so the app can calculate pricing correctly."
+                message="Quotations need at least one active customer and one product so the app can calculate pricing correctly."
               />
             ) : (
               <div className="form-grid">
@@ -431,7 +459,7 @@ const QuotationsPage: React.FC = () => {
                       ))}
 
                       <div className="dual-stat">
-                        {quotation.status === 'Draft' && (
+                        {quotation.status === 'Draft' && canConvertQuotations && (
                           <IonButton expand="block" onClick={() => handleStartConversion(quotation.id)}>
                             Convert to Invoice
                           </IonButton>
@@ -441,7 +469,7 @@ const QuotationsPage: React.FC = () => {
                         </IonButton>
                       </div>
 
-                      {convertingQuotationId === quotation.id ? (
+                      {convertingQuotationId === quotation.id && canConvertQuotations ? (
                         <div className="form-grid">
                           <div className="sale-summary">
                             <div>
@@ -463,6 +491,7 @@ const QuotationsPage: React.FC = () => {
                             >
                               <IonSelectOption value="Cash">Cash</IonSelectOption>
                               <IonSelectOption value="Mobile Money">Mobile Money</IonSelectOption>
+                              <IonSelectOption value="Bank Account">Bank Account</IonSelectOption>
                             </IonSelect>
                           </IonItem>
 

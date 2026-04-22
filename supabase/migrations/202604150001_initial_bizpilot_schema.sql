@@ -16,6 +16,9 @@ create table if not exists public.businesses (
   invoice_prefix text not null default 'INV-',
   phone text,
   email text,
+  business_type text default 'General Retail',
+  logo_url text,
+  signature_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -40,6 +43,9 @@ create table if not exists public.customers (
   business_id uuid not null references public.businesses(id) on delete cascade,
   client_id text not null,
   name text not null,
+  status text not null default 'active' check (status in ('active', 'terminated')),
+  terminated_at timestamptz,
+  termination_reason text,
   channel text not null default 'No action needed',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

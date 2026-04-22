@@ -21,6 +21,7 @@ export type AppPermission =
   | 'customers.view'
   | 'customers.create'
   | 'customers.edit'
+  | 'customers.email.send'
   | 'customers.ledger.view'
   | 'accounting.access'
   | 'expenses.view'
@@ -45,6 +46,11 @@ export interface UserAccessProfile {
   name: string;
   email: string;
   password?: string;
+  accountStatus?: 'active' | 'deactivated';
+  deactivatedAt?: string;
+  roleLabel?: string;
+  customerEmailSenderName?: string;
+  customerEmailSenderEmail?: string;
   role: AppRole;
   grantedPermissions: AppPermission[];
   revokedPermissions: AppPermission[];

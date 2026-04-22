@@ -16,6 +16,8 @@ import {
   convertQuotationToSalesState,
   restoreBusinessState,
   reverseSaleInState,
+  updateCustomerStatusInState,
+  updateCustomerInState,
 } from './businessLogic';
 
 describe('businessLogic', () => {
@@ -89,23 +91,21 @@ describe('businessLogic', () => {
   it('rejects sale input with invalid paid amount', () => {
     const result = addSaleToState(seedState, {
       customerId: 'c1',
-      productId: 'p1',
-      quantity: 1,
+      items: [{ productId: 'p1', quantity: 1 }],
       paymentMethod: 'Cash',
       paidAmount: Number.NaN,
     });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.message).toContain('Paid amount');
+      expect(result.message).toContain('valid number');
     }
   });
 
   it('sale creates correct stock movements and customer ledger entries', () => {
     const result = addSaleToState(seedState, {
       customerId: 'c1',
-      productId: 'p2',
-      quantity: 1,
+      items: [{ productId: 'p2', quantity: 1 }],
       paymentMethod: 'Cash',
       paidAmount: 40,
     });
@@ -130,8 +130,7 @@ describe('businessLogic', () => {
   it('partial payment status is correct', () => {
     const result = addSaleToState(seedState, {
       customerId: 'c1',
-      productId: 'p2',
-      quantity: 1,
+      items: [{ productId: 'p2', quantity: 1 }],
       paymentMethod: 'Cash',
       paidAmount: 40,
     });
@@ -168,11 +167,52 @@ describe('businessLogic', () => {
     expect(restored.customerLedgerEntries.length).toBeGreaterThan(0);
   });
 
+  it('restores legacy customers while preserving phone, whatsapp, and email when present', () => {
+    const restored = restoreBusinessState({
+      ...seedState,
+      customers: [
+        {
+          ...seedState.customers[0],
+          phone: '+233555000111',
+          whatsapp: '+233555000222',
+          email: 'legacy@example.com',
+        },
+        {
+          ...seedState.customers[1],
+          phone: '+233555000333',
+        },
+      ],
+    } as unknown as typeof seedState);
+
+    expect(restored.customers[0].phone).toBe('+233555000111');
+    expect(restored.customers[0].whatsapp).toBe('+233555000222');
+    expect(restored.customers[0].email).toBe('legacy@example.com');
+    expect(restored.customers[1].phone).toBe('+233555000333');
+    expect(restored.customers[1].whatsapp).toBe('');
+    expect(restored.customers[1].email).toBe('');
+  });
+
+  it('restores legacy customers with active status by default', () => {
+    const restored = restoreBusinessState({
+      ...seedState,
+      customers: [
+        {
+          ...seedState.customers[0],
+          status: undefined,
+          terminatedAt: undefined,
+          terminationReason: undefined,
+        },
+      ],
+    } as unknown as typeof seedState);
+
+    expect(restored.customers[0].status).toBe('active');
+    expect(restored.customers[0].terminatedAt).toBeUndefined();
+  });
+
   it('rejects a sale when requested quantity exceeds stock on hand', () => {
     const result = addSaleToState(seedState, {
       customerId: 'c1',
-      productId: 'p2',
-      quantity: 99,
+      items: [{ productId: 'p2', quantity: 99 }],
       paymentMethod: 'Cash',
       paidAmount: 0,
     });
@@ -203,12 +243,107 @@ describe('businessLogic', () => {
     const result = addCustomerToState(seedState, {
       name: 'New Buyer',
       clientId: '   ',
+      phone: '+233555000111',
+      whatsapp: '+233555000222',
+      email: 'buyer@example.com',
       channel: 'WhatsApp follow-up',
     });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data?.customers[0].clientId).toBe('CLT-005');
+      expect(result.data?.customers[0].phone).toBe('+233555000111');
+      expect(result.data?.customers[0].whatsapp).toBe('+233555000222');
+      expect(result.data?.customers[0].email).toBe('buyer@example.com');
+    }
+  });
+
+  it('updates a customer without changing the customer id or client id', () => {
+    const existingCustomer = seedState.customers[0];
+    const result = updateCustomerInState(seedState, {
+      customerId: existingCustomer.id,
+      name: 'Updated Buyer',
+      phone: '+233555000333',
+      whatsapp: '+233555000444',
+      email: 'updated@example.com',
+      channel: 'Email follow-up',
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok && result.data) {
+      const updatedCustomer = result.data.customers.find((customer) => customer.id === existingCustomer.id);
+      expect(updatedCustomer?.id).toBe(existingCustomer.id);
+      expect(updatedCustomer?.clientId).toBe(existingCustomer.clientId);
+      expect(updatedCustomer?.name).toBe('Updated Buyer');
+      expect(updatedCustomer?.phone).toBe('+233555000333');
+      expect(updatedCustomer?.whatsapp).toBe('+233555000444');
+      expect(updatedCustomer?.email).toBe('updated@example.com');
+    }
+  });
+
+  it('terminates a customer without deleting their record', () => {
+    const existingCustomer = seedState.customers[0];
+    const result = updateCustomerStatusInState(seedState, {
+      customerId: existingCustomer.id,
+      status: 'terminated',
+      terminationReason: 'Account closed',
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok && result.data) {
+      const terminatedCustomer = result.data.customers.find((customer) => customer.id === existingCustomer.id);
+      expect(terminatedCustomer?.id).toBe(existingCustomer.id);
+      expect(terminatedCustomer?.status).toBe('terminated');
+      expect(terminatedCustomer?.terminationReason).toBe('Account closed');
+      expect(result.data.sales.some((sale) => sale.customerId === existingCustomer.id)).toBe(true);
+    }
+  });
+
+  it('blocks new sales for terminated customers', () => {
+    const terminatedStateResult = updateCustomerStatusInState(seedState, {
+      customerId: 'c1',
+      status: 'terminated',
+      terminationReason: 'Inactive account',
+    });
+
+    expect(terminatedStateResult.ok).toBe(true);
+    if (!terminatedStateResult.ok || !terminatedStateResult.data) {
+      return;
+    }
+
+    const result = addSaleToState(terminatedStateResult.data, {
+      customerId: 'c1',
+      items: [{ productId: 'p1', quantity: 1 }],
+      paymentMethod: 'Cash',
+      paidAmount: 35,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain('terminated');
+    }
+  });
+
+  it('blocks new quotations for terminated customers', () => {
+    const terminatedStateResult = updateCustomerStatusInState(seedState, {
+      customerId: 'c1',
+      status: 'terminated',
+      terminationReason: 'Inactive account',
+    });
+
+    expect(terminatedStateResult.ok).toBe(true);
+    if (!terminatedStateResult.ok || !terminatedStateResult.data) {
+      return;
+    }
+
+    const result = addQuotationToState(terminatedStateResult.data, {
+      customerId: 'c1',
+      items: [{ productId: 'p1', quantity: 1 }],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain('terminated');
     }
   });
 
@@ -277,12 +412,11 @@ describe('businessLogic', () => {
 
     expect(converted.ok).toBe(true);
     if (converted.ok && converted.data) {
-      expect(converted.data.receipts).toHaveLength(2);
-      expect(converted.data.data.sales).toHaveLength(4);
+      expect(converted.data.receipts).toHaveLength(1);
+      expect(converted.data.data.sales).toHaveLength(3);
       expect(converted.data.data.quotations[0].status).toBe('Converted');
-      expect(converted.data.data.quotations[0].relatedSaleIds).toHaveLength(2);
+      expect(converted.data.data.quotations[0].relatedSaleIds).toHaveLength(1);
       expect(converted.data.data.sales[0].quotationId).toBe(quotationId);
-      expect(converted.data.data.sales[1].quotationId).toBe(quotationId);
     }
   });
 
@@ -321,7 +455,7 @@ describe('businessLogic', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.message).toContain('does not have enough stock');
+      expect(result.message).toContain('Not enough stock');
     }
   });
 
@@ -377,8 +511,7 @@ describe('businessLogic', () => {
 
     const corrected = addSaleToState(reversed.data.data, {
       customerId: 'c2',
-      productId: 'p1',
-      quantity: 3,
+      items: [{ productId: 'p1', quantity: 3 }],
       paymentMethod: 'Cash',
       paidAmount: 105,
       correctionOfSaleId: 's2',
@@ -398,8 +531,7 @@ describe('businessLogic', () => {
   it('blocks creating a correction invoice from an invoice that was not reversed', () => {
     const result = addSaleToState(seedState, {
       customerId: 'c2',
-      productId: 'p1',
-      quantity: 3,
+      items: [{ productId: 'p1', quantity: 3 }],
       paymentMethod: 'Cash',
       paidAmount: 105,
       correctionOfSaleId: 's2',

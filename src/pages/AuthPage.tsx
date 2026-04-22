@@ -12,7 +12,8 @@ import {
   IonText,
 } from '@ionic/react';
 import { eye, eyeOff } from 'ionicons/icons';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
+import { useHistory } from 'react-router-dom';
 
 import { useAuth } from '../context/AuthContext';
 
@@ -20,6 +21,7 @@ type AuthMode = 'sign-in' | 'sign-up';
 
 const AuthPage: React.FC = () => {
   const { isConfigured, signIn, signUp, requestPasswordReset } = useAuth();
+  const history = useHistory();
   const [mode, setMode] = useState<AuthMode>('sign-in');
   const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
@@ -27,6 +29,17 @@ const AuthPage: React.FC = () => {
   const [formMessage, setFormMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Force Light Mode for Auth Screen
+  useEffect(() => {
+    document.body.classList.remove('dark');
+    document.body.classList.add('light');
+    document.body.setAttribute('data-theme', 'light');
+    
+    // Logic for returning to user's preferred theme 
+    // happens automatically once inside the BusinessProvider 
+    // via the ThemeManager component in App.tsx.
+  }, []);
 
   const isSignUp = mode === 'sign-up';
 
@@ -54,7 +67,12 @@ const AuthPage: React.FC = () => {
       ? await signUp({ email, password, businessName })
       : await signIn(email, password);
     setIsSubmitting(false);
-    setFormMessage(result.ok ? result.message ?? '' : result.message);
+
+    if (result.ok) {
+      history.push('/dashboard');
+    } else {
+      setFormMessage(result.message ?? '');
+    }
   }
 
   async function handlePasswordReset() {
@@ -76,9 +94,9 @@ const AuthPage: React.FC = () => {
       <IonContent fullscreen={true}>
         <main className="auth-shell">
           <section className="auth-brief">
-            <h1>BizPilot Operations</h1>
+            <h1>BisaPilot</h1>
             <p>
-              Unified business management for African SMEs. Manage your sales, inventory, and operational transactions with absolute clarity.
+              Your scaling partner. Unified business management for African SMEs. Manage your sales, inventory, and operational transactions with absolute clarity.
             </p>
             <div className="auth-proof-grid">
               <div>
@@ -96,10 +114,10 @@ const AuthPage: React.FC = () => {
             </div>
           </section>
 
-          <section className="auth-panel" aria-label="BizPilot owner authentication">
+          <section className="auth-panel" aria-label="BisaPilot owner authentication">
             <div className="auth-panel-card">
               <header className="auth-header">
-                <img src="/assets/logo.png" alt="BizPilot" className="auth-logo" />
+                <img src="/assets/logo.png" alt="BisaPilot" className="auth-logo" />
                 <div className="auth-panel-head">
                   <h2>{isSignUp ? 'Establish Owner Account' : 'Sign in to Workspace'}</h2>
                   <IonText>
@@ -109,6 +127,10 @@ const AuthPage: React.FC = () => {
                   </IonText>
                 </div>
               </header>
+
+              <IonButton fill="clear" color="medium" className="auth-back-home" onClick={() => history.push('/')}>
+                Back to BisaPilot overview
+              </IonButton>
 
               <IonSegment
                 value={mode}

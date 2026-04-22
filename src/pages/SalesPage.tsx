@@ -17,15 +17,18 @@ import {
   IonSearchbar,
   IonRefresher,
   IonRefresherContent,
+  IonIcon,
 } from '@ionic/react';
 import { useEffect, useMemo, useState } from 'react';
 import { useHistory, useLocation } from 'react-router-dom';
-import { chevronDownCircleOutline } from 'ionicons/icons';
+import { chevronDownCircleOutline, documentText } from 'ionicons/icons';
 
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
 import SearchablePicker, { PickerItem } from '../components/SearchablePicker';
 import { useBusiness } from '../context/BusinessContext';
+import type { NewSaleLineItemInput } from '../utils/businessLogic';
+import type { PaymentMethod } from '../data/seedBusiness';
 import {
   selectDashboardMetrics,
   selectProductQuantityOnHand,
@@ -37,6 +40,7 @@ import { formatCurrency, formatReceiptDate, formatRelativeDate } from '../utils/
 import { toPositiveInteger, toValidPaidAmount } from '../utils/salesMath';
 
 type ReceiptView = {
+  id: string;
   receiptId: string;
   createdAt: string;
   customerName: string;
@@ -52,15 +56,24 @@ type ReceiptView = {
   paymentReference?: string;
 };
 
+const WALK_IN_CUSTOMER_NAME = 'Walk-in customer';
+const WALK_IN_CUSTOMER_PICKER_ID = '__walk_in_customer__';
+
 const SalesPage: React.FC = () => {
-  const { state, addSale, convertQuotationToSale } = useBusiness();
+  const { state, addSale, addCustomer, convertQuotationToSale, hasPermission } = useBusiness();
   const history = useHistory();
   const location = useLocation<{ correctionSourceSaleId?: string } | undefined>();
-  const [customerId, setCustomerId] = useState(state.customers[0]?.id ?? '');
-  const [productId, setProductId] = useState(state.products[0]?.id ?? '');
-  const [quantityInput, setQuantityInput] = useState('1');
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Mobile Money'>('Cash');
+  const activeCustomers = useMemo(
+    () => state.customers.filter((customer) => customer.status !== 'terminated'),
+    [state.customers]
+  );
+  const [customerId, setCustomerId] = useState(activeCustomers[0]?.id ?? '');
+  const [saleItems, setSaleItems] = useState<NewSaleLineItemInput[]>([
+    { productId: state.products[0]?.id ?? '', quantity: 1 }
+  ]);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [paidAmountInput, setPaidAmountInput] = useState('');
+  const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
   const [correctionSourceSaleId, setCorrectionSourceSaleId] = useState('');
   const [formMessage, setFormMessage] = useState('');
   const [saleSuccessMessage, setSaleSuccessMessage] = useState('');
@@ -69,45 +82,97 @@ const SalesPage: React.FC = () => {
   const [invoiceSearchTerm, setInvoiceSearchTerm] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
-  const [showProductPicker, setShowProductPicker] = useState(false);
+  const [showProductPickerIndex, setShowProductPickerIndex] = useState<number | null>(null);
   const [showQuotationPicker, setShowQuotationPicker] = useState(false);
   const [activeQuotationId, setActiveQuotationId] = useState('');
   const [showConversionModal, setShowConversionModal] = useState(false);
   const [conversionMessage, setConversionMessage] = useState('');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [latestConversionReceipts, setLatestConversionReceipts] = useState<any[]>([]);
-  const hasCustomers = state.customers.length > 0;
+  const [pendingWalkInSelection, setPendingWalkInSelection] = useState(false);
+  const hasCustomers = activeCustomers.length > 0;
   const hasProducts = state.products.length > 0;
-  const canRecordSale = hasCustomers && hasProducts;
-  const quantity = toPositiveInteger(quantityInput, 1);
+  const canCreateSales = hasPermission('sales.create');
+  const canConvertQuotations = hasPermission('quotations.convert');
+  const canCreateCustomers = hasPermission('customers.create');
+  const canUseDocumentPack =
+    hasPermission('invoices.print') ||
+    hasPermission('invoices.export_pdf') ||
+    hasPermission('quotations.print') ||
+    hasPermission('quotations.export_pdf');
+  const canViewInvoices = hasPermission('invoices.view');
+  const canRecordSale = hasProducts && canCreateSales;
   const currency = state.businessProfile.currency;
 
-  useEffect(() => {
-    if (!state.customers.some((customer) => customer.id === customerId)) {
-      setCustomerId(state.customers[0]?.id ?? '');
-    }
-  }, [customerId, state.customers]);
-
-  useEffect(() => {
-    if (!state.products.some((product) => product.id === productId)) {
-      setProductId(state.products[0]?.id ?? '');
-    }
-  }, [productId, state.products]);
-
-  const selectedProduct = useMemo(
-    () => state.products.find((item) => item.id === productId),
-    [productId, state.products]
+  const walkInCustomer = useMemo(
+    () =>
+      activeCustomers.find(
+        (customer) => customer.name.trim().toLowerCase() === WALK_IN_CUSTOMER_NAME.toLowerCase()
+      ) ?? null,
+    [activeCustomers]
   );
+
+  useEffect(() => {
+    if (!customerId && activeCustomers.length > 0) {
+      setCustomerId(activeCustomers[0].id);
+    }
+  }, [activeCustomers, customerId]);
+
+  useEffect(() => {
+    if (customerId && activeCustomers.some((customer) => customer.id === customerId)) {
+      return;
+    }
+
+    setCustomerId(activeCustomers[0]?.id ?? '');
+  }, [activeCustomers, customerId]);
+
+  useEffect(() => {
+    if (!pendingWalkInSelection || !walkInCustomer) {
+      return;
+    }
+
+    setCustomerId(walkInCustomer.id);
+    setPendingWalkInSelection(false);
+    setShowCustomerPicker(false);
+  }, [pendingWalkInSelection, walkInCustomer]);
+
+  useEffect(() => {
+    if (saleItems.length === 0 && state.products.length > 0) {
+      setSaleItems([{ productId: state.products[0].id, quantity: 1 }]);
+    }
+  }, [state.products, saleItems]);
+
+  const addLineItem = () => {
+    setSaleItems([...saleItems, { productId: state.products[0]?.id || '', quantity: 1 }]);
+  };
+
+  const updateLineItem = (index: number, updates: Partial<NewSaleLineItemInput>) => {
+    const next = [...saleItems];
+    next[index] = { ...next[index], ...updates };
+    setSaleItems(next);
+  };
+
+  const removeLineItem = (index: number) => {
+    if (saleItems.length <= 1) return;
+    setSaleItems(saleItems.filter((_, i) => i !== index));
+  };
+
+  const saleTotal = useMemo(() => {
+    return saleItems.reduce((acc, item) => {
+      const p = state.products.find(prod => prod.id === item.productId);
+      return acc + (p ? p.price * item.quantity : 0);
+    }, 0);
+  }, [saleItems, state.products]);
+
   const correctionSourceSale = useMemo(
     () => state.sales.find((sale) => sale.id === correctionSourceSaleId) ?? null,
     [correctionSourceSaleId, state.sales]
   );
-  const saleTotal = selectedProduct ? selectedProduct.price * quantity : 0;
   const normalizedPaidAmount = toValidPaidAmount(paidAmountInput, saleTotal);
   const outstandingAmount = Math.max(0, saleTotal - normalizedPaidAmount);
   const selectedCustomer = useMemo(
-    () => state.customers.find((c) => c.id === customerId) ?? null,
-    [customerId, state.customers]
+    () => activeCustomers.find((c) => c.id === customerId) ?? null,
+    [activeCustomers, customerId]
   );
 
   const customerQuotations = useMemo(
@@ -131,13 +196,34 @@ const SalesPage: React.FC = () => {
   );
 
   const customerPickerItems = useMemo<PickerItem[]>(
-    () => state.customers.map((c) => ({
-      id: c.id,
-      title: c.name,
-      subtitle: c.clientId,
-      meta: c.phone || 'No phone',
-    })),
-    [state.customers]
+    () => {
+      const baseItems = state.customers
+        .filter((customer) => customer.status !== 'terminated')
+        .filter((customer) => customer.id !== walkInCustomer?.id)
+        .map((customer) => ({
+          id: customer.id,
+          title: customer.name,
+          subtitle: customer.clientId,
+          meta: customer.phone || customer.whatsapp || 'No phone',
+        }));
+
+      const walkInItem: PickerItem = walkInCustomer
+        ? {
+            id: walkInCustomer.id,
+            title: walkInCustomer.name,
+            subtitle: walkInCustomer.clientId,
+            meta: 'Default counter-sale buyer',
+          }
+        : {
+            id: WALK_IN_CUSTOMER_PICKER_ID,
+            title: WALK_IN_CUSTOMER_NAME,
+            subtitle: 'Create and use for unregistered buyers',
+            meta: 'Recommended for counter sales',
+          };
+
+      return [walkInItem, ...baseItems];
+    },
+    [state.customers, walkInCustomer]
   );
 
   const productPickerItems = useMemo<PickerItem[]>(
@@ -158,18 +244,21 @@ const SalesPage: React.FC = () => {
     const lower = invoiceSearchTerm.toLowerCase();
     return all.filter((sale) => {
       const customer = state.customers.find((c) => c.id === sale.customerId);
-      const product = state.products.find((p) => p.id === sale.productId);
+      const hasMatchingProduct = sale.items?.some(item => 
+        item.productName.toLowerCase().includes(lower)
+      );
       return (
         sale.invoiceNumber.toLowerCase().includes(lower) ||
         sale.receiptId.toLowerCase().includes(lower) ||
         (customer && customer.name.toLowerCase().includes(lower)) ||
-        (product && product.name.toLowerCase().includes(lower))
+        hasMatchingProduct
       );
     });
   }, [state, invoiceSearchTerm]);
 
   useEffect(() => {
-    const incomingCorrectionId = location.state?.correctionSourceSaleId;
+    const params = new URLSearchParams(history.location.search);
+    const incomingCorrectionId = params.get('correctionSourceSaleId') || location.state?.correctionSourceSaleId;
 
     if (!incomingCorrectionId) {
       return;
@@ -181,33 +270,42 @@ const SalesPage: React.FC = () => {
     }
 
     setCustomerId(sourceSale.customerId);
-    setProductId(sourceSale.productId);
-    setQuantityInput(String(sourceSale.quantity));
+    setSaleItems(sourceSale.items.map(i => ({ productId: i.productId, quantity: i.quantity })));
     setPaymentMethod(sourceSale.paymentMethod);
     setPaidAmountInput(String(sourceSale.paidAmount));
     setCorrectionSourceSaleId(sourceSale.id);
     history.replace('/sales');
-  }, [history, location.state, state.sales]);
+  }, [history, location.state, state.sales, history.location.search]);
 
-  const handleSubmit = () => {
-    if (!canRecordSale) {
-      setFormMessage('Add at least one customer and one inventory item before recording a sale.');
+  const handleSubmit = (autoPrint = false) => {
+    if (!canCreateSales) {
+      setFormMessage('This role can view sales but cannot record a new sale.');
       return;
     }
 
-    if (!selectedProduct) {
-      setFormMessage('Select an item before recording the sale.');
+    if (!canRecordSale) {
+      setFormMessage('Add at least one inventory item before recording a sale.');
+      return;
+    }
+
+    if (!customerId) {
+      setFormMessage('Select a buyer first. Use Walk-in customer for unregistered counter sales.');
+      return;
+    }
+
+    if (saleItems.some(i => !i.productId || i.quantity <=0)) {
+      setFormMessage('Ensure all items have a valid product and quantity.');
       return;
     }
 
     const result = addSale({
       customerId,
-      productId,
-      quantity,
+      items: saleItems,
       paymentMethod,
       paidAmount: normalizedPaidAmount,
       paymentReference: paymentReference.trim() || undefined,
       correctionOfSaleId: correctionSourceSaleId || undefined,
+      createdAt: saleDate ? new Date(saleDate).toISOString() : undefined,
     });
 
     if (!result.ok) {
@@ -219,23 +317,25 @@ const SalesPage: React.FC = () => {
     setSaleSuccessMessage(`Sale recorded and invoice created for ${formatCurrency(saleTotal, currency)}.`);
     setLatestReceipt(result.receipt);
 
-    if (result.lowStockAlert) {
-      const { name, quantity: alertQuantity, reorderLevel } = result.lowStockAlert;
-      const message =
-        alertQuantity < reorderLevel
-          ? `Low stock alert: ${name} is below reorder level. Only ${alertQuantity} left.`
-          : `Low stock alert: ${name} has reached its reorder level at ${alertQuantity} left.`;
+    setLowStockMessage('');
 
-      setLowStockMessage(message);
+    if (autoPrint && result.receipt) {
+      history.push(`/sales/${result.receipt.id}`);
+      setTimeout(() => window.print(), 800);
     }
 
-    setQuantityInput('1');
+    setSaleItems([{ productId: state.products[0]?.id || '', quantity: 1 }]);
     setPaidAmountInput('');
     setPaymentReference('');
     setCorrectionSourceSaleId('');
   };
 
   const handleConvertQuotation = () => {
+    if (!canConvertQuotations) {
+      setFormMessage('This role is not allowed to convert quotations into invoices.');
+      return;
+    }
+
     if (!activeQuotation) return;
 
     const result = convertQuotationToSale({
@@ -257,6 +357,35 @@ const SalesPage: React.FC = () => {
     setFormMessage('');
   };
 
+  const handleCreateWalkInCustomer = () => {
+    if (!canCreateCustomers) {
+      setFormMessage('This role cannot create the default Walk-in customer record.');
+      return;
+    }
+
+    if (walkInCustomer) {
+      setCustomerId(walkInCustomer.id);
+      setFormMessage('Walk-in customer selected. You can now record this counter sale.');
+      return;
+    }
+
+    const result = addCustomer({
+      name: WALK_IN_CUSTOMER_NAME,
+      phone: '',
+      whatsapp: '',
+      email: '',
+      channel: 'Counter sale',
+    });
+
+    if (!result.ok) {
+      setFormMessage(result.message);
+      return;
+    }
+
+    setPendingWalkInSelection(true);
+    setFormMessage('Walk-in customer created. You can now record counter sales with that customer record.');
+  };
+
     const handleRefresh = (event: CustomEvent) => {
     setTimeout(() => {
       event.detail.complete();
@@ -268,6 +397,13 @@ const SalesPage: React.FC = () => {
       <IonHeader translucent={true}>
         <IonToolbar>
           <IonTitle>Sales</IonTitle>
+          {canUseDocumentPack ? (
+            <IonButtons slot="end">
+              <IonButton onClick={() => history.push('/export/batch')}>
+                <IonIcon slot="icon-only" icon={documentText} />
+              </IonButton>
+            </IonButtons>
+          ) : null}
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>
@@ -315,7 +451,7 @@ const SalesPage: React.FC = () => {
                     </IonButton>
                   </div>
 
-                  {customerQuotations.length > 0 && !correctionSourceSale && (
+                  {customerQuotations.length > 0 && canConvertQuotations && !correctionSourceSale && (
                     <div className="picker-container">
                        <p className="muted-label">Quotes Available</p>
                        <IonButton 
@@ -329,17 +465,57 @@ const SalesPage: React.FC = () => {
                        </IonButton>
                     </div>
                   )}
+                </div>
 
-                  <div className="picker-container">
-                    <p className="muted-label">Stock Item</p>
-                    <IonButton 
-                      expand="block" 
-                      fill="outline" 
-                      onClick={() => setShowProductPicker(true)}
-                    >
-                      {selectedProduct ? selectedProduct.name : 'Select Item'}
-                    </IonButton>
-                  </div>
+                <div className="sale-items-list" style={{ marginTop: '24px' }}>
+                  <p className="muted-label" style={{ marginBottom: '12px' }}>Items Purchased</p>
+                  {saleItems.map((item, index) => {
+                    const product = state.products.find(p => p.id === item.productId);
+                    return (
+                      <div key={index} className="sale-item-row" style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: '1fr 80px 40px', 
+                        gap: '12px', 
+                        alignItems: 'end',
+                        marginBottom: '16px',
+                        padding: '12px',
+                        background: 'rgba(0,0,0,0.02)',
+                        borderRadius: '8px'
+                      }}>
+                        <div className="picker-container">
+                          <IonButton 
+                            expand="block" 
+                            fill="outline" 
+                            size="small"
+                            onClick={() => setShowProductPickerIndex(index)}
+                            style={{ textAlign: 'left', '--padding-start': '8px' }}
+                          >
+                            {product ? product.name : 'Select Item'}
+                          </IonButton>
+                        </div>
+                        <div className="input-container">
+                           <IonInput
+                             type="number"
+                             value={String(item.quantity)}
+                             onIonInput={(e) => updateLineItem(index, { quantity: toPositiveInteger(e.detail.value ?? '1', 1) })}
+                             className="app-input"
+                             style={{ textAlign: 'center' }}
+                           />
+                        </div>
+                        <IonButton 
+                          fill="clear" 
+                          color="danger" 
+                          onClick={() => removeLineItem(index)}
+                          disabled={saleItems.length <= 1}
+                        >
+                          ×
+                        </IonButton>
+                      </div>
+                    );
+                  })}
+                  <IonButton fill="clear" color="primary" onClick={addLineItem} size="small">
+                    + Add another item
+                  </IonButton>
                 </div>
 
                 <SearchablePicker
@@ -348,16 +524,28 @@ const SalesPage: React.FC = () => {
                   placeholder="Search name, ID or phone..."
                   items={customerPickerItems}
                   onDismiss={() => setShowCustomerPicker(false)}
-                  onSelect={(item) => setCustomerId(item.id)}
+                  onSelect={(item) => {
+                    if (item.id === WALK_IN_CUSTOMER_PICKER_ID) {
+                      handleCreateWalkInCustomer();
+                      return;
+                    }
+
+                    setCustomerId(item.id);
+                  }}
                 />
 
                 <SearchablePicker
-                  isOpen={showProductPicker}
+                  isOpen={showProductPickerIndex !== null}
                   title="Select Stock Item"
                   placeholder="Search name or ID..."
                   items={productPickerItems}
-                  onDismiss={() => setShowProductPicker(false)}
-                  onSelect={(item) => setProductId(item.id)}
+                  onDismiss={() => setShowProductPickerIndex(null)}
+                  onSelect={(item) => {
+                    if (showProductPickerIndex !== null) {
+                      updateLineItem(showProductPickerIndex, { productId: item.id });
+                    }
+                    setShowProductPickerIndex(null);
+                  }}
                 />
 
                 <SearchablePicker
@@ -406,6 +594,7 @@ const SalesPage: React.FC = () => {
                             >
                                 <IonSelectOption value="Cash">Cash</IonSelectOption>
                                 <IonSelectOption value="Mobile Money">Mobile Money</IonSelectOption>
+                                <IonSelectOption value="Bank Account">Bank Account</IonSelectOption>
                             </IonSelect>
                           </IonItem>
 
@@ -433,23 +622,21 @@ const SalesPage: React.FC = () => {
 
                 <div className="dual-stat">
                   <IonItem lines="none" className="app-item">
-                    <IonLabel position="stacked">Quantity</IonLabel>
-                    <IonInput
-                      data-testid="quantity-input"
-                      type="number"
-                      min={1}
-                      inputmode="numeric"
-                      value={quantityInput}
-                      onIonInput={(event) => setQuantityInput(event.detail.value ?? '1')}
-                    />
-                  </IonItem>
-
-                  <IonItem lines="none" className="app-item">
                     <IonLabel position="stacked">Payment method</IonLabel>
                     <IonSelect data-testid="payment-method-select" value={paymentMethod} onIonChange={(event) => setPaymentMethod(event.detail.value)} interface="popover">
                       <IonSelectOption value="Cash">Cash</IonSelectOption>
                       <IonSelectOption value="Mobile Money">Mobile Money</IonSelectOption>
+                      <IonSelectOption value="Bank Account">Bank Account</IonSelectOption>
                     </IonSelect>
+                  </IonItem>
+
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Sale Date (Optional)</IonLabel>
+                    <IonInput
+                      type="date"
+                      value={saleDate}
+                      onIonInput={(e) => setSaleDate(e.detail.value ?? '')}
+                    />
                   </IonItem>
                 </div>
 
@@ -462,7 +649,7 @@ const SalesPage: React.FC = () => {
                     min={0}
                     max={saleTotal}
                     value={paidAmountInput}
-                    helperText={`Leave blank to mark ${formatCurrency(saleTotal, currency)} as fully paid.`}
+                    helperText={`Total value: ${formatCurrency(saleTotal, currency)}`}
                     onIonInput={(event) => {
                       setPaidAmountInput(event.detail.value ?? '');
                     }}
@@ -470,7 +657,7 @@ const SalesPage: React.FC = () => {
                 </IonItem>
 
                 <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Payment Reference (e.g. MoMo ID)</IonLabel>
+                  <IonLabel position="stacked">Payment Reference (e.g. MoMo, bank, or cash note)</IonLabel>
                   <IonInput
                     placeholder="Optional reference number"
                     value={paymentReference}
@@ -489,17 +676,44 @@ const SalesPage: React.FC = () => {
                   </div>
                 </div>
 
-                <IonButton data-testid="record-sale-button" expand="block" onClick={handleSubmit}>
-                  Record Sale and Create Invoice
-                </IonButton>
+                <div className="button-group">
+                  <IonButton data-testid="record-sale-button" expand="block" fill="solid" onClick={() => handleSubmit(false)}>
+                    Record Sale
+                  </IonButton>
+                  <IonButton data-testid="create-sale-button" expand="block" fill="outline" onClick={() => handleSubmit(true)}>
+                    Create Sale & Print
+                  </IonButton>
+                </div>
                 {formMessage ? <p className="form-message">{formMessage}</p> : null}
               </div>
             ) : (
-              <EmptyState
-                eyebrow="Sales setup"
-                title="Recordings unlock once your shop basics are ready"
-                message="Add inventory items and at least one customer first, then each sale will create an invoice, update stock movements, customer ledger balances, and the dashboard automatically."
-              />
+              <div className="form-grid">
+                <EmptyState
+                  eyebrow="Sales setup"
+                  title="Recordings unlock once your shop basics are ready"
+                  message="Add at least one inventory item before recording a sale. Once stock is ready, you can choose a registered buyer or use Walk-in customer for counter sales."
+                />
+                <div className="button-group">
+                  {!hasProducts ? (
+                    <IonButton expand="block" fill="solid" onClick={() => history.push('/inventory')}>
+                      Add Inventory Item
+                    </IonButton>
+                  ) : null}
+                  {hasProducts && !canCreateSales ? (
+                    <EmptyState
+                      eyebrow="View-only sales access"
+                      title="This role cannot create new sales."
+                      message="An admin can grant sales creation if this employee should record invoices from this workspace."
+                    />
+                  ) : null}
+                  {!hasCustomers && hasProducts && canCreateCustomers ? (
+                    <IonButton expand="block" fill="outline" onClick={handleCreateWalkInCustomer}>
+                      Use Walk-in Customer
+                    </IonButton>
+                  ) : null}
+                </div>
+                {formMessage ? <p className="form-message">{formMessage}</p> : null}
+              </div>
             )}
           </SectionCard>
 
@@ -518,42 +732,12 @@ const SalesPage: React.FC = () => {
                 </div>
                 <div className="list-row">
                   <div>
-                    <strong>Customer</strong>
-                    <p>{latestReceipt.customerName}</p>
-                  </div>
-                  <div className="right-meta">
-                    <strong>{latestReceipt.clientId}</strong>
-                    <p>Client ID</p>
-                  </div>
-                </div>
-                <div className="list-row">
-                  <div>
-                    <strong>Product</strong>
+                    <strong>Items</strong>
                     <p>{latestReceipt.productName}</p>
                   </div>
                   <div className="right-meta">
-                    <strong>{latestReceipt.inventoryId}</strong>
-                    <p>Inventory ID</p>
-                  </div>
-                </div>
-                <div className="list-row">
-                  <div>
-                    <strong>Quantity</strong>
-                    <p>{latestReceipt.quantity} units</p>
-                  </div>
-                  <div className="right-meta">
-                    <strong>{formatCurrency(latestReceipt.unitPrice, currency)}</strong>
-                    <p>Unit Price</p>
-                  </div>
-                </div>
-                <div className="list-row">
-                  <div>
-                    <strong>Total</strong>
-                    <p>{formatCurrency(latestReceipt.totalAmount, currency)}</p>
-                  </div>
-                  <div className="right-meta">
-                    <strong>{latestReceipt.paymentMethod}</strong>
-                    <p>Payment Method</p>
+                    <strong>{formatCurrency(latestReceipt.totalAmount, currency)}</strong>
+                    <p>Total</p>
                   </div>
                 </div>
                 <div className="list-row">
@@ -565,17 +749,22 @@ const SalesPage: React.FC = () => {
                     <strong className={latestReceipt.balanceRemaining > 0 ? 'danger-text' : 'success-text'}>
                       {latestReceipt.balanceRemaining > 0 ? formatCurrency(latestReceipt.balanceRemaining, currency) : 'Paid'}
                     </strong>
-                    <p>Balance Remaining</p>
+                    <p>Balance</p>
                   </div>
                 </div>
-                {latestReceipt.paymentReference && (
-                  <div className="list-row">
-                    <div>
-                      <strong>Payment Reference</strong>
-                      <p>{latestReceipt.paymentReference}</p>
-                    </div>
-                  </div>
-                )}
+                <div className="list-row" style={{ marginTop: '12px', padding: '0', border: 'none' }}>
+                  {canViewInvoices ? (
+                    <IonButton 
+                      expand="block" 
+                      fill="solid" 
+                      color="primary" 
+                      style={{ width: '100%' }}
+                      onClick={() => history.push(`/sales/${latestReceipt.id}`)}
+                    >
+                      Open Full Invoice & Waybill
+                    </IonButton>
+                  ) : null}
+                </div>
               </div>
             </SectionCard>
           ) : null}
@@ -611,21 +800,19 @@ const SalesPage: React.FC = () => {
               <div className="list-block" data-testid="recent-invoices-list">
                 {recentSales.map((sale) => {
                   const customer = state.customers.find((item) => item.id === sale.customerId);
-                  const product = state.products.find((item) => item.id === sale.productId);
                   const balanceLeft = selectSaleBalanceRemaining(sale);
                   const invoiceStatus = selectSaleStatusDisplay(sale);
 
                   return (
                     <div className="list-row" key={sale.id}>
                       <div className="item-main">
-                        <img className="product-thumb" src={product?.image} alt={product?.name ?? 'Item'} />
                         <div>
                           <strong>{customer?.name ?? 'Recorded customer'}</strong>
                           <p className="code-label">
-                            {sale.invoiceNumber} · {(customer?.clientId ?? 'CLT-UNK')} · {(product?.inventoryId ?? 'INV-UNK')}
+                            {sale.invoiceNumber} · {(customer?.clientId ?? 'CLT-UNK')}
                           </p>
                           <p>
-                            {product?.name ?? 'Recorded item'} • {sale.quantity} units • {sale.paymentMethod} • {formatRelativeDate(sale.createdAt)}
+                            {sale.items?.length || 1} line items • {sale.paymentMethod} • {formatRelativeDate(sale.createdAt)}
                           </p>
                           <p className="sale-meta">
                             {sale.status === 'Reversed'
@@ -639,9 +826,11 @@ const SalesPage: React.FC = () => {
                           {invoiceStatus.label}
                         </strong>
                         <p>{formatCurrency(sale.totalAmount, currency)}</p>
-                        <IonButton fill="clear" size="small" onClick={() => history.push(`/sales/${sale.id}`)}>
-                          Open
-                        </IonButton>
+                        {canViewInvoices ? (
+                          <IonButton fill="clear" size="small" onClick={() => history.push(`/sales/${sale.id}`)}>
+                            Open
+                          </IonButton>
+                        ) : null}
                       </div>
                     </div>
                   );

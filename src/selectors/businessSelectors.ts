@@ -28,6 +28,12 @@ export type CustomerStatement = {
   closingBalance: number;
 };
 
+export type RevenueTrendPoint = {
+  label: string;
+  shortLabel: string;
+  value: number;
+};
+
 export function selectSaleBalanceRemaining(sale: Sale) {
   return sale.status === 'Reversed' ? 0 : Math.max(0, sale.totalAmount - sale.paidAmount);
 }
@@ -208,7 +214,7 @@ export function selectLedgerEntryDisplay(entry: CustomerLedgerEntry): LedgerEntr
   if (entry.type === 'opening_balance') {
     return {
       label: 'Opening balance',
-      helper: 'Balance carried into BizPilot',
+      helper: 'Balance carried into BisaPilot',
       tone: entry.amountDelta > 0 ? 'warning' : 'success',
       amountLabel: 'Charge',
     };
@@ -246,13 +252,82 @@ export function selectCustomerBalance(state: BusinessState, customerId: string) 
     .reduce((sum, entry) => sum + entry.amountDelta, 0);
 }
 
+function buildWeeklyRevenueTrend(activeSales: Sale[], now: Date): RevenueTrendPoint[] {
+  return Array.from({ length: 7 }, (_, offset) => {
+    const date = new Date(now);
+    date.setDate(now.getDate() - (6 - offset));
+    const dayKey = date.toDateString();
+    const label = new Intl.DateTimeFormat('en-GH', { weekday: 'short' }).format(date);
+    const value = activeSales
+      .filter((sale) => new Date(sale.createdAt).toDateString() === dayKey)
+      .reduce((sum, sale) => sum + sale.totalAmount, 0);
+
+    return {
+      label,
+      shortLabel: label.slice(0, 2),
+      value,
+    };
+  });
+}
+
+function buildMonthlyRevenueTrend(activeSales: Sale[], now: Date): RevenueTrendPoint[] {
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+  const weekCount = Math.ceil(lastDayOfMonth / 7);
+
+  return Array.from({ length: weekCount }, (_, index) => {
+    const startDay = index * 7 + 1;
+    const endDay = Math.min(startDay + 6, lastDayOfMonth);
+    const value = activeSales
+      .filter((sale) => {
+        const saleDate = new Date(sale.createdAt);
+        const saleDay = saleDate.getDate();
+        return saleDate.getFullYear() === year && saleDate.getMonth() === month && saleDay >= startDay && saleDay <= endDay;
+      })
+      .reduce((sum, sale) => sum + sale.totalAmount, 0);
+
+    return {
+      label: `Week ${index + 1}`,
+      shortLabel: `W${index + 1}`,
+      value,
+    };
+  });
+}
+
+function buildAnnualRevenueTrend(activeSales: Sale[], now: Date): RevenueTrendPoint[] {
+  const year = now.getFullYear();
+
+  return Array.from({ length: 12 }, (_, monthIndex) => {
+    const date = new Date(year, monthIndex, 1);
+    const label = new Intl.DateTimeFormat('en-GH', { month: 'short' }).format(date);
+    const value = activeSales
+      .filter((sale) => {
+        const saleDate = new Date(sale.createdAt);
+        return saleDate.getFullYear() === year && saleDate.getMonth() === monthIndex;
+      })
+      .reduce((sum, sale) => sum + sale.totalAmount, 0);
+
+    return {
+      label,
+      shortLabel: label.slice(0, 3),
+      value,
+    };
+  });
+}
+
 function formatRelativePaymentLabel(dateValue: string, paymentMethod: string) {
   const now = new Date();
   const createdAt = new Date(dateValue);
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startOfEntryDay = new Date(createdAt.getFullYear(), createdAt.getMonth(), createdAt.getDate()).getTime();
   const diffDays = Math.round((startOfToday - startOfEntryDay) / (1000 * 60 * 60 * 24));
-  const methodLabel = paymentMethod === 'Cash' ? 'Cash' : 'MoMo';
+  const methodLabel =
+    paymentMethod === 'Cash'
+      ? 'Cash'
+      : paymentMethod === 'Mobile Money'
+        ? 'MoMo'
+        : 'Bank';
 
   if (diffDays <= 0) {
     return `Today, ${methodLabel}`;
@@ -280,7 +355,13 @@ export function selectCustomerSummaries(state: BusinessState) {
     const balance = selectCustomerBalance(state, customer.id);
     const lastPayment = selectCustomerLastPaymentLabel(state, customer.id);
     const accountStatus: StatusDisplay =
-      balance > 0
+      customer.status === 'terminated'
+        ? {
+            label: 'Terminated',
+            helper: 'Historical account preserved',
+            tone: 'medium',
+          }
+        : balance > 0
         ? {
             label: 'Balance due',
             helper: 'Customer needs follow-up',
@@ -331,21 +412,9 @@ export function selectDashboardMetrics(state: BusinessState) {
   const lowStockCount = inventorySummaries.filter((item) => item.lowStock).length;
   const customersOwingCount = state.customers.filter((customer) => selectCustomerBalance(state, customer.id) > 0).length;
   const now = new Date();
-  const weeklyRevenueTrend = Array.from({ length: 7 }, (_, offset) => {
-    const date = new Date(now);
-    date.setDate(now.getDate() - (6 - offset));
-    const dayKey = date.toDateString();
-    const label = new Intl.DateTimeFormat('en-GH', { weekday: 'short' }).format(date);
-    const value = activeSales
-      .filter((sale) => new Date(sale.createdAt).toDateString() === dayKey)
-      .reduce((sum, sale) => sum + sale.totalAmount, 0);
-
-    return {
-      label,
-      shortLabel: label.slice(0, 2),
-      value,
-    };
-  });
+  const weeklyRevenueTrend = buildWeeklyRevenueTrend(activeSales, now);
+  const monthlyRevenueTrend = buildMonthlyRevenueTrend(activeSales, now);
+  const annualRevenueTrend = buildAnnualRevenueTrend(activeSales, now);
 
   return {
     salesToday,
@@ -355,6 +424,8 @@ export function selectDashboardMetrics(state: BusinessState) {
     lowStockCount,
     customersOwingCount,
     weeklyRevenueTrend,
+    monthlyRevenueTrend,
+    annualRevenueTrend,
     activeSales,
     inventorySummaries,
     todayPayments,

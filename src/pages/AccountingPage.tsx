@@ -16,7 +16,7 @@ import {
   IonToast,
 } from '@ionic/react';
 import { cashOutline, trendingUpOutline } from 'ionicons/icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import SectionCard from '../components/SectionCard';
 import EmptyState from '../components/EmptyState';
@@ -36,7 +36,7 @@ const EXPENSE_CATEGORIES = [
 ];
 
 const AccountingPage: React.FC = () => {
-  const { state, addExpense, currentUser } = useBusiness();
+  const { state, addExpense, currentUser, hasPermission } = useBusiness();
   const [activeSegment, setActiveSegment] = useState<'overview' | 'expenses'>('overview');
   
   // Expense Form State
@@ -48,6 +48,15 @@ const AccountingPage: React.FC = () => {
 
   const metrics = useMemo(() => selectDashboardMetrics(state), [state]);
   const currency = state.businessProfile.currency;
+  const canViewExpenses = hasPermission('expenses.view');
+  const canCreateExpenses = hasPermission('expenses.create');
+  const canUseExpensesSegment = canViewExpenses || canCreateExpenses;
+
+  useEffect(() => {
+    if (activeSegment === 'expenses' && !canUseExpensesSegment) {
+      setActiveSegment('overview');
+    }
+  }, [activeSegment, canUseExpensesSegment]);
 
   const totalExpenses = useMemo(() => 
     state.expenses.reduce((sum, exp) => sum + exp.amount, 0),
@@ -88,10 +97,12 @@ const AccountingPage: React.FC = () => {
               <IonIcon icon={trendingUpOutline} />
               <IonLabel>Overview</IonLabel>
             </IonSegmentButton>
-            <IonSegmentButton value="expenses">
-              <IonIcon icon={cashOutline} />
-              <IonLabel>Expenses</IonLabel>
-            </IonSegmentButton>
+            {canUseExpensesSegment ? (
+              <IonSegmentButton value="expenses">
+                <IonIcon icon={cashOutline} />
+                <IonLabel>Expenses</IonLabel>
+              </IonSegmentButton>
+            ) : null}
           </IonSegment>
         </IonToolbar>
       </IonHeader>
@@ -140,7 +151,7 @@ const AccountingPage: React.FC = () => {
                             <p>Percentage of today's payments via MoMo</p>
                         </div>
                         <div className="right-meta">
-                            <strong>{metrics.salesToday > 0 ? Math.round((metrics.mobileMoneyReceived / (metrics.cashInHand + metrics.mobileMoneyReceived)) * 100) : 0}%</strong>
+                            <strong>{ (metrics.cashInHand + metrics.mobileMoneyReceived) > 0 ? Math.round((metrics.mobileMoneyReceived / (metrics.cashInHand + metrics.mobileMoneyReceived)) * 100) : 0}%</strong>
                         </div>
                     </div>
                     <div className="list-row">
@@ -159,46 +170,62 @@ const AccountingPage: React.FC = () => {
 
           {activeSegment === 'expenses' && (
             <>
-              <SectionCard title="Record Expense" subtitle="Log cash outflows to maintain accurate profit records.">
-                <div className="form-grid">
-                  <IonItem lines="none" className="app-item">
-                    <IonLabel position="stacked">Category</IonLabel>
-                    <IonSelect value={category} onIonChange={(e) => setCategory(e.detail.value)} interface="popover">
-                      {EXPENSE_CATEGORIES.map(cat => (
-                        <IonSelectOption key={cat} value={cat}>{cat}</IonSelectOption>
-                      ))}
-                    </IonSelect>
-                  </IonItem>
+              {canCreateExpenses ? (
+                <SectionCard title="Record Expense" subtitle="Log cash outflows to maintain accurate profit records.">
+                  <div className="form-grid">
+                    <IonItem lines="none" className="app-item">
+                      <IonLabel position="stacked">Category</IonLabel>
+                      <IonSelect value={category} onIonChange={(e) => setCategory(e.detail.value)} interface="popover">
+                        {EXPENSE_CATEGORIES.map(cat => (
+                          <IonSelectOption key={cat} value={cat}>{cat}</IonSelectOption>
+                        ))}
+                      </IonSelect>
+                    </IonItem>
 
-                  <IonItem lines="none" className="app-item">
-                    <IonLabel position="stacked">Amount ({currency})</IonLabel>
-                    <IonInput 
-                      type="number" 
-                      placeholder="0.00" 
-                      value={amountInput} 
-                      onIonInput={(e) => setAmountInput(e.detail.value ?? '')}
-                    />
-                  </IonItem>
+                    <IonItem lines="none" className="app-item">
+                      <IonLabel position="stacked">Amount ({currency})</IonLabel>
+                      <IonInput 
+                        type="number" 
+                        placeholder="0.00" 
+                        value={amountInput} 
+                        onIonInput={(e) => setAmountInput(e.detail.value ?? '')}
+                      />
+                    </IonItem>
 
-                  <IonItem lines="none" className="app-item">
-                    <IonLabel position="stacked">Notes</IonLabel>
-                    <IonInput 
-                      placeholder="What was this for?" 
-                      value={note} 
-                      onIonInput={(e) => setNote(e.detail.value ?? '')}
-                    />
-                  </IonItem>
+                    <IonItem lines="none" className="app-item">
+                      <IonLabel position="stacked">Notes</IonLabel>
+                      <IonInput 
+                        placeholder="What was this for?" 
+                        value={note} 
+                        onIonInput={(e) => setNote(e.detail.value ?? '')}
+                      />
+                    </IonItem>
 
-                  {formMessage ? <p className="form-message danger-text">{formMessage}</p> : null}
+                    {formMessage ? <p className="form-message danger-text">{formMessage}</p> : null}
 
-                  <IonButton expand="block" onClick={handleAddExpense}>
-                    Record Expense
-                  </IonButton>
-                </div>
-              </SectionCard>
+                    <IonButton expand="block" onClick={handleAddExpense}>
+                      Record Expense
+                    </IonButton>
+                  </div>
+                </SectionCard>
+              ) : (
+                <SectionCard title="Record Expense" subtitle="Only authorized users can create new expense records.">
+                  <EmptyState
+                    eyebrow="Create access disabled"
+                    title="This role cannot record new expenses."
+                    message="Ask an admin to grant the expense creation permission if this user should be able to log business costs."
+                  />
+                </SectionCard>
+              )}
 
               <SectionCard title="Recent Expenses" subtitle="History of recorded business costs.">
-                {state.expenses.length === 0 ? (
+                {!canViewExpenses ? (
+                  <EmptyState
+                    eyebrow="View access disabled"
+                    title="This role cannot view expense history."
+                    message="An admin can grant expense viewing access without also allowing new expenses to be created."
+                  />
+                ) : state.expenses.length === 0 ? (
                   <EmptyState 
                     eyebrow="No expenses"
                     title="Clean record"

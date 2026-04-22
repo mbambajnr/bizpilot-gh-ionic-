@@ -25,11 +25,8 @@
   
   --ion-color-info: #3182CE;
   --ion-color-info-rgb: 49, 130, 206;
-}
 
-/* Light Mode Tokens */
-body.light,
-body[data-theme="light"] {
+  /* Default (Light) Mode Tokens */
   --ion-background-color: #F4F7FB;
   --ion-background-color-rgb: 244, 247, 251;
 
@@ -80,6 +77,12 @@ body[data-theme="light"] {
   --ion-color-step-850: #505c8b;
   --ion-color-step-900: #465284;
   --ion-color-step-950: #3c487d;
+}
+
+/* Light Mode Overrides (Optional Explicit Class) */
+body.light,
+body[data-theme="light"] {
+  /* Inherits from :root by default */
 }
 
 /* Dark Mode Tokens (Default or Active) */

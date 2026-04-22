@@ -11,6 +11,7 @@ import type {
   RestockRequest,
   RestockRequestStatus,
   Sale,
+  SaleLineItem,
   SaleAuditEvent,
   Expense,
   StockMovement,
@@ -38,28 +39,45 @@ export type NewProductInput = Omit<Product, 'id' | 'inventoryId' | 'image'> & {
   image?: string;
 };
 
-export type NewCustomerInput = Omit<Customer, 'id' | 'clientId'> & {
+export type NewCustomerInput = Omit<Customer, 'id' | 'clientId' | 'status' | 'terminatedAt' | 'terminationReason'> & {
   clientId?: string;
   phone?: string;
 };
 
+export type UpdateCustomerInput = {
+  customerId: string;
+  name: string;
+  phone?: string;
+  whatsapp?: string;
+  email?: string;
+  channel: string;
+};
+
+export type UpdateCustomerStatusInput = {
+  customerId: string;
+  status: Customer['status'];
+  terminationReason?: string;
+};
+
 export type UpdateBusinessProfileInput = Omit<BusinessProfile, 'id'>;
+
+export type NewSaleLineItemInput = {
+  productId: string;
+  quantity: number;
+};
 
 export type NewSaleInput = {
   customerId: string;
-  productId: string;
-  quantity: number;
+  items: NewSaleLineItemInput[];
   paymentMethod: PaymentMethod;
   paidAmount: number;
   paymentReference?: string;
   correctionOfSaleId?: string;
   quotationId?: string;
+  createdAt?: string;
 };
 
-export type NewQuotationLineInput = {
-  productId: string;
-  quantity: number;
-};
+export type NewQuotationLineInput = NewSaleLineItemInput;
 
 export type NewQuotationInput = {
   customerId: string;
@@ -74,6 +92,7 @@ export type ConvertQuotationInput = {
 };
 
 export type ConvertedSaleReceipt = {
+  id: string;
   receiptId: string;
   createdAt: string;
   customerName: string;
@@ -188,7 +207,7 @@ function toSaleAuditEvents(activityEntries: ActivityLogEntry[]): SaleAuditEvent[
 function ensureBusinessProfile(profile?: Partial<BusinessProfile>): BusinessProfile {
   return {
     id: profile?.id ?? 'biz-001',
-    businessName: profile?.businessName?.trim() || 'BizPilot GH Demo Shop',
+    businessName: profile?.businessName?.trim() || '',
     businessType: profile?.businessType?.trim() || 'General Retail',
     currency: profile?.currency?.trim() || 'GHS',
     country: profile?.country?.trim() || 'Ghana',
@@ -196,6 +215,11 @@ function ensureBusinessProfile(profile?: Partial<BusinessProfile>): BusinessProf
     invoicePrefix: profile?.invoicePrefix?.trim() || 'INV-',
     phone: profile?.phone?.trim() || '',
     email: profile?.email?.trim() || '',
+    logoUrl: profile?.logoUrl ?? undefined,
+    signatureUrl: profile?.signatureUrl ?? undefined,
+    address: profile?.address?.trim() || '',
+    website: profile?.website?.trim() || '',
+    waybillPrefix: profile?.waybillPrefix?.trim() || 'WAY-',
   };
 }
 
@@ -438,7 +462,13 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     id: customer.id ?? `c${index + 1}`,
     clientId: customer.clientId ?? `CLT-${String(index + 1).padStart(3, '0')}`,
     name: customer.name,
+    phone: customer.phone ?? '',
+    whatsapp: customer.whatsapp ?? '',
+    email: customer.email ?? '',
     channel: customer.channel ?? 'No action needed',
+    status: customer.status ?? 'active',
+    terminatedAt: customer.terminatedAt ?? undefined,
+    terminationReason: customer.terminationReason ?? undefined,
   }));
   const sales = (raw.sales ?? []).map((sale, index) => ({
     ...sale,
@@ -464,6 +494,14 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     raw.activityLogEntries && raw.activityLogEntries.length > 0
       ? raw.activityLogEntries
       : migrateActivityEntries(sales, raw.saleAuditEvents);
+  const users = (raw.users ?? seedState.users).map((user) => ({
+    ...user,
+    accountStatus: user.accountStatus ?? 'active',
+    deactivatedAt: user.deactivatedAt ?? undefined,
+    roleLabel: user.roleLabel?.trim() || undefined,
+    grantedPermissions: user.grantedPermissions ?? [],
+    revokedPermissions: user.revokedPermissions ?? [],
+  }));
 
   return {
     businessProfile,
@@ -474,7 +512,7 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     stockMovements,
     customerLedgerEntries,
     activityLogEntries,
-    users: raw.users ?? seedState.users,
+    users,
     currentUserId: raw.currentUserId ?? seedState.currentUserId,
     restockRequests: raw.restockRequests ?? [],
     expenses: raw.expenses ?? [],
@@ -589,8 +627,11 @@ export function addCustomerToState(current: BusinessState, input: NewCustomerInp
     id: `c${crypto.randomUUID()}`,
     name,
     phone: input.phone?.trim() || '',
+    whatsapp: input.whatsapp?.trim() || '',
+    email: input.email?.trim() || '',
     channel,
     clientId,
+    status: 'active',
   };
   const createdAt = new Date().toISOString();
 
@@ -616,6 +657,109 @@ export function addCustomerToState(current: BusinessState, input: NewCustomerInp
   };
 }
 
+export function updateCustomerInState(current: BusinessState, input: UpdateCustomerInput): ActionResult<BusinessState> {
+  const name = input.name.trim();
+  const channel = input.channel.trim();
+
+  if (!name) {
+    return { ok: false, message: 'Customer name is required.' };
+  }
+
+  if (!channel) {
+    return { ok: false, message: 'Follow-up channel is required.' };
+  }
+
+  const existingCustomer = current.customers.find((customer) => customer.id === input.customerId);
+
+  if (!existingCustomer) {
+    return { ok: false, message: 'The selected customer could not be found.' };
+  }
+
+  const updatedCustomer: Customer = {
+    ...existingCustomer,
+    name,
+    phone: input.phone?.trim() || '',
+    whatsapp: input.whatsapp?.trim() || '',
+    email: input.email?.trim() || '',
+    channel,
+  };
+  const createdAt = new Date().toISOString();
+
+  return {
+    ok: true,
+    data: {
+      ...current,
+      customers: current.customers.map((customer) => (customer.id === input.customerId ? updatedCustomer : customer)),
+      activityLogEntries: [
+        createActivityLogEntry(current, {
+          entityType: 'customer',
+          entityId: updatedCustomer.id,
+          actionType: 'customer_updated',
+          title: 'Customer details updated',
+          detail: `${updatedCustomer.name}'s contact details were updated.`,
+          status: 'info',
+          createdAt,
+          referenceNumber: updatedCustomer.clientId,
+        }),
+        ...current.activityLogEntries,
+      ],
+    },
+  };
+}
+
+export function updateCustomerStatusInState(current: BusinessState, input: UpdateCustomerStatusInput): ActionResult<BusinessState> {
+  const existingCustomer = current.customers.find((customer) => customer.id === input.customerId);
+
+  if (!existingCustomer) {
+    return { ok: false, message: 'The selected customer could not be found.' };
+  }
+
+  if (existingCustomer.status === input.status) {
+    return {
+      ok: false,
+      message: input.status === 'terminated' ? 'This customer account is already terminated.' : 'This customer account is already active.',
+    };
+  }
+
+  const now = new Date().toISOString();
+  const terminationReason = input.terminationReason?.trim() || '';
+
+  if (input.status === 'terminated' && !terminationReason) {
+    return { ok: false, message: 'Please provide a short reason before terminating this customer account.' };
+  }
+
+  const updatedCustomer: Customer = {
+    ...existingCustomer,
+    status: input.status,
+    terminatedAt: input.status === 'terminated' ? now : undefined,
+    terminationReason: input.status === 'terminated' ? terminationReason : undefined,
+  };
+
+  return {
+    ok: true,
+    data: {
+      ...current,
+      customers: current.customers.map((customer) => (customer.id === input.customerId ? updatedCustomer : customer)),
+      activityLogEntries: [
+        createActivityLogEntry(current, {
+          entityType: 'customer',
+          entityId: updatedCustomer.id,
+          actionType: input.status === 'terminated' ? 'customer_terminated' : 'customer_reactivated',
+          title: input.status === 'terminated' ? 'Customer account terminated' : 'Customer account reactivated',
+          detail:
+            input.status === 'terminated'
+              ? `${updatedCustomer.name} was marked as terminated. Historical records remain preserved.`
+              : `${updatedCustomer.name} was restored to the active customer list.`,
+          status: input.status === 'terminated' ? 'warning' : 'success',
+          createdAt: now,
+          referenceNumber: updatedCustomer.clientId,
+        }),
+        ...current.activityLogEntries,
+      ],
+    },
+  };
+}
+
 export function updateBusinessProfileInState(current: BusinessState, input: UpdateBusinessProfileInput): ActionResult<BusinessState> {
   const businessName = input.businessName.trim();
   const businessType = input.businessType?.trim() || '';
@@ -623,21 +767,25 @@ export function updateBusinessProfileInState(current: BusinessState, input: Upda
   const country = input.country.trim();
   const receiptPrefix = input.receiptPrefix.trim();
   const invoicePrefix = input.invoicePrefix.trim();
+  const waybillPrefix = input.waybillPrefix?.trim() || 'WAY-';
 
-  if (!businessName || !currency || !country || !receiptPrefix || !invoicePrefix || !businessType) {
-    return { ok: false, message: 'Business name, type, country, currency, and document prefixes are required.' };
+  if (!businessName || !currency || !country || !receiptPrefix || !invoicePrefix) {
+    return { ok: false, message: 'Business name, country, currency, and document prefixes are required.' };
   }
 
   const updatedProfile: BusinessProfile = {
     ...current.businessProfile,
     ...input,
     businessName,
+    businessType,
     currency,
     country,
     receiptPrefix,
     invoicePrefix,
+    waybillPrefix,
     phone: input.phone.trim(),
     email: input.email.trim(),
+    address: input.address.trim(),
   };
   const createdAt = new Date().toISOString();
 
@@ -668,6 +816,10 @@ export function addQuotationToState(current: BusinessState, input: NewQuotationI
 
   if (!customer) {
     return { ok: false, message: 'Choose a valid customer for the quotation.' };
+  }
+
+  if (customer.status === 'terminated') {
+    return { ok: false, message: 'This customer account has been terminated. Reactivate the customer before creating a new quotation.' };
   }
 
   if (!input.items.length) {
@@ -751,91 +903,54 @@ export function convertQuotationToSalesState(
     return { ok: false, message: 'The customer for this quotation could not be found.' };
   }
 
+  if (customer.status === 'terminated') {
+    return { ok: false, message: 'This customer account has been terminated. Reactivate the customer before converting this quotation.' };
+  }
+
   if (!Number.isFinite(input.amountPaid) || input.amountPaid < 0 || input.amountPaid > quotation.totalAmount) {
     return { ok: false, message: 'Amount paid must be between 0 and the quotation total.' };
   }
 
-  const resolvedItems = quotation.items.map((line) => {
-    const product = current.products.find((item) => item.id === line.productId);
+  // Convert quotation items to sale item inputs
+  const saleItemInputs: NewSaleLineItemInput[] = quotation.items.map((item) => ({
+    productId: item.productId,
+    quantity: item.quantity,
+  }));
 
-    if (!product) {
-      return { line, product: null };
-    }
-
-    return { line, product };
+  const saleResult = addSaleToState(current, {
+    customerId: quotation.customerId,
+    items: saleItemInputs,
+    paymentMethod: input.paymentMethod,
+    paidAmount: input.amountPaid,
+    quotationId: quotation.id,
   });
 
-  const missingProduct = resolvedItems.find((item) => !item.product);
-
-  if (missingProduct) {
-    return { ok: false, message: 'One or more quoted products no longer exist in inventory.' };
+  if (!saleResult.ok) {
+    return { ok: false, message: saleResult.message || 'Could not create an invoice from this quotation.' };
   }
 
-  const insufficientStock = resolvedItems.find(
-    (item) => (item.product ? selectProductQuantityOnHand(current, item.product.id) : 0) < item.line.quantity
-  );
-
-  if (insufficientStock?.product) {
-    return {
-      ok: false,
-      message: `${insufficientStock.product.name} does not have enough stock to complete this quotation.`,
-    };
+  if (!saleResult.data) {
+    return { ok: false, message: 'Could not create an invoice from this quotation.' };
   }
 
-  let nextState = current;
-  let remainingPaid = input.amountPaid;
-  const receipts: ConvertedSaleReceipt[] = [];
-  const relatedSaleIds: string[] = [];
+  const nextState = saleResult.data;
+  const createdSale = nextState.sales[0];
 
-  for (const item of resolvedItems) {
-    if (!item.product) {
-      return { ok: false, message: 'One or more quoted products no longer exist in inventory.' };
-    }
-
-    const amountPaidForLine = Math.min(remainingPaid, item.line.total);
-    const saleResult = addSaleToState(nextState, {
-      customerId: quotation.customerId,
-      productId: item.line.productId,
-      quantity: item.line.quantity,
-      paymentMethod: input.paymentMethod,
-      paidAmount: amountPaidForLine,
-      quotationId: quotation.id,
-    });
-
-    if (!saleResult.ok) {
-      return { ok: false, message: saleResult.message };
-    }
-
-    if (!saleResult.data) {
-      return { ok: false, message: 'Could not create an invoice from this quotation right now.' };
-    }
-
-    const createdSale = saleResult.data.sales[0];
-
-    if (!createdSale) {
-      return { ok: false, message: 'Could not create an invoice from this quotation right now.' };
-    }
-
-    receipts.push({
-      receiptId: createdSale.receiptId,
-      createdAt: createdSale.createdAt,
-      customerName: customer.name,
-      clientId: customer.clientId,
-      productName: item.product.name,
-      inventoryId: item.product.inventoryId,
-      quantity: createdSale.quantity,
-      unitPrice: item.product.price,
-      totalAmount: createdSale.totalAmount,
-      amountPaid: createdSale.paidAmount,
-      balanceRemaining: selectSaleBalanceRemaining(createdSale),
-      paymentMethod: createdSale.paymentMethod,
-      paymentReference: createdSale.paymentReference,
-    });
-
-    relatedSaleIds.push(createdSale.id);
-    remainingPaid -= amountPaidForLine;
-    nextState = saleResult.data;
-  }
+  const receipts: ConvertedSaleReceipt[] = [{
+    id: createdSale.id,
+    receiptId: createdSale.receiptId,
+    createdAt: createdSale.createdAt,
+    customerName: customer.name,
+    clientId: customer.clientId,
+    productName: "Combined Quotation Items", // generic for multi-item
+    inventoryId: quotation.quotationNumber,
+    quantity: createdSale.quantity,
+    unitPrice: 0, 
+    totalAmount: createdSale.totalAmount,
+    amountPaid: createdSale.paidAmount,
+    balanceRemaining: selectSaleBalanceRemaining(createdSale),
+    paymentMethod: createdSale.paymentMethod,
+  }];
 
   const convertedAt = new Date().toISOString();
 
@@ -850,7 +965,7 @@ export function convertQuotationToSalesState(
                 ...item,
                 status: 'Converted',
                 convertedAt,
-                relatedSaleIds,
+                relatedSaleIds: [createdSale.id],
               }
             : item
         ),
@@ -860,11 +975,11 @@ export function convertQuotationToSalesState(
             entityId: quotation.id,
             actionType: 'quotation_converted',
             title: 'Quotation converted',
-            detail: `${quotation.quotationNumber} was converted into ${relatedSaleIds.length} linked invoice record(s).`,
+            detail: `${quotation.quotationNumber} was converted into a multi-item invoice.`,
             status: 'success',
             createdAt: convertedAt,
             referenceNumber: quotation.quotationNumber,
-            relatedEntityId: relatedSaleIds[0],
+            relatedEntityId: createdSale.id,
           }),
           ...nextState.activityLogEntries,
         ],
@@ -876,81 +991,93 @@ export function convertQuotationToSalesState(
 }
 
 export function addSaleToState(current: BusinessState, input: NewSaleInput): ActionResult<BusinessState> {
+  const customer = current.customers.find((item) => item.id === input.customerId);
+  if (!customer) {
+    return { ok: false, message: 'Choose a valid customer.' };
+  }
+
+  if (customer.status === 'terminated') {
+    return { ok: false, message: 'This customer account has been terminated. Reactivate the customer before recording a new sale.' };
+  }
+
+  if (!input.items || input.items.length === 0) {
+    return { ok: false, message: 'Add at least one item to the sale.' };
+  }
+
   if (input.correctionOfSaleId) {
     const originalSale = current.sales.find((item) => item.id === input.correctionOfSaleId);
-
-    if (!originalSale) {
-      return { ok: false, message: 'The original invoice for this correction could not be found.' };
-    }
-
-    if (originalSale.status !== 'Reversed') {
-      return { ok: false, message: 'Only reversed invoices can be used to create a correction invoice.' };
-    }
-
-    if (originalSale.correctedBySaleId) {
-      return { ok: false, message: 'A correction invoice has already been created for this invoice.' };
-    }
+    if (!originalSale) return { ok: false, message: 'Original invoice not found.' };
+    if (originalSale.status !== 'Reversed') return { ok: false, message: 'Only reversed invoices can be corrected.' };
+    if (originalSale.correctedBySaleId) return { ok: false, message: 'Already corrected.' };
   }
 
-  const product = current.products.find((item) => item.id === input.productId);
-  const customer = current.customers.find((item) => item.id === input.customerId);
+  let totalAmount = 0;
+  const saleItems: SaleLineItem[] = [];
+  const stockMovements: StockMovement[] = [];
+  const saleId = `s${crypto.randomUUID()}`;
+  const createdAt = input.createdAt || new Date().toISOString();
 
-  if (!product || !customer) {
-    return { ok: false, message: 'Choose a valid product and customer.' };
+  // Validate all items & stock first
+  for (const itemInput of input.items) {
+    const product = current.products.find((p) => p.id === itemInput.productId);
+    if (!product) return { ok: false, message: `Product not found for ID: ${itemInput.productId}` };
+    
+    if (itemInput.quantity <= 0) return { ok: false, message: `Quantity for ${product.name} must be at least 1.` };
+
+    const qoh = selectProductQuantityOnHand(current, product.id);
+    if (itemInput.quantity > qoh) return { ok: false, message: `Not enough stock for ${product.name}.` };
+
+    const lineTotal = product.price * itemInput.quantity;
+    totalAmount += lineTotal;
+
+    saleItems.push({
+      productId: product.id,
+      productName: product.name,
+      inventoryId: product.inventoryId,
+      quantity: itemInput.quantity,
+      unitPrice: product.price,
+      total: lineTotal,
+    });
   }
 
-  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
-    return { ok: false, message: 'Quantity must be at least 1.' };
+  if (!Number.isFinite(input.paidAmount) || input.paidAmount < 0 || input.paidAmount > totalAmount) {
+    return { ok: false, message: 'Paid amount must be a valid number between 0 and total.' };
   }
 
-  const quantityOnHand = selectProductQuantityOnHand(current, product.id);
+  const invoiceNumber = nextInvoiceNumber(current.sales, current.businessProfile.invoicePrefix);
+  const receiptId = nextReceiptId(current.sales, current.businessProfile.receiptPrefix);
 
-  if (input.quantity > quantityOnHand) {
-    return { ok: false, message: 'Not enough stock available for that sale.' };
-  }
-
-  if (!Number.isFinite(input.paidAmount)) {
-    return { ok: false, message: 'Paid amount must be a valid number.' };
-  }
-
-  const totalAmount = product.price * input.quantity;
-
-  if (!Number.isFinite(totalAmount)) {
-    return { ok: false, message: 'Sale total could not be calculated.' };
-  }
-
-  if (input.paidAmount < 0 || input.paidAmount > totalAmount) {
-    return { ok: false, message: 'Paid amount must be between 0 and the total sale value.' };
-  }
-
-  const createdAt = new Date().toISOString();
   const sale: Sale = {
-    id: `s${crypto.randomUUID()}`,
-    invoiceNumber: nextInvoiceNumber(current.sales, current.businessProfile.invoicePrefix),
-    receiptId: nextReceiptId(current.sales, current.businessProfile.receiptPrefix),
+    id: saleId,
+    invoiceNumber,
+    receiptId,
     customerId: input.customerId,
-    productId: input.productId,
-    quantity: input.quantity,
+    items: saleItems,
+    productId: saleItems[0].productId, // Legacy compat
+    quantity: saleItems.reduce((s, i) => s + i.quantity, 0), // Legacy compat
     paymentMethod: input.paymentMethod,
     paidAmount: input.paidAmount,
-    paymentReference: input.paymentReference,
     totalAmount,
     createdAt,
     status: 'Completed',
     correctionOfSaleId: input.correctionOfSaleId,
     quotationId: input.quotationId,
+    paymentReference: input.paymentReference,
   };
 
-  const quantityAfter = quantityOnHand - input.quantity;
-  const saleMovement = createStockMovement(current, {
-    productId: product.id,
-    type: 'sale',
-    quantityDelta: -input.quantity,
-    quantityAfter,
-    createdAt,
-    relatedSaleId: sale.id,
-    referenceNumber: sale.receiptId,
-    note: 'Stock reduced by sale',
+  // Generate movements for each item
+  saleItems.forEach((item, idx) => {
+    const qoh = selectProductQuantityOnHand(current, item.productId);
+    stockMovements.push(createStockMovement(current, {
+      productId: item.productId,
+      type: 'sale',
+      quantityDelta: -item.quantity,
+      quantityAfter: qoh - item.quantity,
+      createdAt,
+      relatedSaleId: sale.id,
+      referenceNumber: sale.receiptId,
+      note: `Stock reduced by multi-item sale ${invoiceNumber}`,
+    }));
   });
 
   const ledgerEntries: CustomerLedgerEntry[] = [
@@ -961,57 +1088,54 @@ export function addSaleToState(current: BusinessState, input: NewSaleInput): Act
       createdAt,
       relatedSaleId: sale.id,
       referenceNumber: sale.invoiceNumber,
-      note: 'Invoice recorded',
+      note: `Invoice ${invoiceNumber} recorded`,
     }),
   ];
 
   if (input.paidAmount > 0) {
-    ledgerEntries.push(
-      createLedgerEntry(
-        {
-          ...current,
-          customerLedgerEntries: [...ledgerEntries, ...current.customerLedgerEntries],
-        },
-        {
-          customerId: customer.id,
-          type: 'payment_received',
-          amountDelta: -input.paidAmount,
-          createdAt,
-          relatedSaleId: sale.id,
-          referenceNumber: sale.receiptId,
-          paymentMethod: input.paymentMethod,
-          note: 'Payment received for invoice',
-        }
-      )
-    );
+    ledgerEntries.push(createLedgerEntry(
+      { ...current, customerLedgerEntries: [...ledgerEntries, ...current.customerLedgerEntries] },
+      {
+        customerId: customer.id,
+        type: 'payment_received',
+        amountDelta: -input.paidAmount,
+        createdAt,
+        relatedSaleId: sale.id,
+        referenceNumber: sale.receiptId,
+        paymentMethod: input.paymentMethod,
+        note: `Payment for ${invoiceNumber}`,
+      }
+    ));
   }
 
-  const nextSales = current.sales.map((item) =>
-    item.id === input.correctionOfSaleId ? { ...item, correctedBySaleId: sale.id } : item
+  const nextSales = current.sales.map((s) => 
+    s.id === input.correctionOfSaleId ? { ...s, correctedBySaleId: sale.id } : s
   );
+
   const activityLogEntries: ActivityLogEntry[] = [
     createActivityLogEntry(current, {
       entityType: 'sale',
       entityId: sale.id,
-      actionType: 'receipt_issued',
-      title: 'Receipt issued',
-      detail: 'Receipt generated for completed invoice',
-      status: 'success',
+      actionType: 'invoice_created',
+      title: input.correctionOfSaleId ? 'Correction invoice created' : 'Invoice created',
+      detail: input.correctionOfSaleId
+        ? `Correction invoice ${invoiceNumber} recorded`
+        : `Recorded sale ${invoiceNumber} with ${saleItems.length} items`,
+      status: input.correctionOfSaleId ? 'warning' : 'success',
       createdAt,
-      referenceNumber: sale.receiptId,
+      referenceNumber: sale.invoiceNumber,
       relatedSaleId: sale.id,
     }),
     createActivityLogEntry(current, {
       entityType: 'sale',
       entityId: sale.id,
-      actionType: 'invoice_created',
-      title: 'Invoice created',
-      detail: input.correctionOfSaleId
-        ? 'Correction invoice created'
-        : `Invoice recorded for ${customer.name}`,
+      actionType: 'receipt_issued',
+      title: 'Receipt issued',
+      detail: `Receipt ${receiptId} issued for ${invoiceNumber}`,
       status: 'success',
       createdAt,
-      referenceNumber: sale.invoiceNumber,
+      referenceNumber: sale.receiptId,
+      relatedEntityId: sale.id,
       relatedSaleId: sale.id,
     }),
     ...current.activityLogEntries,
@@ -1042,7 +1166,7 @@ export function addSaleToState(current: BusinessState, input: NewSaleInput): Act
     data: {
       ...current,
       sales: [sale, ...nextSales],
-      stockMovements: [saleMovement, ...current.stockMovements],
+      stockMovements: [...stockMovements, ...current.stockMovements],
       customerLedgerEntries: [...ledgerEntries.reverse(), ...current.customerLedgerEntries],
       activityLogEntries,
     },
@@ -1065,11 +1189,9 @@ export function reverseSaleInState(current: BusinessState, input: ReverseSaleInp
     return { ok: false, message: 'A reason is required before reversing an invoice.' };
   }
 
-  const product = current.products.find((item) => item.id === sale.productId);
   const customer = current.customers.find((item) => item.id === sale.customerId);
-
-  if (!product || !customer) {
-    return { ok: false, message: 'This invoice can no longer be reversed because its customer or product is missing.' };
+  if (!customer) {
+    return { ok: false, message: 'The customer for this invoice could not be found.' };
   }
 
   const reversedAt = new Date().toISOString();
@@ -1080,18 +1202,39 @@ export function reverseSaleInState(current: BusinessState, input: ReverseSaleInp
     reversedAt,
     reversedBy: input.actor,
   };
+
   const nextSales = current.sales.map((item) => (item.id === sale.id ? updatedSale : item));
-  const quantityOnHand = selectProductQuantityOnHand(current, product.id);
-  const reversalMovement = createStockMovement(current, {
-    productId: product.id,
-    type: 'reversal',
-    quantityDelta: sale.quantity,
-    quantityAfter: quantityOnHand + sale.quantity,
-    createdAt: reversedAt,
-    relatedSaleId: sale.id,
-    referenceNumber: sale.receiptId,
-    note: 'Stock restored by invoice reversal',
+  
+  // Restore stock for ALL items in the sale
+  const reversalMovements: StockMovement[] = (sale.items || []).map(item => {
+    const quantityOnHand = selectProductQuantityOnHand(current, item.productId);
+    return createStockMovement(current, {
+      productId: item.productId,
+      type: 'reversal',
+      quantityDelta: item.quantity,
+      quantityAfter: quantityOnHand + item.quantity,
+      createdAt: reversedAt,
+      relatedSaleId: sale.id,
+      referenceNumber: sale.receiptId,
+      note: `Stock restored by invoice reversal: ${item.productName}`,
+    });
   });
+
+  // Fallback for legacy items without .items array
+  if (reversalMovements.length === 0 && sale.productId) {
+    const quantityOnHand = selectProductQuantityOnHand(current, sale.productId);
+    reversalMovements.push(createStockMovement(current, {
+      productId: sale.productId,
+      type: 'reversal',
+      quantityDelta: sale.quantity,
+      quantityAfter: quantityOnHand + sale.quantity,
+      createdAt: reversedAt,
+      relatedSaleId: sale.id,
+      referenceNumber: sale.receiptId,
+      note: 'Stock restored by legacy invoice reversal',
+    }));
+  }
+
   const reversalLedgerEntry = createLedgerEntry(current, {
     customerId: customer.id,
     type: 'reversal',
@@ -1101,6 +1244,7 @@ export function reverseSaleInState(current: BusinessState, input: ReverseSaleInp
     referenceNumber: sale.invoiceNumber,
     note: reason,
   });
+
   const activityEntry = createActivityLogEntry(current, {
     entityType: 'sale',
     entityId: sale.id,
@@ -1116,7 +1260,7 @@ export function reverseSaleInState(current: BusinessState, input: ReverseSaleInp
   const nextState: BusinessState = {
     ...current,
     sales: nextSales,
-    stockMovements: [reversalMovement, ...current.stockMovements],
+    stockMovements: [...reversalMovements, ...current.stockMovements],
     customerLedgerEntries: [reversalLedgerEntry, ...current.customerLedgerEntries],
     activityLogEntries: [activityEntry, ...current.activityLogEntries],
   };

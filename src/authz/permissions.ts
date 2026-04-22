@@ -7,14 +7,15 @@ import { AppPermission, UserAccessProfile } from './types';
  * Conflict rule: Deny wins (if a permission is in both granted and revoked, it remains denied).
  */
 export function resolvePermissions(profile: UserAccessProfile): Set<AppPermission> {
+  if (!profile) return new Set();
   const basePermissions = ROLE_DEFAULT_PERMISSIONS[profile.role] || [];
   const effective = new Set<AppPermission>(basePermissions);
 
-  // Add explicit grants
-  profile.grantedPermissions.forEach((p) => effective.add(p));
+  // Add explicit grants (safety check for undefined arrays)
+  (profile.grantedPermissions || []).forEach((p) => effective.add(p));
 
   // Remove explicit revocations (Deny wins)
-  profile.revokedPermissions.forEach((p) => effective.delete(p));
+  (profile.revokedPermissions || []).forEach((p) => effective.delete(p));
 
   return effective;
 }
@@ -22,7 +23,8 @@ export function resolvePermissions(profile: UserAccessProfile): Set<AppPermissio
 /**
  * Checks if a user has a specific permission.
  */
-export function hasPermission(profile: UserAccessProfile, permission: AppPermission): boolean {
+export function hasPermission(profile: UserAccessProfile | null | undefined, permission: AppPermission): boolean {
+  if (!profile) return false;
   const effective = resolvePermissions(profile);
   return effective.has(permission);
 }

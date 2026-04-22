@@ -1,7 +1,7 @@
 import { createProductImage } from '../utils/productArtwork';
 import { UserAccessProfile } from '../authz/types';
 
-export type PaymentMethod = 'Cash' | 'Mobile Money';
+export type PaymentMethod = 'Cash' | 'Mobile Money' | 'Bank Account';
 export type SaleStatus = 'Completed' | 'Reversed';
 
 export type BusinessProfile = {
@@ -16,6 +16,9 @@ export type BusinessProfile = {
   email: string;
   logoUrl?: string;
   signatureUrl?: string;
+  address: string;
+  website?: string;
+  waybillPrefix: string;
 };
 
 export type Product = {
@@ -49,12 +52,28 @@ export type RestockRequest = {
   reviewNote?: string;
 };
 
+export type CustomerStatus = 'active' | 'terminated';
+
 export type Customer = {
   id: string;
   clientId: string;
   name: string;
   phone?: string;
+  whatsapp?: string;
+  email?: string;
   channel: string;
+  status: CustomerStatus;
+  terminatedAt?: string;
+  terminationReason?: string;
+};
+
+export type SaleLineItem = {
+  productId: string;
+  productName: string;
+  inventoryId: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
 };
 
 export type Sale = {
@@ -62,8 +81,9 @@ export type Sale = {
   invoiceNumber: string;
   receiptId: string;
   customerId: string;
-  productId: string;
-  quantity: number;
+  items: SaleLineItem[];
+  productId: string; // Legacy: first item
+  quantity: number; // Legacy: sum of quantities
   paymentMethod: PaymentMethod;
   paidAmount: number;
   totalAmount: number;
@@ -146,6 +166,9 @@ export type ActivityLogEntry = {
   actionType:
     | 'product_created'
     | 'customer_created'
+    | 'customer_updated'
+    | 'customer_terminated'
+    | 'customer_reactivated'
     | 'quotation_created'
     | 'quotation_converted'
     | 'invoice_created'
@@ -197,14 +220,17 @@ const isoDaysAgoAt = (days: number, hour: number, minute = 0) =>
 export const seedState: BusinessState = {
   businessProfile: {
     id: 'biz-001',
-    businessName: 'BizPilot GH Demo Shop',
+    businessName: '',
     businessType: 'General Retail',
     currency: 'GHS',
     country: 'Ghana',
     receiptPrefix: 'RCP-',
     invoicePrefix: 'INV-',
-    phone: '+233 24 000 0000',
-    email: 'hello@bizpilotgh.app',
+    waybillPrefix: 'WAY-',
+    phone: '',
+    email: '',
+    address: '',
+    website: '',
   },
   products: [
     { id: 'p1', inventoryId: 'INV-001', name: 'Sunlight Detergent', unit: 'packs', price: 35, cost: 27, reorderLevel: 10, image: createProductImage('Sunlight', '#f4c95d', '#1d4738') },
@@ -213,10 +239,10 @@ export const seedState: BusinessState = {
     { id: 'p4', inventoryId: 'INV-004', name: 'Hair Food', unit: 'tins', price: 28, cost: 19, reorderLevel: 9, image: createProductImage('Hair Food', '#ff9f8f', '#4d2434') },
   ],
   customers: [
-    { id: 'c1', clientId: 'CLT-001', name: 'Ama Beauty Supplies', phone: '+233240000001', channel: 'WhatsApp follow-up' },
-    { id: 'c2', clientId: 'CLT-002', name: 'Kojo Mini Mart', phone: '+233240000002', channel: 'No action needed' },
-    { id: 'c3', clientId: 'CLT-003', name: 'Nhyira Agro Shop', phone: '+233240000003', channel: 'Call owner' },
-    { id: 'c4', clientId: 'CLT-004', name: 'Walk-in customer', phone: '', channel: 'Counter sale' },
+    { id: 'c1', clientId: 'CLT-001', name: 'Ama Beauty Supplies', phone: '', channel: 'WhatsApp follow-up', status: 'active' },
+    { id: 'c2', clientId: 'CLT-002', name: 'Kojo Mini Mart', phone: '', channel: 'No action needed', status: 'active' },
+    { id: 'c3', clientId: 'CLT-003', name: 'Nhyira Agro Shop', phone: '', channel: 'Call owner', status: 'active' },
+    { id: 'c4', clientId: 'CLT-004', name: 'Walk-in customer', phone: '', channel: 'Counter sale', status: 'active' },
   ],
   sales: [
     {
@@ -224,6 +250,9 @@ export const seedState: BusinessState = {
       invoiceNumber: 'INV-001',
       receiptId: 'RCP-001',
       customerId: 'c1',
+      items: [
+        { productId: 'p4', productName: 'Hair Food', inventoryId: 'INV-004', quantity: 6, unitPrice: 28, total: 168 }
+      ],
       productId: 'p4',
       quantity: 6,
       paymentMethod: 'Mobile Money',
@@ -237,6 +266,9 @@ export const seedState: BusinessState = {
       invoiceNumber: 'INV-002',
       receiptId: 'RCP-002',
       customerId: 'c2',
+      items: [
+        { productId: 'p1', productName: 'Sunlight Detergent', inventoryId: 'INV-001', quantity: 4, unitPrice: 35, total: 140 }
+      ],
       productId: 'p1',
       quantity: 4,
       paymentMethod: 'Cash',
@@ -274,8 +306,9 @@ export const seedState: BusinessState = {
     {
       userId: 'u-admin',
       name: 'Admin User',
-      email: 'admin@bizpilot.gh',
+      email: 'admin@bisapilot.gh',
       password: 'admin-password',
+      accountStatus: 'active',
       role: 'Admin',
       grantedPermissions: [],
       revokedPermissions: [],
@@ -283,8 +316,9 @@ export const seedState: BusinessState = {
     {
       userId: 'u-sales',
       name: 'Sales Manager',
-      email: 'sales@bizpilot.gh',
+      email: 'sales@bisapilot.gh',
       password: 'sales-password',
+      accountStatus: 'active',
       role: 'SalesManager',
       grantedPermissions: [],
       revokedPermissions: [],
@@ -292,8 +326,9 @@ export const seedState: BusinessState = {
     {
       userId: 'u-accountant',
       name: 'Accountant User',
-      email: 'accountant@bizpilot.gh',
+      email: 'accountant@bisapilot.gh',
       password: 'accountant-password',
+      accountStatus: 'active',
       role: 'Accountant',
       grantedPermissions: [],
       revokedPermissions: [],
