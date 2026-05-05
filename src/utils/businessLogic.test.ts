@@ -25,7 +25,6 @@ import {
   createProductCategoryInState,
   createSupplyRouteInState,
   dispatchStockTransferInState,
-  ensureDefaultLocation,
   getBusinessLaunchState,
   approvePayableInState,
   approvePurchaseInState,
@@ -43,7 +42,6 @@ import {
   setInventoryCategoriesEnabledInState,
   setProductCategoryActiveInState,
   submitPurchaseInState,
-  transferStockInState,
   updateBusinessProfileInState,
   updateBusinessLocationInState,
   updateCustomerStatusInState,
@@ -2111,6 +2109,14 @@ describe('businessLogic', () => {
     const payable = approved.data.accountsPayable.find((entry) => entry.purchaseId === draft.id);
     expect(payable).toBeDefined();
     expect(payable?.amountDue).toBe(85);
+    expect(approved.data.notifications.some((notification) =>
+      notification.recipientUserIds?.includes('u-purchase') &&
+      notification.referenceNumber === draft.purchaseCode
+    )).toBe(true);
+    expect(approved.data.notifications.some((notification) =>
+      notification.recipientRoles?.includes('Accountant') &&
+      notification.actionUrl === '/accounting?segment=payables'
+    )).toBe(true);
 
     const approvedPayable = approvePayableInState(approved.data, {
       payableId: payable!.id,
@@ -2201,11 +2207,15 @@ describe('businessLogic', () => {
     const cancelled = cancelPurchaseInState(draft.data, {
       purchaseId,
       performedBy: 'u-admin',
+      note: 'Vendor quote is above budget.',
     });
     expect(cancelled.ok).toBe(true);
     if (!cancelled.ok || !cancelled.data) {
       return;
     }
+    expect(cancelled.data.purchases[0].status).toBe('declined');
+    expect(cancelled.data.purchases[0].declineNote).toBe('Vendor quote is above budget.');
+    expect(cancelled.data.notifications[0].message).toContain('Vendor quote is above budget.');
 
     const cancelledReceipt = receivePurchaseInWarehouseInState(cancelled.data, {
       purchaseId,

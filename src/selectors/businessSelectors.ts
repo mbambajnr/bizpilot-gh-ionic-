@@ -424,7 +424,7 @@ export function selectProcurementWorklist(state: BusinessState): ProcurementWork
         summary.draftCount += 1;
       } else if (purchase.status === 'submitted' || purchase.status === 'adminReviewed') {
         summary.awaitingApprovalCount += 1;
-      } else if (purchase.status === 'cancelled') {
+      } else if (purchase.status === 'cancelled' || purchase.status === 'declined') {
         summary.cancelledCount += 1;
       }
 

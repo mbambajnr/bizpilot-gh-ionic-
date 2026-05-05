@@ -1,5 +1,6 @@
 import type {
   AccountsPayable,
+  AppNotification,
   AccountsPayableStatus,
   ActivityLogEntry,
   BusinessProfile,
@@ -287,6 +288,7 @@ export type CreatePurchaseDraftInput = {
 export type PurchaseActionInput = {
   purchaseId: string;
   performedBy: string;
+  note?: string;
 };
 
 export type ReceivePurchaseInput = {
@@ -745,6 +747,14 @@ function createActivityLogEntry(
   };
 }
 
+function createAppNotification(input: Omit<AppNotification, 'id' | 'readByUserIds'>): AppNotification {
+  return {
+    id: crypto.randomUUID(),
+    readByUserIds: [],
+    ...input,
+  };
+}
+
 function toSaleAuditEvents(activityEntries: ActivityLogEntry[]): SaleAuditEvent[] {
   return activityEntries
     .filter((entry) =>
@@ -1137,6 +1147,7 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     products?: Array<Product & { quantity?: number }>;
     customers?: Array<Customer & { balance?: number; lastPayment?: string }>;
     saleAuditEvents?: SaleAuditEvent[];
+    notifications?: AppNotification[];
   };
 
   const businessProfile = ensureBusinessProfile(raw.businessProfile);
@@ -1261,6 +1272,9 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
       totalCost: Number((item.totalCost ?? item.quantity * item.unitCost).toFixed(2)),
     })),
     totalAmount: Number((purchase.totalAmount ?? calculatePurchaseTotal(purchase.items ?? [])).toFixed(2)),
+    declinedBy: purchase.declinedBy ?? undefined,
+    declinedAt: purchase.declinedAt ?? undefined,
+    declineNote: purchase.declineNote ?? undefined,
     createdAt: purchase.createdAt ?? new Date(0).toISOString(),
     updatedAt: purchase.updatedAt ?? purchase.createdAt ?? new Date(0).toISOString(),
   }));
@@ -1321,6 +1335,14 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     stockMovements,
     customerLedgerEntries,
     activityLogEntries,
+    notifications: (raw.notifications ?? []).map((notification) => ({
+      ...notification,
+      recipientUserIds: notification.recipientUserIds ?? undefined,
+      recipientRoles: notification.recipientRoles ?? undefined,
+      readByUserIds: notification.readByUserIds ?? [],
+      actionUrl: notification.actionUrl ?? undefined,
+      referenceNumber: notification.referenceNumber ?? undefined,
+    })),
     users,
     currentUserId: raw.currentUserId ?? seedState.currentUserId,
     restockRequests: raw.restockRequests ?? [],
@@ -2274,6 +2296,34 @@ export function approvePurchaseInState(current: BusinessState, input: PurchaseAc
     }
   }
 
+  const payable = nextState.accountsPayable.find((entry) => entry.purchaseId === purchase.id && entry.status !== 'cancelled');
+  nextState = {
+    ...nextState,
+    notifications: [
+      createAppNotification({
+        title: 'Purchase order approved',
+        message: `${purchase.purchaseCode} was approved. Accounting can now continue with ${payable?.payableCode ?? 'the supplier payable'}.`,
+        createdAt: approvedAt,
+        recipientUserIds: [purchase.createdBy],
+        entityType: 'purchase',
+        entityId: purchase.id,
+        referenceNumber: purchase.purchaseCode,
+        actionUrl: '/inventory?section=procurement',
+      }),
+      createAppNotification({
+        title: 'Approved purchase ready for accounting',
+        message: `${purchase.purchaseCode} was approved and ${payable?.payableCode ?? 'a supplier payable'} is ready for accounting work.`,
+        createdAt: approvedAt,
+        recipientRoles: ['Accountant'],
+        entityType: 'payable',
+        entityId: payable?.id ?? purchase.id,
+        referenceNumber: payable?.payableCode ?? purchase.purchaseCode,
+        actionUrl: '/accounting?segment=payables',
+      }),
+      ...nextState.notifications,
+    ],
+  };
+
   return { ok: true, data: nextState };
 }
 
@@ -2281,23 +2331,44 @@ export function cancelPurchaseInState(current: BusinessState, input: PurchaseAct
   const purchase = current.purchases.find((item) => item.id === input.purchaseId);
   if (!purchase) return { ok: false, message: 'Purchase not found.' };
   if (purchase.status === 'receivedToWarehouse') return { ok: false, message: 'Received purchases cannot be cancelled.' };
-  if (purchase.status === 'cancelled') return { ok: false, message: 'This purchase is already cancelled.' };
+  if (purchase.status === 'cancelled' || purchase.status === 'declined') return { ok: false, message: 'This purchase is already closed.' };
 
   const updatedAt = new Date().toISOString();
-  const updatedPurchase: Purchase = { ...purchase, status: 'cancelled', updatedAt };
+  const declineNote = input.note?.trim();
+  const updatedPurchase: Purchase = {
+    ...purchase,
+    status: 'declined',
+    declinedBy: input.performedBy,
+    declinedAt: updatedAt,
+    declineNote,
+    updatedAt,
+  };
 
   return {
     ok: true,
     data: {
       ...current,
       purchases: current.purchases.map((item) => (item.id === purchase.id ? updatedPurchase : item)),
+      notifications: [
+        createAppNotification({
+          title: 'Purchase order declined',
+          message: `${purchase.purchaseCode} was declined.${declineNote ? ` Note: ${declineNote}` : ''}`,
+          createdAt: updatedAt,
+          recipientUserIds: [purchase.createdBy],
+          entityType: 'purchase',
+          entityId: purchase.id,
+          referenceNumber: purchase.purchaseCode,
+          actionUrl: '/inventory?section=procurement',
+        }),
+        ...current.notifications,
+      ],
       activityLogEntries: [
         createActivityLogEntry(current, {
           entityType: 'business',
           entityId: purchase.id,
-          actionType: 'purchase_cancelled',
-          title: 'Purchase cancelled',
-          detail: `${purchase.purchaseCode} was cancelled before receipt.`,
+          actionType: 'purchase_declined',
+          title: 'Purchase declined',
+          detail: `${purchase.purchaseCode} was declined before receipt.${declineNote ? ` Note: ${declineNote}` : ''}`,
           status: 'warning',
           createdAt: updatedAt,
           referenceNumber: purchase.purchaseCode,
@@ -2311,7 +2382,7 @@ export function cancelPurchaseInState(current: BusinessState, input: PurchaseAct
 export function receivePurchaseInWarehouseInState(current: BusinessState, input: ReceivePurchaseInput): ActionResult<BusinessState> {
   const purchase = current.purchases.find((item) => item.id === input.purchaseId);
   if (!purchase) return { ok: false, message: 'Purchase not found.' };
-  if (purchase.status === 'cancelled') return { ok: false, message: 'Cancelled purchases cannot be received.' };
+  if (purchase.status === 'cancelled' || purchase.status === 'declined') return { ok: false, message: 'Closed purchases cannot be received.' };
   if (purchase.status === 'receivedToWarehouse') return { ok: false, message: 'This purchase has already been received.' };
   if (purchase.status !== 'approved') return { ok: false, message: 'Only approved purchases can be received into warehouse.' };
 
@@ -3162,7 +3233,7 @@ export function addSaleToState(current: BusinessState, input: NewSaleInput): Act
   };
 
   // Generate movements for each item
-  saleItems.forEach((item, idx) => {
+  saleItems.forEach((item) => {
     const qoh = selectProductQuantityOnHand(current, item.productId, saleLocation.location.id);
     stockMovements.push(createStockMovement(current, {
       productId: item.productId,

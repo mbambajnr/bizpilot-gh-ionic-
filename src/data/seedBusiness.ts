@@ -281,6 +281,7 @@ export type PurchaseStatus =
   | 'adminReviewed'
   | 'approved'
   | 'receivedToWarehouse'
+  | 'declined'
   | 'cancelled';
 
 export type Purchase = {
@@ -295,6 +296,9 @@ export type Purchase = {
   submittedAt?: string;
   approvedBy?: string;
   approvedAt?: string;
+  declinedBy?: string;
+  declinedAt?: string;
+  declineNote?: string;
   receivedWarehouseId?: string;
   createdAt: string;
   updatedAt: string;
@@ -404,6 +408,7 @@ export type ActivityLogEntry = {
     | 'purchase_created'
     | 'purchase_submitted'
     | 'purchase_approved'
+    | 'purchase_declined'
     | 'purchase_cancelled'
     | 'purchase_received'
     | 'payable_created'
@@ -436,6 +441,20 @@ export type Expense = {
   recordedByName: string;
 };
 
+export type AppNotification = {
+  id: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  recipientUserIds?: string[];
+  recipientRoles?: Array<UserAccessProfile['role']>;
+  readByUserIds: string[];
+  entityType: 'purchase' | 'payable' | 'business';
+  entityId: string;
+  referenceNumber?: string;
+  actionUrl?: string;
+};
+
 export type BusinessState = {
   businessProfile: BusinessProfile;
   locations: BusinessLocation[];
@@ -453,6 +472,7 @@ export type BusinessState = {
   stockMovements: StockMovement[];
   customerLedgerEntries: CustomerLedgerEntry[];
   activityLogEntries: ActivityLogEntry[];
+  notifications: AppNotification[];
   users: UserAccessProfile[];
   currentUserId: string;
   restockRequests: RestockRequest[];
@@ -683,6 +703,7 @@ export const seedState: BusinessState = {
     { id: 'act-003', activityNumber: 'ACT-003', entityType: 'sale', entityId: 's2', actionType: 'receipt_issued', title: 'Receipt issued', detail: 'Receipt generated for completed invoice', status: 'success', createdAt: isoDaysAgoAt(1, 14, 10), referenceNumber: 'RCP-002', relatedSaleId: 's2' },
     { id: 'act-004', activityNumber: 'ACT-004', entityType: 'sale', entityId: 's2', actionType: 'invoice_created', title: 'Invoice created', detail: 'Invoice recorded for Kojo Mini Mart', status: 'success', createdAt: isoDaysAgoAt(1, 14, 10), referenceNumber: 'INV-002', relatedSaleId: 's2' },
   ],
+  notifications: [],
   users: [
     {
       userId: 'u-admin',

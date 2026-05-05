@@ -126,6 +126,7 @@ const InventoryPage: React.FC = () => {
   const [purchaseDraftItems, setPurchaseDraftItems] = useState<PurchaseItem[]>([]);
   const [purchaseMessage, setPurchaseMessage] = useState('');
   const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
+  const [purchaseDeclineNotes, setPurchaseDeclineNotes] = useState<Record<string, string>>({});
   const [showPurchaseVendorPicker, setShowPurchaseVendorPicker] = useState(false);
   const [showPurchaseProductPicker, setShowPurchaseProductPicker] = useState(false);
   const [showQuickVendorForm, setShowQuickVendorForm] = useState(false);
@@ -763,8 +764,12 @@ const InventoryPage: React.FC = () => {
     setShowPurchaseSuccess(true);
   };
 
-  const handlePurchaseAction = async (purchaseId: string, action: 'submit' | 'approve' | 'cancel') => {
-    const input = { purchaseId, performedBy: currentUser.userId };
+  const handlePurchaseAction = async (purchaseId: string, action: 'submit' | 'approve' | 'decline') => {
+    const input = {
+      purchaseId,
+      performedBy: currentUser.userId,
+      note: purchaseDeclineNotes[purchaseId],
+    };
     const result =
       action === 'submit'
         ? await submitPurchase(input)
@@ -783,7 +788,7 @@ const InventoryPage: React.FC = () => {
         ? 'Purchase submitted for approval.'
         : action === 'approve'
           ? 'Purchase approved and payable created.'
-          : 'Purchase cancelled.'
+          : 'Purchase declined and the purchase officer was notified.'
     );
     setShowReviewToast(true);
   };
@@ -1801,24 +1806,38 @@ const InventoryPage: React.FC = () => {
                                     <IonButton size="small" onClick={() => handlePurchaseAction(purchase.id, 'submit')}>Submit</IonButton>
                                   ) : null}
                                   {(purchase.status === 'submitted' || purchase.status === 'adminReviewed') && hasPermission('purchases.approve') ? (
-                                    <IonButton size="small" fill="outline" onClick={() => handlePurchaseAction(purchase.id, 'approve')}>Approve</IonButton>
+                                    <>
+                                      <IonItem lines="none" className="app-item">
+                                        <IonLabel position="stacked">Decline note</IonLabel>
+                                        <IonInput
+                                          value={purchaseDeclineNotes[purchase.id] ?? ''}
+                                          placeholder="Reason if declined"
+                                          onIonInput={(event) => setPurchaseDeclineNotes((current) => ({
+                                            ...current,
+                                            [purchase.id]: event.detail.value ?? '',
+                                          }))}
+                                        />
+                                      </IonItem>
+                                      <IonButton size="small" fill="outline" onClick={() => handlePurchaseAction(purchase.id, 'approve')}>Approve</IonButton>
+                                      <IonButton size="small" fill="clear" color="danger" onClick={() => handlePurchaseAction(purchase.id, 'decline')}>Decline</IonButton>
+                                    </>
                                   ) : null}
                                   {purchase.status === 'approved' && hasPermission('purchases.receive') ? (
                                     <IonButton size="small" color="success" onClick={() => setSelectedReceiptPurchaseId(purchase.id)}>Prepare Receipt</IonButton>
                                   ) : null}
-                                  {purchase.status !== 'cancelled' && purchase.status !== 'receivedToWarehouse' && hasPermission('purchases.approve') ? (
-                                    <IonButton size="small" fill="clear" color="danger" onClick={() => handlePurchaseAction(purchase.id, 'cancel')}>Cancel</IonButton>
-                                  ) : null}
                                 </div>
+                                {purchase.status === 'declined' && purchase.declineNote ? (
+                                  <p className="muted-label">Decline note: {purchase.declineNote}</p>
+                                ) : null}
                               </div>
                               <div className="right-meta">
                                 <IonBadge color={
                                   purchase.status === 'receivedToWarehouse' ? 'success' :
-                                  purchase.status === 'cancelled' ? 'medium' :
+                                  purchase.status === 'cancelled' || purchase.status === 'declined' ? 'medium' :
                                   purchase.status === 'approved' ? 'primary' :
                                   purchase.status === 'submitted' || purchase.status === 'adminReviewed' ? 'warning' : 'tertiary'
                                 }>
-                                  {purchase.status}
+                                  {purchase.status === 'declined' ? 'declined' : purchase.status}
                                 </IonBadge>
                                 <strong>{formatCurrency(purchase.totalAmount, currency)}</strong>
                               </div>

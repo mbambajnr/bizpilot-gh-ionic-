@@ -301,6 +301,7 @@ function createBlankBusinessState(owner?: { id?: string; email?: string; name?: 
     stockMovements: [],
     customerLedgerEntries: [],
     activityLogEntries: [],
+    notifications: [],
     restockRequests: [],
     users: ownerId
       ? [
