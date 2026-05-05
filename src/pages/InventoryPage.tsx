@@ -137,7 +137,6 @@ const InventoryPage: React.FC = () => {
   const [quickProductName, setQuickProductName] = useState('');
   const [quickProductInventoryId, setQuickProductInventoryId] = useState('');
   const [quickProductUnit, setQuickProductUnit] = useState('');
-  const [quickProductCost, setQuickProductCost] = useState<number | ''>('');
   const [quickProductPrice, setQuickProductPrice] = useState<number | ''>('');
   const [quickProductReorderLevel, setQuickProductReorderLevel] = useState<number | ''>(0);
   const [pendingPurchaseProductKey, setPendingPurchaseProductKey] = useState('');
@@ -497,7 +496,7 @@ const InventoryPage: React.FC = () => {
 
   const handleCreatePurchaseProduct = () => {
     const itemName = quickProductName.trim();
-    const itemCost = quickProductCost === '' ? 0 : Number(quickProductCost);
+    const itemCost = purchaseUnitCost === '' ? 0 : Number(purchaseUnitCost);
     const itemPrice = quickProductPrice === '' ? itemCost : Number(quickProductPrice);
     const itemUnit = quickProductUnit.trim() || 'units';
     const itemReorderLevel = quickProductReorderLevel === '' ? 0 : Number(quickProductReorderLevel);
@@ -525,7 +524,6 @@ const InventoryPage: React.FC = () => {
     setQuickProductName('');
     setQuickProductInventoryId('');
     setQuickProductUnit('');
-    setQuickProductCost('');
     setQuickProductPrice('');
     setQuickProductReorderLevel(0);
     setShowQuickProductForm(false);
@@ -1619,7 +1617,7 @@ const InventoryPage: React.FC = () => {
                                 <div className="list-row">
                                   <div>
                                     <strong>New stock item</strong>
-                                    <p>Add the item with zero opening stock; warehouse receipt will add quantity after approval.</p>
+                                    <p>Add the item with zero opening stock; the purchase unit cost below becomes its item cost.</p>
                                   </div>
                                 </div>
                                 <div className="dual-stat">
@@ -1640,24 +1638,14 @@ const InventoryPage: React.FC = () => {
                                     />
                                   </IonItem>
                                 </div>
-                                <div className="dual-stat">
-                                  <IonItem lines="none" className="app-item">
-                                    <IonLabel position="stacked">Unit</IonLabel>
-                                    <IonInput
-                                      value={quickProductUnit}
-                                      placeholder="units"
-                                      onIonInput={(event) => setQuickProductUnit(event.detail.value ?? '')}
-                                    />
-                                  </IonItem>
-                                  <IonItem lines="none" className="app-item">
-                                    <IonLabel position="stacked">Unit cost</IonLabel>
-                                    <IonInput
-                                      type="number"
-                                      value={quickProductCost}
-                                      onIonInput={(event) => setQuickProductCost(event.detail.value === '' ? '' : Number(event.detail.value))}
-                                    />
-                                  </IonItem>
-                                </div>
+                                <IonItem lines="none" className="app-item">
+                                  <IonLabel position="stacked">Unit</IonLabel>
+                                  <IonInput
+                                    value={quickProductUnit}
+                                    placeholder="units"
+                                    onIonInput={(event) => setQuickProductUnit(event.detail.value ?? '')}
+                                  />
+                                </IonItem>
                                 <div className="dual-stat">
                                   <IonItem lines="none" className="app-item">
                                     <IonLabel position="stacked">Selling price</IonLabel>
