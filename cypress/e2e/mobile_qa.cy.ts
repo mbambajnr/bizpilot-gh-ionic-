@@ -184,6 +184,25 @@ const seededState = {
 };
 
 function seedAppState(win: Window) {
+  (win as Window & {
+    __BIZAPILOT_TEST_SESSION__?: {
+      user: { id: string; email: string; user_metadata: { business_name: string } };
+      access_token: string;
+      refresh_token: string;
+      expires_in: number;
+      token_type: string;
+    };
+  }).__BIZAPILOT_TEST_SESSION__ = {
+    user: {
+      id: 'test-user',
+      email: 'test@example.com',
+      user_metadata: { business_name: 'Deltech' },
+    },
+    access_token: 'test-access-token',
+    refresh_token: 'test-refresh-token',
+    expires_in: 3600,
+    token_type: 'bearer',
+  };
   win.localStorage.setItem('bizpilot-gh-state-v1', JSON.stringify(seededState));
 }
 

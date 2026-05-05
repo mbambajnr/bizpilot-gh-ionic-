@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { hasPermission } from './permissions';
 import { UserAccessProfile } from './types';
+import { ROLE_DEFAULT_PERMISSIONS } from './defaults';
 
 describe('RBAC Logic', () => {
   it('should resolve full permissions for Admin by default', () => {
@@ -89,5 +90,65 @@ describe('RBAC Logic', () => {
     };
     
     expect(hasPermission(sales, 'inventory.create')).toBe(false);
+  });
+
+  it('should give Warehouse Manager warehouse and transfer permissions by default', () => {
+    const warehouseManager: UserAccessProfile = {
+      userId: '4',
+      name: 'Warehouse',
+      email: 'warehouse@test.com',
+      role: 'WarehouseManager',
+      grantedPermissions: [],
+      revokedPermissions: [],
+    };
+
+    expect(hasPermission(warehouseManager, 'purchases.receive')).toBe(true);
+    expect(hasPermission(warehouseManager, 'transfers.dispatch')).toBe(true);
+    expect(hasPermission(warehouseManager, 'inventory.adjust')).toBe(true);
+    expect(hasPermission(warehouseManager, 'payables.manage')).toBe(false);
+  });
+
+  it('should give Store Manager store operations permissions by default', () => {
+    const storeManager: UserAccessProfile = {
+      userId: '5',
+      name: 'Store',
+      email: 'store@test.com',
+      role: 'StoreManager',
+      grantedPermissions: [],
+      revokedPermissions: [],
+    };
+
+    expect(hasPermission(storeManager, 'sales.create')).toBe(true);
+    expect(hasPermission(storeManager, 'transfers.receive')).toBe(true);
+    expect(hasPermission(storeManager, 'restockRequests.create')).toBe(true);
+    expect(hasPermission(storeManager, 'vendors.manage')).toBe(false);
+  });
+
+  it('should give Purchase Manager procurement permissions by default', () => {
+    const purchaseManager: UserAccessProfile = {
+      userId: '6',
+      name: 'Purchase',
+      email: 'purchase@test.com',
+      role: 'PurchaseManager',
+      grantedPermissions: [],
+      revokedPermissions: [],
+    };
+
+    expect(hasPermission(purchaseManager, 'vendors.manage')).toBe(true);
+    expect(hasPermission(purchaseManager, 'purchases.approve')).toBe(true);
+    expect(hasPermission(purchaseManager, 'procurement.approve')).toBe(true);
+    expect(hasPermission(purchaseManager, 'transfers.view')).toBe(false);
+    expect(hasPermission(purchaseManager, 'payables.pay')).toBe(false);
+  });
+
+  it('should expose default permission bundles for every supported base role', () => {
+    expect(Object.keys(ROLE_DEFAULT_PERMISSIONS).sort()).toEqual([
+      'Accountant',
+      'Admin',
+      'PurchaseManager',
+      'SalesManager',
+      'StoreManager',
+      'WarehouseManager',
+    ]);
   });
 });

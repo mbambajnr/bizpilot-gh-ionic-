@@ -48,7 +48,7 @@ const AuthPage: React.FC = () => {
     setFormMessage('');
 
     if (!email.trim()) {
-      setFormMessage('Owner email is required.');
+      setFormMessage('Email or username is required.');
       return;
     }
 
@@ -154,13 +154,12 @@ const AuthPage: React.FC = () => {
                 ) : null}
 
                 <IonItem lines="none" className="app-item auth-item">
-                  <IonLabel position="stacked">Owner Email Address</IonLabel>
+                  <IonLabel position="stacked">Email or Username</IonLabel>
                   <IonInput
-                    type="email"
+                    type="text"
                     value={email}
-                    autocomplete="email"
-                    inputmode="email"
-                    placeholder="manager@business.com"
+                    autocomplete="username"
+                    placeholder="manager@business.com or warehouse.lead"
                     onIonInput={(event) => setEmail(event.detail.value ?? '')}
                   />
                 </IonItem>

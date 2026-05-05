@@ -23,6 +23,7 @@ import { formatCurrency, formatReceiptDate } from '../utils/format';
 import SectionCard from '../components/SectionCard';
 import EmptyState from '../components/EmptyState';
 import {
+  buildDocumentTotalRows,
   buildInvoicePdf,
   buildQuotationPdf,
   buildWaybillPdf,
@@ -205,6 +206,7 @@ const BatchExportPage: React.FC = () => {
             {selectedInvoicesData.map(sale => {
               const customer = state.customers.find(c => c.id === sale.customerId);
               const currency = state.businessProfile.currency;
+              const invoiceTotalRows = buildDocumentTotalRows(sale, 'INV TOTAL');
               return (
                 <div className="doc-page-force" key={`inv-${sale.id}`} style={{ pageBreakAfter: 'always', padding: '20mm', color: '#000' }}>
                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #000', paddingBottom: '15px', marginBottom: '25px' }}>
@@ -256,10 +258,12 @@ const BatchExportPage: React.FC = () => {
                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px', pageBreakInside: 'avoid' }}>
                       <table style={{ width: '300px', borderCollapse: 'collapse' }}>
                         <tbody>
-                          <tr style={{ borderTop: '2px solid #000' }}>
-                            <td style={{ padding: '8px 0', fontSize: '0.9rem', fontWeight: '600' }}>INV TOTAL</td>
-                            <td style={{ padding: '8px 0', textAlign: 'right', fontSize: '1.1rem', fontWeight: '700' }}>{formatCurrency(sale.totalAmount, currency)}</td>
-                          </tr>
+                          {invoiceTotalRows.map((row, index) => (
+                            <tr key={`${sale.id}-${row.label}`} style={{ borderTop: index === 0 ? '2px solid #000' : '1px solid #eee' }}>
+                              <td style={{ padding: '8px 0', fontSize: '0.9rem', fontWeight: row.highlight ? '700' : '600' }}>{row.label.toUpperCase()}</td>
+                              <td style={{ padding: '8px 0', textAlign: 'right', fontSize: row.highlight ? '1.1rem' : '0.95rem', fontWeight: row.highlight ? '700' : '600' }}>{formatCurrency(row.value, currency)}</td>
+                            </tr>
+                          ))}
                           <tr style={{ borderTop: '1px solid #eee' }}>
                             <td style={{ padding: '5px 0', fontSize: '0.9rem', color: '#666' }}>PAID TO DATE</td>
                             <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: '600', color: '#2e8b57' }}>{formatCurrency(sale.paidAmount, currency)}</td>
@@ -286,6 +290,7 @@ const BatchExportPage: React.FC = () => {
             </div>
             {selectedQuotationsData.map(quotation => {
               const currency = state.businessProfile.currency;
+              const quotationTotalRows = buildDocumentTotalRows(quotation, 'EST. TOTAL');
               return (
                 <div className="doc-page-force" key={`qtn-${quotation.id}`} style={{ pageBreakAfter: 'always', padding: '20mm', color: '#000' }}>
                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #000', paddingBottom: '15px', marginBottom: '25px' }}>
@@ -325,10 +330,12 @@ const BatchExportPage: React.FC = () => {
 
                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
                       <div style={{ width: '300px', padding: '15px', background: '#f5f5f5', border: '1px solid #ddd' }}>
-                         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '20px' }}>
-                            <span style={{ fontWeight: '600' }}>EST. TOTAL:</span>
-                            <strong style={{ fontSize: '1.2rem' }}>{formatCurrency(quotation.totalAmount, currency)}</strong>
-                         </div>
+                         {quotationTotalRows.map((row) => (
+                           <div key={`${quotation.id}-${row.label}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '20px', padding: '4px 0' }}>
+                              <span style={{ fontWeight: row.highlight ? '800' : '600' }}>{row.label.toUpperCase()}:</span>
+                              <strong style={{ fontSize: row.highlight ? '1.2rem' : '1rem' }}>{formatCurrency(row.value, currency)}</strong>
+                           </div>
+                         ))}
                       </div>
                    </div>
                 </div>

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { type ReactNode, Suspense, lazy, useEffect } from 'react';
 import { Redirect, Route } from 'react-router-dom';
 import {
   IonApp,
+  IonButton,
   IonContent,
   IonIcon,
   IonLabel,
@@ -14,22 +15,11 @@ import {
   setupIonicReact,
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import { cart, documentText, grid, home, people, settings, wallet } from 'ionicons/icons';
+import { cart, cubeOutline, documentText, grid, home, people, settings, wallet } from 'ionicons/icons';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BusinessProvider, useBusiness } from './context/BusinessContext';
-import AuthPage from './pages/AuthPage';
-import CustomersPage from './pages/CustomersPage';
-import DashboardPage from './pages/DashboardPage';
-import InvoiceDetailPage from './pages/InvoiceDetailPage';
-import InventoryPage from './pages/InventoryPage';
-import QuotationsPage from './pages/QuotationsPage';
-import SalesPage from './pages/SalesPage';
-import SettingsPage from './pages/SettingsPage';
-import AccountingPage from './pages/AccountingPage';
-import QuotationDetailPage from './pages/QuotationDetailPage';
-import WaybillPage from './pages/WaybillPage';
-import BatchExportPage from './pages/BatchExportPage';
+import { getBusinessLaunchState, isBusinessWorkspaceLive } from './utils/businessLogic';
 import LandingPage from './pages/LandingPage';
 
 import '@ionic/react/css/core.css';
@@ -48,6 +38,20 @@ import './theme/app.css';
 setupIonicReact({
   mode: 'ios',
 });
+
+const AuthPage = lazy(() => import('./pages/AuthPage'));
+const CustomersPage = lazy(() => import('./pages/CustomersPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const InvoiceDetailPage = lazy(() => import('./pages/InvoiceDetailPage'));
+const InventoryPage = lazy(() => import('./pages/InventoryPage'));
+const QuotationsPage = lazy(() => import('./pages/QuotationsPage'));
+const SalesPage = lazy(() => import('./pages/SalesPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const AccountingPage = lazy(() => import('./pages/AccountingPage'));
+const QuotationDetailPage = lazy(() => import('./pages/QuotationDetailPage'));
+const WaybillPage = lazy(() => import('./pages/WaybillPage'));
+const BatchExportPage = lazy(() => import('./pages/BatchExportPage'));
+const VendorsPage = lazy(() => import('./pages/VendorsPage'));
 
 function ThemeManager() {
   const { state } = useBusiness();
@@ -77,7 +81,7 @@ function ThemeManager() {
   return null;
 }
 
-function LoadingScreen({ message, onSkip }: { message: string, onSkip?: () => void }) {
+function LoadingScreen({ message }: { message: string }) {
   useEffect(() => {
     // Bootstrap/Checking session should be in light mode
     document.body.classList.remove('dark');
@@ -92,25 +96,6 @@ function LoadingScreen({ message, onSkip }: { message: string, onSkip?: () => vo
           <div className="loading-content">
             <IonSpinner name="crescent" color="primary" />
             <p className="loading-message">{message}</p>
-            {onSkip && (
-              <div className="loading-actions">
-                <button 
-                  className="retry-button" 
-                  onClick={onSkip}
-                  style={{ 
-                    marginTop: '24px', 
-                    padding: '10px 16px', 
-                    background: 'rgba(255,255,255,0.05)', 
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '8px',
-                    color: 'var(--text-secondary)',
-                    fontSize: '0.85rem'
-                  }}
-                >
-                  Skip and use local data
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </IonContent>
@@ -131,6 +116,52 @@ function UnauthorizedPage() {
   );
 }
 
+function SetupRequiredPage({ canManageSetup, isReadyToLaunch }: { canManageSetup: boolean; isReadyToLaunch: boolean }) {
+  return (
+    <IonPage>
+      <IonContent>
+        <div className="auth-loading">
+          <h2>{canManageSetup ? (isReadyToLaunch ? 'Launch Business Workspace' : 'Complete Business Setup') : 'Workspace Setup Pending'}</h2>
+          <p>
+            {canManageSetup
+              ? isReadyToLaunch
+                ? 'Your business setup is saved. Go to Settings and click Launch Business to officially open the workspace for your team.'
+                : 'Finish the business setup in Settings before the workspace officially opens for your team.'
+              : 'An admin needs to complete the business setup before this role can access dashboards and operational pages.'}
+          </p>
+          <p>
+            Once setup is complete, each assigned role will only see the interfaces and dashboards they are authorized to use.
+          </p>
+          {canManageSetup ? (
+            <IonButton routerLink="/settings" fill="solid">
+              Open Settings
+            </IonButton>
+          ) : null}
+        </div>
+      </IonContent>
+    </IonPage>
+  );
+}
+
+function RouteLoadingScreen() {
+  return (
+    <IonPage>
+      <IonContent fullscreen={true}>
+        <div className="auth-loading" data-testid="route-loading-screen">
+          <div className="loading-content">
+            <IonSpinner name="crescent" color="primary" />
+            <p className="loading-message">Loading section...</p>
+          </div>
+        </div>
+      </IonContent>
+    </IonPage>
+  );
+}
+
+function LazyRoute({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<RouteLoadingScreen />}>{children}</Suspense>;
+}
+
 function PublicShell() {
   return (
     <IonRouterOutlet>
@@ -138,7 +169,9 @@ function PublicShell() {
         <LandingPage />
       </Route>
       <Route exact path="/auth">
-        <AuthPage />
+        <LazyRoute>
+          <AuthPage />
+        </LazyRoute>
       </Route>
       <Route>
         <Redirect to="/" />
@@ -148,108 +181,126 @@ function PublicShell() {
 }
 
 function AppShell() {
-  const { hasPermission } = useBusiness();
+  const { state, hasPermission } = useBusiness();
+  const businessLaunchState = getBusinessLaunchState(state.businessProfile);
+  const businessSetupComplete = isBusinessWorkspaceLive(state.businessProfile);
   const canViewDashboard = hasPermission('reports.dashboard.view');
   const canViewSettings = hasPermission('business.view');
+  const canManageSetup = hasPermission('business.edit');
   const canUseDocumentPack =
     hasPermission('invoices.print') ||
     hasPermission('invoices.export_pdf') ||
     hasPermission('quotations.print') ||
     hasPermission('quotations.export_pdf');
-  const defaultRoute = canViewDashboard
-    ? '/dashboard'
-    : hasPermission('sales.view')
-      ? '/sales'
-      : hasPermission('inventory.view')
-        ? '/inventory'
-        : hasPermission('customers.view')
-          ? '/customers'
-          : hasPermission('quotations.view')
-            ? '/quotations'
-            : hasPermission('accounting.access')
-              ? '/accounting'
-              : canViewSettings
-                ? '/settings'
-                : '/dashboard';
+  const defaultRoute = !businessSetupComplete
+    ? canManageSetup
+      ? '/settings'
+      : '/dashboard'
+    : canViewDashboard
+            ? '/dashboard'
+            : hasPermission('sales.view')
+              ? '/sales'
+              : hasPermission('inventory.view')
+                ? '/inventory'
+                : hasPermission('vendors.view') || hasPermission('vendors.manage')
+                  ? '/vendors'
+                  : hasPermission('customers.view')
+                    ? '/customers'
+                    : hasPermission('quotations.view')
+                      ? '/quotations'
+                      : hasPermission('accounting.access')
+                        ? '/accounting'
+                        : canViewSettings
+                          ? '/settings'
+                          : '/dashboard';
 
   return (
     <IonTabs>
       <IonRouterOutlet>
         <Route exact path="/dashboard">
-          {canViewDashboard ? <DashboardPage /> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : canViewDashboard ? <LazyRoute><DashboardPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/sales">
-          {hasPermission('sales.view') ? <SalesPage /> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('sales.view') ? <LazyRoute><SalesPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/sales/:saleId">
-          {hasPermission('invoices.view') ? <InvoiceDetailPage /> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('invoices.view') ? <LazyRoute><InvoiceDetailPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/sales/:saleId/waybill">
-          {hasPermission('invoices.view') ? <WaybillPage /> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('invoices.view') ? <LazyRoute><WaybillPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/inventory">
-          {hasPermission('inventory.view') ? <InventoryPage /> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('inventory.view') ? <LazyRoute><InventoryPage /></LazyRoute> : <UnauthorizedPage />}
+        </Route>
+        <Route exact path="/vendors">
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : (hasPermission('vendors.view') || hasPermission('vendors.manage')) ? <LazyRoute><VendorsPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/customers">
-          {hasPermission('customers.view') ? <CustomersPage /> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('customers.view') ? <LazyRoute><CustomersPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/quotations">
-          {hasPermission('quotations.view') ? <QuotationsPage /> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('quotations.view') ? <LazyRoute><QuotationsPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/quotations/:quotationId">
-          {hasPermission('quotations.view') ? <QuotationDetailPage /> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('quotations.view') ? <LazyRoute><QuotationDetailPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/accounting">
-          {hasPermission('accounting.access') ? <AccountingPage /> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('accounting.access') ? <LazyRoute><AccountingPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/settings">
-          {canViewSettings ? <SettingsPage /> : <UnauthorizedPage />}
+          {canViewSettings ? (!businessSetupComplete && !canManageSetup ? <SetupRequiredPage canManageSetup={false} isReadyToLaunch={false} /> : <LazyRoute><SettingsPage /></LazyRoute>) : <UnauthorizedPage />}
         </Route>
         <Route exact path="/export/batch">
-          {canUseDocumentPack ? <BatchExportPage /> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : canUseDocumentPack ? <LazyRoute><BatchExportPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/">
           <Redirect to={defaultRoute} />
         </Route>
       </IonRouterOutlet>
       <IonTabBar slot="bottom">
-        {canViewDashboard && (
+        {businessSetupComplete && canViewDashboard && (
           <IonTabButton tab="dashboard" href="/dashboard" data-testid="tab-dashboard">
             <IonIcon aria-hidden="true" icon={home} />
             <IonLabel>Dashboard</IonLabel>
           </IonTabButton>
         )}
-        {hasPermission('sales.view') && (
+        {businessSetupComplete && hasPermission('sales.view') && (
           <IonTabButton tab="sales" href="/sales" data-testid="tab-sales">
             <IonIcon aria-hidden="true" icon={cart} />
             <IonLabel>Sales</IonLabel>
           </IonTabButton>
         )}
-        {hasPermission('inventory.view') && (
+        {businessSetupComplete && hasPermission('inventory.view') && (
           <IonTabButton tab="inventory" href="/inventory" data-testid="tab-inventory">
             <IonIcon aria-hidden="true" icon={grid} />
             <IonLabel>Inventory</IonLabel>
           </IonTabButton>
         )}
-        {hasPermission('customers.view') && (
+        {businessSetupComplete && (hasPermission('vendors.view') || hasPermission('vendors.manage')) && (
+          <IonTabButton tab="vendors" href="/vendors" data-testid="tab-vendors">
+            <IonIcon aria-hidden="true" icon={cubeOutline} />
+            <IonLabel>Vendors</IonLabel>
+          </IonTabButton>
+        )}
+        {businessSetupComplete && hasPermission('customers.view') && (
           <IonTabButton tab="customers" href="/customers" data-testid="tab-customers">
             <IonIcon aria-hidden="true" icon={people} />
             <IonLabel>Customers</IonLabel>
           </IonTabButton>
         )}
-        {hasPermission('quotations.view') && (
+        {businessSetupComplete && hasPermission('quotations.view') && (
           <IonTabButton tab="quotations" href="/quotations" data-testid="tab-quotations">
             <IonIcon aria-hidden="true" icon={documentText} />
             <IonLabel>Quotations</IonLabel>
           </IonTabButton>
         )}
-        {hasPermission('accounting.access') && (
+        {businessSetupComplete && hasPermission('accounting.access') && (
           <IonTabButton tab="accounting" href="/accounting" data-testid="tab-accounting">
             <IonIcon aria-hidden="true" icon={wallet} />
             <IonLabel>Accounting</IonLabel>
           </IonTabButton>
         )}
-        {canViewSettings && (
+        {(businessSetupComplete || canManageSetup) && canViewSettings && (
           <IonTabButton tab="settings" href="/settings" data-testid="tab-settings">
             <IonIcon aria-hidden="true" icon={settings} />
             <IonLabel>Settings</IonLabel>
@@ -262,24 +313,23 @@ function AppShell() {
 
 function AuthGate() {
   const { session, loading, businessBootstrapStatus } = useAuth();
-  const [forceReady, setForceReady] = useState(false);
 
-  if (loading && !forceReady) {
-    return <LoadingScreen message="Checking owner session..." onSkip={() => setForceReady(true)} />;
+  if (loading) {
+    return <LoadingScreen message="Checking owner session..." />;
   }
 
-  if (!session && !forceReady) {
+  if (!session) {
     return <PublicShell />;
   }
 
   // NON-BLOCKING BOOTSTRAP:
-  // If we have local state, enter the app immediately. Only block if this is a fresh install
-  // with no local data yet.
+  // Persisted business data may exist locally, but identity still comes only from the
+  // active authenticated session handled above.
   const hasLocalState = !!window.localStorage.getItem('bizpilot-gh-state-v1');
   const needsBlockingBootstrap = businessBootstrapStatus.loading && !hasLocalState;
 
-  if (needsBlockingBootstrap && !forceReady) {
-    return <LoadingScreen message={businessBootstrapStatus.message} onSkip={() => setForceReady(true)} />;
+  if (needsBlockingBootstrap) {
+    return <LoadingScreen message={businessBootstrapStatus.message} />;
   }
 
   return (

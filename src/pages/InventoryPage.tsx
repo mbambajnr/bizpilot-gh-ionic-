@@ -9,29 +9,71 @@ import {
   IonLabel,
   IonModal,
   IonSearchbar,
+  IonSelect,
+  IonSelectOption,
   IonSegment,
   IonSegmentButton,
   IonTitle,
   IonToast,
   IonToolbar,
 } from '@ionic/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useHistory, useLocation } from 'react-router-dom';
 import { resizeImage } from '../utils/imageUtils';
 import type { InventoryImportPreview } from '../utils/inventoryImport';
 import { buildInventoryTemplateCsv, validateInventoryImportCsv } from '../utils/inventoryImport';
+import type { PurchaseItem } from '../data/seedBusiness';
 
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
+import SearchablePicker, { PickerItem } from '../components/SearchablePicker';
 import { useBusiness } from '../context/BusinessContext';
 import {
+  type InventoryCategoryFilterValue,
+  selectActiveProductCategories,
+  selectInventorySummariesByCategory,
   selectInventorySummaries,
+  selectInventoryCategoryReport,
+  selectInventoryLocationReport,
+  selectActiveLocations,
+  selectDefaultLocation,
+  selectFastMovingProductsByLocation,
+  selectInventorySummariesByLocation,
+  selectLowStockByLocation,
+  selectProductCategoryDisplayLabel,
+  selectProductById,
   selectProductMovements,
+  selectProductQuantityOnHand,
+  selectStockTransfers,
+  selectStoreStockBalances,
+  selectSupplyRoutesForStore,
   selectStockMovementDisplay,
+  selectTransferHistory,
+  selectWarehouseStockBalances,
 } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate, formatRelativeDate } from '../utils/format';
 
 const InventoryPage: React.FC = () => {
-  const { state, addProduct, addRestockRequest, reviewRestockRequest, currentUser, hasPermission } = useBusiness();
+  const history = useHistory();
+  const location = useLocation();
+  const {
+    state,
+    addProduct,
+    addRestockRequest,
+    reviewRestockRequest,
+    createStockTransfer,
+    approveStockTransfer,
+    dispatchStockTransfer,
+    receiveStockTransfer,
+    cancelStockTransfer,
+    createPurchaseDraft,
+    submitPurchase,
+    approvePurchase,
+    cancelPurchase,
+    receivePurchaseInWarehouse,
+    currentUser,
+    hasPermission,
+  } = useBusiness();
   const [name, setName] = useState('');
   const [inventoryId, setInventoryId] = useState('');
   const [unit, setUnit] = useState('');
@@ -40,6 +82,8 @@ const InventoryPage: React.FC = () => {
   const [reorderLevel, setReorderLevel] = useState<number | ''>('');
   const [quantity, setQuantity] = useState<number | ''>('');
   const [image, setImage] = useState<string>('');
+  const [categoryId, setCategoryId] = useState('');
+  const [locationId, setLocationId] = useState('');
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [savedItemName, setSavedItemName] = useState('');
   const [formMessage, setFormMessage] = useState('');
@@ -53,6 +97,7 @@ const InventoryPage: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<InventoryCategoryFilterValue>('all');
   const [activeSegment, setActiveSegment] = useState<'status' | 'activity' | 'supply'>('status');
 
   // Review state
@@ -66,6 +111,31 @@ const InventoryPage: React.FC = () => {
   const [urgency, setUrgency] = useState<'Low' | 'Medium' | 'High'>('Medium');
   const [restockMessage, setRestockMessage] = useState('');
   const [showRestockSuccess, setShowRestockSuccess] = useState(false);
+  const [transferProductId, setTransferProductId] = useState('');
+  const [transferFromLocationId, setTransferFromLocationId] = useState('');
+  const [transferToLocationId, setTransferToLocationId] = useState('');
+  const [transferQuantity, setTransferQuantity] = useState<number | ''>('');
+  const [transferNote, setTransferNote] = useState('');
+  const [transferMessage, setTransferMessage] = useState('');
+  const [showTransferSuccess, setShowTransferSuccess] = useState(false);
+  const [purchaseVendorId, setPurchaseVendorId] = useState('');
+  const [purchaseProductId, setPurchaseProductId] = useState('');
+  const [purchaseQuantity, setPurchaseQuantity] = useState<number | ''>('');
+  const [purchaseUnitCost, setPurchaseUnitCost] = useState<number | ''>('');
+  const [purchaseDraftItems, setPurchaseDraftItems] = useState<PurchaseItem[]>([]);
+  const [purchaseMessage, setPurchaseMessage] = useState('');
+  const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
+  const [showPurchaseVendorPicker, setShowPurchaseVendorPicker] = useState(false);
+  const [showPurchaseProductPicker, setShowPurchaseProductPicker] = useState(false);
+  const [selectedReceiptPurchaseId, setSelectedReceiptPurchaseId] = useState('');
+  const [selectedReceiptWarehouseId, setSelectedReceiptWarehouseId] = useState('');
+  const [purchaseReceiptQuantities, setPurchaseReceiptQuantities] = useState<Record<string, number | ''>>({});
+  const [purchaseReceiptMessage, setPurchaseReceiptMessage] = useState('');
+  const [showPurchaseReceiptSuccess, setShowPurchaseReceiptSuccess] = useState(false);
+  const procurementSectionRef = useRef<HTMLElement | null>(null);
+  const receiptsSectionRef = useRef<HTMLElement | null>(null);
+  const transfersSectionRef = useRef<HTMLElement | null>(null);
+  const arrivalSection = new URLSearchParams(location.search).get('section');
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -93,15 +163,76 @@ const InventoryPage: React.FC = () => {
       setSelectedProductId(state.products[0].id);
     }
   }, [state.products, selectedProductId]);
+
+  useEffect(() => {
+    if (!transferProductId && state.products.length > 0) {
+      setTransferProductId(selectedProductId || state.products[0].id);
+    }
+  }, [selectedProductId, state.products, transferProductId]);
+  const inventoryCategoriesEnabled = state.businessProfile.inventoryCategoriesEnabled;
+  const activeLocations = useMemo(() => selectActiveLocations(state), [state]);
+  const defaultLocation = useMemo(() => selectDefaultLocation(state), [state]);
+  const canViewStoreInventory = hasPermission('transfers.receive') || hasPermission('sales.view') || hasPermission('sales.create');
+  const canViewWarehouseInventory =
+    hasPermission('purchases.receive') ||
+    hasPermission('transfers.view') ||
+    hasPermission('transfers.dispatch') ||
+    hasPermission('transfers.approve') ||
+    hasPermission('inventory.adjust') ||
+    hasPermission('inventory.create') ||
+    hasPermission('inventory.edit');
+  const activeWarehouses = useMemo(() => activeLocations.filter((location) => location.type === 'warehouse'), [activeLocations]);
+  const activeStores = useMemo(() => activeLocations.filter((location) => location.type === 'store'), [activeLocations]);
+  const visibleInventoryLocations = useMemo(
+    () => activeLocations.filter((location) =>
+      location.type === 'store' ? canViewStoreInventory : canViewWarehouseInventory
+    ),
+    [activeLocations, canViewStoreInventory, canViewWarehouseInventory]
+  );
+  const activeVendors = useMemo(() => state.vendors.filter((vendor) => vendor.status === 'active'), [state.vendors]);
+  const approvedPurchases = useMemo(
+    () => state.purchases.filter((purchase) => purchase.status === 'approved'),
+    [state.purchases]
+  );
+  const selectedLocationId =
+    visibleInventoryLocations.some((location) => location.id === locationId)
+      ? locationId
+      : visibleInventoryLocations[0]?.id ?? defaultLocation.id;
+  const activeProductCategories = useMemo(() => selectActiveProductCategories(state), [state]);
+  const categoryMap = useMemo(
+    () => new Map(state.productCategories.map((category) => [category.id, category])),
+    [state.productCategories]
+  );
+
+  useEffect(() => {
+    if (!inventoryCategoriesEnabled && categoryFilter !== 'all') {
+      setCategoryFilter('all');
+      return;
+    }
+
+    if (
+      categoryFilter.startsWith('category:') &&
+      !activeProductCategories.some((category) => category.id === categoryFilter.slice('category:'.length))
+    ) {
+      setCategoryFilter('all');
+    }
+  }, [inventoryCategoriesEnabled, categoryFilter, activeProductCategories]);
+
   const inventorySummaries = useMemo(() => {
-    const all = selectInventorySummaries(state);
-    if (!searchTerm.trim()) return all;
+    const locationScoped = selectInventorySummariesByLocation(state, selectedLocationId);
+    const all = inventoryCategoriesEnabled
+      ? selectInventorySummariesByCategory(state, categoryFilter)
+      : locationScoped;
+    const locationAdjusted = all.map((summary) =>
+      locationScoped.find((item) => item.product.id === summary.product.id) ?? summary
+    );
+    if (!searchTerm.trim()) return locationAdjusted;
     const lower = searchTerm.toLowerCase();
-    return all.filter(({ product }) => 
+    return locationAdjusted.filter(({ product }) =>
       product.name.toLowerCase().includes(lower) || 
       product.inventoryId.toLowerCase().includes(lower)
     );
-  }, [state, searchTerm]);
+  }, [state, searchTerm, inventoryCategoriesEnabled, categoryFilter, selectedLocationId]);
   const selectedSummary = useMemo(() => {
     return inventorySummaries.find((item) => item.product.id === selectedProductId) ?? 
            inventorySummaries[0] ?? 
@@ -112,7 +243,152 @@ const InventoryPage: React.FC = () => {
     () => (selectedSummary ? selectProductMovements(state, selectedSummary.product.id) : []),
     [selectedSummary, state]
   );
+  const transferSourceOptions = useMemo(() => {
+    if (!transferToLocationId) {
+      return activeWarehouses;
+    }
+
+    const sourceIds = new Set(selectSupplyRoutesForStore(state, transferToLocationId).map((route) => route.fromLocationId));
+    return activeWarehouses.filter((location) => sourceIds.has(location.id));
+  }, [activeWarehouses, state, transferToLocationId]);
+  const transferHistory = useMemo(() => selectTransferHistory(state), [state]);
+  const stockTransfers = useMemo(() => selectStockTransfers(state), [state]);
+  const warehouseStockBalances = useMemo(() => selectWarehouseStockBalances(state), [state]);
+  const storeStockBalances = useMemo(() => selectStoreStockBalances(state), [state]);
+  const purchaseViews = useMemo(
+    () => state.purchases.map((purchase) => ({
+      purchase,
+      vendorName: state.vendors.find((vendor) => vendor.id === purchase.vendorId)?.name ?? purchase.vendorCode,
+    })),
+    [state.purchases, state.vendors]
+  );
   const currency = state.businessProfile.currency;
+  const selectedPurchaseVendor = useMemo(
+    () => activeVendors.find((vendor) => vendor.id === purchaseVendorId) ?? null,
+    [activeVendors, purchaseVendorId]
+  );
+  const selectedPurchaseProduct = useMemo(
+    () => state.products.find((product) => product.id === purchaseProductId) ?? null,
+    [purchaseProductId, state.products]
+  );
+  const purchaseVendorPickerItems = useMemo<PickerItem[]>(
+    () => activeVendors.map((vendor) => ({
+      id: vendor.id,
+      title: vendor.name,
+      subtitle: vendor.vendorCode,
+      meta: vendor.location,
+    })),
+    [activeVendors]
+  );
+  const purchaseProductPickerItems = useMemo<PickerItem[]>(
+    () => state.products.map((product) => ({
+      id: product.id,
+      title: product.name,
+      subtitle: product.inventoryId,
+      meta: `${product.unit} · cost ${formatCurrency(product.cost, currency)}`,
+    })),
+    [currency, state.products]
+  );
+  const purchaseDraftTotal = purchaseDraftItems.reduce((sum, item) => sum + item.totalCost, 0);
+  const inventoryCategoryReport = useMemo(() => selectInventoryCategoryReport(state), [state]);
+  const inventoryLocationReport = useMemo(() => {
+    const visibleLocationIds = new Set(visibleInventoryLocations.map((location) => location.id));
+    return selectInventoryLocationReport(state).filter((entry) => visibleLocationIds.has(entry.locationId));
+  }, [state, visibleInventoryLocations]);
+  const lowStockByLocation = useMemo(() => selectLowStockByLocation(state, selectedLocationId), [state, selectedLocationId]);
+  const fastMovingByLocation = useMemo(
+    () => selectFastMovingProductsByLocation(state).filter((entry) => entry.locationId === selectedLocationId),
+    [state, selectedLocationId]
+  );
+
+  useEffect(() => {
+    if (!transferToLocationId && activeStores.length > 0) {
+      setTransferToLocationId(activeStores[0].id);
+    }
+  }, [activeStores, transferToLocationId]);
+
+  useEffect(() => {
+    if (!transferFromLocationId && transferSourceOptions.length > 0) {
+      setTransferFromLocationId(transferSourceOptions[0].id);
+      return;
+    }
+
+    if (transferFromLocationId && transferSourceOptions.length > 0 && !transferSourceOptions.some((location) => location.id === transferFromLocationId)) {
+      setTransferFromLocationId(transferSourceOptions[0].id);
+    }
+  }, [transferFromLocationId, transferSourceOptions]);
+
+  useEffect(() => {
+    if (!purchaseVendorId && activeVendors.length > 0) {
+      setPurchaseVendorId(activeVendors[0].id);
+    }
+  }, [activeVendors, purchaseVendorId]);
+
+  useEffect(() => {
+    if (!purchaseProductId && state.products.length > 0) {
+      setPurchaseProductId(state.products[0].id);
+    }
+  }, [purchaseProductId, state.products]);
+
+  useEffect(() => {
+    if (!selectedReceiptPurchaseId && approvedPurchases.length > 0) {
+      setSelectedReceiptPurchaseId(approvedPurchases[0].id);
+    }
+
+    if (selectedReceiptPurchaseId && !approvedPurchases.some((purchase) => purchase.id === selectedReceiptPurchaseId)) {
+      setSelectedReceiptPurchaseId(approvedPurchases[0]?.id ?? '');
+    }
+  }, [approvedPurchases, selectedReceiptPurchaseId]);
+
+  useEffect(() => {
+    if (!selectedReceiptWarehouseId && activeWarehouses.length > 0) {
+      setSelectedReceiptWarehouseId(activeWarehouses[0].id);
+    }
+
+    if (selectedReceiptWarehouseId && !activeWarehouses.some((location) => location.id === selectedReceiptWarehouseId)) {
+      setSelectedReceiptWarehouseId(activeWarehouses[0]?.id ?? '');
+    }
+  }, [activeWarehouses, selectedReceiptWarehouseId]);
+
+  useEffect(() => {
+    const selectedPurchase = approvedPurchases.find((purchase) => purchase.id === selectedReceiptPurchaseId);
+    if (!selectedPurchase) {
+      setPurchaseReceiptQuantities({});
+      return;
+    }
+
+    setPurchaseReceiptQuantities((current) => {
+      const next: Record<string, number | ''> = {};
+      selectedPurchase.items.forEach((item) => {
+        next[item.productId] = current[item.productId] === undefined ? item.quantity : current[item.productId];
+      });
+      return next;
+    });
+  }, [approvedPurchases, selectedReceiptPurchaseId]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const section = params.get('section');
+    if (!section) {
+      return;
+    }
+
+    if (['procurement', 'receipts', 'transfers'].includes(section)) {
+      setActiveSegment('supply');
+    }
+
+    const target =
+      section === 'procurement' ? procurementSectionRef.current :
+      section === 'receipts' ? receiptsSectionRef.current :
+      section === 'transfers' ? transfersSectionRef.current :
+      null;
+
+    if (target) {
+      window.requestAnimationFrame(() => {
+        target.scrollIntoView({ behavior: 'auto', block: 'start' });
+      });
+    }
+  }, [location.search]);
 
   const handleAddProduct = () => {
     if (!name || price === '' || cost === '' || reorderLevel === '' || quantity === '') {
@@ -131,6 +407,8 @@ const InventoryPage: React.FC = () => {
       reorderLevel: Number(reorderLevel),
       quantity: Number(quantity),
       image: image || undefined,
+      categoryId: inventoryCategoriesEnabled ? categoryId || undefined : undefined,
+      locationId: selectedLocationId,
     });
 
     if (!result.ok) {
@@ -146,6 +424,7 @@ const InventoryPage: React.FC = () => {
     setReorderLevel('');
     setQuantity('');
     setImage('');
+    setCategoryId('');
     setSavedItemName(itemName);
     setFormMessage('');
     setShowSuccessToast(true);
@@ -186,7 +465,10 @@ const InventoryPage: React.FC = () => {
     }
 
     const text = await file.text();
-    const preview = validateInventoryImportCsv(text, state.products);
+    const preview = validateInventoryImportCsv(text, state.products, {
+      inventoryCategoriesEnabled: state.businessProfile.inventoryCategoriesEnabled,
+      productCategories: state.productCategories,
+    });
     setImportPreview(preview);
     setImportFileName(file.name);
     setImportMessage(
@@ -261,6 +543,176 @@ const InventoryPage: React.FC = () => {
     setShowRestockSuccess(true);
   };
 
+  const handleTransferStock = async () => {
+    if (!transferProductId || !transferFromLocationId || !transferToLocationId || transferQuantity === '') {
+      setTransferMessage('Choose a product, route, and quantity before transferring stock.');
+      return;
+    }
+
+    const result = await createStockTransfer({
+      fromWarehouseId: transferFromLocationId,
+      toStoreId: transferToLocationId,
+      initiatedBy: currentUser.userId,
+      note: transferNote,
+      items: [
+        {
+          productId: transferProductId,
+          quantity: Number(transferQuantity),
+        },
+      ],
+    });
+
+    if (!result.ok) {
+      setTransferMessage(result.message);
+      return;
+    }
+
+    setTransferQuantity('');
+    setTransferNote('');
+    setTransferMessage('');
+    setShowTransferSuccess(true);
+  };
+
+  const handleTransferAction = async (
+    transferId: string,
+    action: 'approve' | 'dispatch' | 'receive' | 'cancel'
+  ) => {
+    const input = { transferId, performedBy: currentUser.userId };
+    const result =
+      action === 'approve'
+        ? await approveStockTransfer(input)
+        : action === 'dispatch'
+          ? await dispatchStockTransfer(input)
+          : action === 'receive'
+            ? await receiveStockTransfer(input)
+            : await cancelStockTransfer(input);
+
+    if (!result.ok) {
+      setTransferMessage(result.message);
+      return;
+    }
+
+    const actionLabel =
+      action === 'approve' ? 'approved' :
+      action === 'dispatch' ? 'dispatched' :
+      action === 'receive' ? 'received' : 'cancelled';
+    setTransferMessage('');
+    setReviewMessage(`Transfer ${actionLabel} successfully.`);
+    setShowReviewToast(true);
+  };
+
+  const handleAddPurchaseItem = () => {
+    const product = state.products.find((item) => item.id === purchaseProductId);
+    if (!product || purchaseQuantity === '' || purchaseUnitCost === '') {
+      setPurchaseMessage('Choose a product, quantity, and unit cost before adding a line.');
+      return;
+    }
+
+    const vendor = activeVendors.find((item) => item.id === purchaseVendorId);
+    if (!vendor) {
+      setPurchaseMessage('Choose an active vendor before adding purchase lines.');
+      return;
+    }
+
+    const quantity = Number(purchaseQuantity);
+    const unitCost = Number(purchaseUnitCost);
+    if (quantity <= 0 || unitCost < 0) {
+      setPurchaseMessage('Purchase quantity must be positive and unit cost cannot be negative.');
+      return;
+    }
+
+    setPurchaseDraftItems((current) => [
+      ...current,
+      {
+        productId: product.id,
+        productName: product.name,
+        quantity,
+        unitCost,
+        totalCost: Number((quantity * unitCost).toFixed(2)),
+        vendorCode: vendor.vendorCode,
+      },
+    ]);
+    setPurchaseQuantity('');
+    setPurchaseUnitCost('');
+    setPurchaseMessage('');
+  };
+
+  const handleRemovePurchaseItem = (index: number) => {
+    setPurchaseDraftItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const handleCreatePurchaseDraft = async () => {
+    const result = await createPurchaseDraft({
+      vendorId: purchaseVendorId,
+      createdBy: currentUser.userId,
+      items: purchaseDraftItems.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitCost: item.unitCost,
+      })),
+    });
+
+    if (!result.ok) {
+      setPurchaseMessage(result.message);
+      return;
+    }
+
+    setPurchaseDraftItems([]);
+    setPurchaseMessage('');
+    setShowPurchaseSuccess(true);
+  };
+
+  const handlePurchaseAction = async (purchaseId: string, action: 'submit' | 'approve' | 'cancel') => {
+    const input = { purchaseId, performedBy: currentUser.userId };
+    const result =
+      action === 'submit'
+        ? await submitPurchase(input)
+        : action === 'approve'
+          ? await approvePurchase(input)
+          : await cancelPurchase(input);
+
+    if (!result.ok) {
+      setPurchaseMessage(result.message);
+      return;
+    }
+
+    setPurchaseMessage('');
+    setReviewMessage(
+      action === 'submit'
+        ? 'Purchase submitted for approval.'
+        : action === 'approve'
+          ? 'Purchase approved and payable created.'
+          : 'Purchase cancelled.'
+    );
+    setShowReviewToast(true);
+  };
+
+  const handleReceivePurchase = async () => {
+    const selectedPurchase = approvedPurchases.find((purchase) => purchase.id === selectedReceiptPurchaseId);
+    if (!selectedPurchase || !selectedReceiptWarehouseId) {
+      setPurchaseReceiptMessage('Choose an approved purchase and warehouse before receiving stock.');
+      return;
+    }
+
+    const result = await receivePurchaseInWarehouse({
+      purchaseId: selectedPurchase.id,
+      warehouseId: selectedReceiptWarehouseId,
+      performedBy: currentUser.userId,
+      receivedItems: selectedPurchase.items.map((item) => ({
+        productId: item.productId,
+        quantity: Number(purchaseReceiptQuantities[item.productId] ?? item.quantity),
+      })),
+    });
+
+    if (!result.ok) {
+      setPurchaseReceiptMessage(result.message);
+      return;
+    }
+
+    setPurchaseReceiptMessage('');
+    setShowPurchaseReceiptSuccess(true);
+  };
+
   const handleReviewRequest = (reqId: string, status: 'Approved' | 'Rejected' | 'Fulfilled') => {
     const result = reviewRestockRequest({
       requestId: reqId,
@@ -290,14 +742,22 @@ const InventoryPage: React.FC = () => {
           <IonTitle>Inventory</IonTitle>
         </IonToolbar>
         <IonToolbar>
-          <IonSegment value={activeSegment} onIonChange={(e) => setActiveSegment(e.detail.value as any)}>
+          <IonSegment
+            value={activeSegment}
+            onIonChange={(event) => {
+              const nextSegment = event.detail.value;
+              if (nextSegment === 'status' || nextSegment === 'activity' || nextSegment === 'supply') {
+                setActiveSegment(nextSegment);
+              }
+            }}
+          >
             <IonSegmentButton value="status">
               <IonLabel>Status</IonLabel>
             </IonSegmentButton>
             <IonSegmentButton value="activity">
               <IonLabel>Activity</IonLabel>
             </IonSegmentButton>
-            {hasPermission('restockRequests.view') && (
+            {(hasPermission('restockRequests.view') || hasPermission('transfers.view') || hasPermission('purchases.view') || hasPermission('purchases.create')) && (
               <IonSegmentButton value="supply">
                 <IonLabel>Supply</IonLabel>
               </IonSegmentButton>
@@ -331,7 +791,7 @@ const InventoryPage: React.FC = () => {
                       Bulk import uses a CSV template with the exact BisaPilot inventory columns. Upload, preview, and confirm before anything is created.
                     </p>
                     <p className="muted-label">
-                      Required: Item Name, Cost Price, Selling Price, Quantity In Stock, Reorder Level. Optional: Inventory ID, Unit, Image URL.
+                      Required: Item Name, Cost Price, Selling Price, Quantity In Stock, Reorder Level. Optional: Inventory ID, Unit, Image URL, Category.
                     </p>
                     <div className="inventory-photo-section">
                       <div className="inventory-photo-preview">
@@ -390,6 +850,42 @@ const InventoryPage: React.FC = () => {
                         onIonInput={(event) => setInventoryId(event.detail.value ?? '')}
                       />
                     </IonItem>
+
+                    {inventoryCategoriesEnabled && (
+                      <IonItem lines="none" className="app-item">
+                        <IonLabel position="stacked">Category (optional)</IonLabel>
+                        <IonSelect
+                          value={categoryId}
+                          placeholder={activeProductCategories.length > 0 ? 'Choose a category' : 'No active categories yet'}
+                          interface="popover"
+                          onIonChange={(event) => setCategoryId(event.detail.value ?? '')}
+                        >
+                          <IonSelectOption value="">Uncategorized</IonSelectOption>
+                          {activeProductCategories.map((category) => (
+                            <IonSelectOption key={category.id} value={category.id}>
+                              {category.name}
+                            </IonSelectOption>
+                          ))}
+                        </IonSelect>
+                      </IonItem>
+                    )}
+
+                    {visibleInventoryLocations.length > 1 ? (
+                      <IonItem lines="none" className="app-item">
+                        <IonLabel position="stacked">Opening stock location</IonLabel>
+                        <IonSelect
+                          value={selectedLocationId}
+                          interface="popover"
+                          onIonChange={(event) => setLocationId(event.detail.value ?? '')}
+                        >
+                          {visibleInventoryLocations.map((location) => (
+                            <IonSelectOption key={location.id} value={location.id}>
+                              {location.name} {location.isDefault ? '(default)' : ''}
+                            </IonSelectOption>
+                          ))}
+                        </IonSelect>
+                      </IonItem>
+                    ) : null}
 
                     <div className="triple-grid">
                       <IonItem lines="none" className="app-item">
@@ -453,6 +949,206 @@ const InventoryPage: React.FC = () => {
                 </SectionCard>
               )}
 
+              {(hasPermission('purchases.view') || hasPermission('purchases.create') || hasPermission('purchases.receive') || hasPermission('transfers.view')) && (
+                <SectionCard
+                  title="ERP operations"
+                  subtitle="See procurement, warehouse receiving, and stock transfers at a glance before drilling into inventory detail."
+                >
+                  <div className="stats-grid">
+                    {(hasPermission('purchases.view') || hasPermission('purchases.create')) ? (
+                      <div className="mini-stat">
+                        <p className="muted-label">Procurement</p>
+                        <h3>{state.purchases.filter((purchase) => purchase.status === 'draft' || purchase.status === 'submitted' || purchase.status === 'adminReviewed').length}</h3>
+                        <p>{state.purchases.length > 0 ? 'Purchase Queue is active' : 'No procurement activity yet'}</p>
+                      </div>
+                    ) : null}
+                    {hasPermission('purchases.view') ? (
+                      <div className="mini-stat">
+                        <p className="muted-label">Purchase Queue</p>
+                        <h3>{state.purchases.filter((purchase) => purchase.status === 'submitted' || purchase.status === 'adminReviewed').length}</h3>
+                        <p>{state.purchases.some((purchase) => purchase.status === 'submitted' || purchase.status === 'adminReviewed') ? 'Pending approval purchases' : 'No purchases pending approval'}</p>
+                      </div>
+                    ) : null}
+                    {hasPermission('purchases.receive') ? (
+                      <div className="mini-stat">
+                        <p className="muted-label">Warehouse Receipts</p>
+                        <h3>{approvedPurchases.length}</h3>
+                        <p>{approvedPurchases.length > 0 ? 'Approved purchases awaiting receipt' : 'No purchases awaiting receipt'}</p>
+                      </div>
+                    ) : null}
+                    {hasPermission('transfers.view') ? (
+                      <div className="mini-stat">
+                        <p className="muted-label">Stock Transfers</p>
+                        <h3>{stockTransfers.filter((entry) => entry.transfer.status !== 'received' && entry.transfer.status !== 'cancelled').length}</h3>
+                        <p>{stockTransfers.length > 0 ? 'Warehouse-to-store transfer queue' : 'No pending stock transfers'}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                </SectionCard>
+              )}
+
+              <SectionCard
+                title="Management snapshot"
+                subtitle="Compact operational reporting for the current inventory view, without leaving the stock-control screen."
+              >
+                <div className="stats-grid">
+                  <div className="mini-stat">
+                    <p className="muted-label">Selected location</p>
+                    <h3>{visibleInventoryLocations.find((location) => location.id === selectedLocationId)?.name ?? defaultLocation.name}</h3>
+                    <p>{inventoryLocationReport.find((entry) => entry.locationId === selectedLocationId)?.quantityOnHand ?? 0} units on hand</p>
+                  </div>
+                  <div className="mini-stat">
+                    <p className="muted-label">Low-stock lines here</p>
+                    <h3>{lowStockByLocation.length}</h3>
+                    <p>{lowStockByLocation.length > 0 ? 'Needs replenishment planning' : 'No urgent stock risk'}</p>
+                  </div>
+                  <div className="mini-stat">
+                    <p className="muted-label">Fast movers here</p>
+                    <h3>{fastMovingByLocation.length}</h3>
+                    <p>30-day sales-movement heuristic</p>
+                  </div>
+                </div>
+                <p className="muted-label" style={{ margin: '0 8px 12px 8px' }}>
+                  Stock value below is an operational estimate based on current product cost multiplied by quantity on hand.
+                </p>
+                <div className="list-block">
+                  {inventoryLocationReport.map((entry) => (
+                    <div className="list-row" key={entry.locationId}>
+                      <div>
+                        <strong>{entry.label}</strong>
+                        <p>{entry.type === 'warehouse' ? 'Warehouse' : 'Store'} • {entry.productCount} stocked products</p>
+                      </div>
+                      <div className="right-meta">
+                        <strong>{entry.quantityOnHand} units</strong>
+                        <p>Estimate {formatCurrency(entry.stockValue, currency)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {inventoryCategoriesEnabled ? (
+                  <div className="list-block">
+                    <div className="list-row">
+                      <div>
+                        <strong>Category distribution</strong>
+                        <p>Uncategorized products stay fully supported.</p>
+                      </div>
+                    </div>
+                    {inventoryCategoryReport.slice(0, 4).map((entry) => (
+                      <div className="list-row" key={entry.categoryId ?? 'uncategorized'}>
+                        <div>
+                          <strong>{entry.label}</strong>
+                          <p>{entry.productCount} products</p>
+                        </div>
+                        <div className="right-meta">
+                          <strong>{entry.quantityOnHand} units</strong>
+                          <p>{formatCurrency(entry.stockValue, currency)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {(lowStockByLocation.length > 0 || fastMovingByLocation.length > 0) ? (
+                  <div className="list-block">
+                    {lowStockByLocation.slice(0, 3).map((entry) => (
+                      <div className="list-row" key={`risk-${entry.locationId}-${entry.product.id}`}>
+                        <div>
+                          <strong>{entry.product.name}</strong>
+                          <p>Low stock at {entry.locationLabel}</p>
+                        </div>
+                        <div className="right-meta">
+                          <strong className="warning-text">{entry.quantityOnHand} left</strong>
+                          <p>Reorder at {entry.reorderLevel}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {fastMovingByLocation.slice(0, 3).map((entry) => (
+                      <div className="list-row" key={`fast-${entry.locationId}-${entry.productId}`}>
+                        <div>
+                          <strong>{selectProductById(state, entry.productId)?.name ?? 'Unknown product'}</strong>
+                          <p>Fast-moving in {visibleInventoryLocations.find((location) => location.id === entry.locationId)?.name ?? defaultLocation.name}</p>
+                        </div>
+                        <div className="right-meta">
+                          <strong>{entry.quantityMoved} units</strong>
+                          <p>{entry.movementCount} sale movements</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </SectionCard>
+
+              <SectionCard
+                title="Warehouse balances"
+                subtitle="Available warehouse stock is built from purchases, transfer dispatches, and adjustments."
+              >
+                {activeWarehouses.length === 0 ? (
+                  <EmptyState
+                    eyebrow="No warehouses"
+                    title="Add a warehouse in Settings to hold procurement stock."
+                    message="Warehouse balances will appear here once a warehouse location exists and receives stock."
+                  />
+                ) : (
+                  <div className="list-block">
+                    <div className="list-row">
+                      <div>
+                        <strong>{activeWarehouses.length} warehouse{activeWarehouses.length === 1 ? '' : 's'}</strong>
+                        <p>Operational stock ready for dispatch to stores</p>
+                      </div>
+                    </div>
+                    {warehouseStockBalances.map((entry) => (
+                      <div className="list-row" key={`${entry.warehouseId}-${entry.productId}`}>
+                        <div>
+                          <strong>{entry.productName}</strong>
+                          <p>{entry.warehouseName} • {activeWarehouses.find((location) => location.id === entry.warehouseId)?.locationCode ?? 'WH'}</p>
+                          <p className="muted-label">{entry.lastMovementAt ? `Last movement ${formatRelativeDate(entry.lastMovementAt)}` : 'No movement yet'}</p>
+                        </div>
+                        <div className="right-meta">
+                          <strong>{entry.quantityAvailable}</strong>
+                          <p>{entry.vendorCode ? `Vendor ${entry.vendorCode}` : 'Warehouse stock'}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </SectionCard>
+
+              {canViewStoreInventory ? (
+                <SectionCard
+                  title="Store balances"
+                  subtitle="Store stock reflects transfer receipts, sales, and adjustments at each selling location."
+                >
+                  {activeStores.length === 0 ? (
+                    <EmptyState
+                      eyebrow="No stores"
+                      title="Add a store location to track sellable stock."
+                      message="Store balances will appear here once a store location exists."
+                    />
+                  ) : (
+                    <div className="list-block">
+                      <div className="list-row">
+                        <div>
+                          <strong>{activeStores.length} store{activeStores.length === 1 ? '' : 's'}</strong>
+                          <p>Sales should draw down store stock, not warehouse stock</p>
+                        </div>
+                      </div>
+                      {storeStockBalances.map((entry) => (
+                        <div className="list-row" key={`${entry.storeId}-${entry.productId}`}>
+                          <div>
+                            <strong>{entry.productName}</strong>
+                            <p>{entry.storeName} • {activeStores.find((location) => location.id === entry.storeId)?.locationCode ?? 'ST'}</p>
+                            <p className="muted-label">{entry.lastMovementAt ? `Last movement ${formatRelativeDate(entry.lastMovementAt)}` : 'No movement yet'}</p>
+                          </div>
+                          <div className="right-meta">
+                            <strong>{entry.quantityAvailable}</strong>
+                            <p>Store-ready stock</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </SectionCard>
+              ) : null}
+
               <SectionCard title="Stock control" subtitle="Quantities now come from explicit stock movements instead of a loose on-hand counter.">
                 <IonSearchbar 
                   placeholder="Search by name or ID..." 
@@ -460,16 +1156,56 @@ const InventoryPage: React.FC = () => {
                   onIonInput={(e) => setSearchTerm(e.detail.value ?? '')}
                   style={{ padding: '0 8px 16px 8px' }}
                 />
+                {visibleInventoryLocations.length > 1 ? (
+                  <IonItem lines="none" className="app-item" style={{ margin: '0 8px 16px 8px' }}>
+                    <IonLabel position="stacked">Location</IonLabel>
+                    <IonSelect
+                      value={selectedLocationId}
+                      interface="popover"
+                      onIonChange={(event) => setLocationId(event.detail.value ?? '')}
+                    >
+                      {visibleInventoryLocations.map((location) => (
+                        <IonSelectOption key={location.id} value={location.id}>
+                          {location.name} {location.isDefault ? '(default)' : ''}
+                        </IonSelectOption>
+                      ))}
+                    </IonSelect>
+                  </IonItem>
+                ) : null}
+                {inventoryCategoriesEnabled && (
+                  <IonItem lines="none" className="app-item" style={{ margin: '0 8px 16px 8px' }}>
+                    <IonLabel position="stacked">Category filter</IonLabel>
+                    <IonSelect
+                      value={categoryFilter}
+                      interface="popover"
+                      onIonChange={(event) => setCategoryFilter(event.detail.value as InventoryCategoryFilterValue)}
+                    >
+                      <IonSelectOption value="all">All</IonSelectOption>
+                      <IonSelectOption value="uncategorized">Uncategorized</IonSelectOption>
+                      {activeProductCategories.map((category) => (
+                        <IonSelectOption key={category.id} value={`category:${category.id}`}>
+                          {category.name}
+                        </IonSelectOption>
+                      ))}
+                    </IonSelect>
+                  </IonItem>
+                )}
                 {inventorySummaries.length === 0 ? (
                   <EmptyState
                     eyebrow="No stock yet"
-                    title="Inventory visibility starts with the first item"
-                    message="Add a sellable product above and BisaPilot will track quantity on hand, reorder risk, and the latest stock movement from that moment forward."
+                    title={inventoryCategoriesEnabled && categoryFilter !== 'all' ? 'No items match this category filter' : 'Inventory visibility starts with the first item'}
+                    message={
+                      inventoryCategoriesEnabled && categoryFilter !== 'all'
+                        ? 'Try another category filter or add an item in this category to see it here.'
+                        : 'Add a sellable product above and BisaPilot will track quantity on hand, reorder risk, and the latest stock movement from that moment forward.'
+                    }
                   />
                 ) : (
                   <div className="list-block">
                     {inventorySummaries.map(({ product, quantityOnHand, lowStock, latestMovement, stockStatusDisplay }) => {
                       const margin = product.price > 0 ? `${Math.round(((product.price - product.cost) / product.price) * 100)}%` : '0%';
+                      const categoryLabel = selectProductCategoryDisplayLabel(state, product.categoryId);
+                      const category = product.categoryId ? categoryMap.get(product.categoryId) ?? null : null;
 
                       return (
                         <div
@@ -507,6 +1243,12 @@ const InventoryPage: React.FC = () => {
                             <div>
                               <strong>{product.name}</strong>
                               <p className="code-label">{product.inventoryId}</p>
+                              {inventoryCategoriesEnabled ? (
+                                <p className="muted-label">
+                                  Category: {categoryLabel}
+                                  {category && !category.isActive ? ' • Archived' : ''}
+                                </p>
+                              ) : null}
                               <p>
                                 Reorder at {product.reorderLevel} • Margin {margin} • {formatCurrency(product.price, currency)}
                               </p>
@@ -551,6 +1293,11 @@ const InventoryPage: React.FC = () => {
                       <div>
                         <strong>{selectedSummary.product.name}</strong>
                         <p className="code-label">{selectedSummary.product.inventoryId}</p>
+                        {inventoryCategoriesEnabled ? (
+                          <p className="muted-label">
+                            Category: {selectProductCategoryDisplayLabel(state, selectedSummary.product.categoryId)}
+                          </p>
+                        ) : null}
                         <p>{selectedSummary.stockStatusDisplay.helper}</p>
                       </div>
                     </div>
@@ -617,8 +1364,521 @@ const InventoryPage: React.FC = () => {
             </SectionCard>
           )}
 
-          {activeSegment === 'supply' && hasPermission('restockRequests.view') && (
+          {activeSegment === 'supply' && (hasPermission('transfers.view') || hasPermission('restockRequests.view') || hasPermission('purchases.view') || hasPermission('purchases.create')) && (
             <>
+              <SectionCard
+                title="Supply workflow"
+                subtitle="Move stock through the business with a clear operational chain."
+              >
+                <div className="list-block">
+                  <div className="list-row">
+                    <div>
+                      <strong>
+                        {hasPermission('transfers.view')
+                          ? 'Vendor → Purchase → Approval → Payable → Warehouse Receipt → Store Transfer → Sale'
+                          : 'Vendor → Purchase → Approval → Payable → Warehouse Receipt'}
+                      </strong>
+                      <p>
+                        {hasPermission('transfers.view')
+                          ? 'Use procurement for supplier orders, warehouse receipts for stock-in, and transfer stock to move goods into selling locations.'
+                          : 'Use procurement for supplier orders and warehouse receipts without exposing store transfer operations.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="stats-grid" style={{ marginTop: '12px' }}>
+                  {(hasPermission('purchases.view') || hasPermission('purchases.create')) ? (
+                    <div className="mini-stat">
+                      <p className="muted-label">Purchase Queue</p>
+                      <h3>{state.purchases.filter((purchase) => purchase.status === 'draft' || purchase.status === 'submitted' || purchase.status === 'adminReviewed').length}</h3>
+                      <p>{state.purchases.filter((purchase) => purchase.status === 'approved').length} approved awaiting receipt</p>
+                    </div>
+                  ) : null}
+                  {hasPermission('purchases.receive') ? (
+                    <div className="mini-stat">
+                      <p className="muted-label">Warehouse Receipts</p>
+                      <h3>{approvedPurchases.length}</h3>
+                      <p>{approvedPurchases.length > 0 ? 'Approved purchases awaiting receipt' : 'No purchases awaiting receipt'}</p>
+                    </div>
+                  ) : null}
+                  {hasPermission('transfers.view') ? (
+                    <div className="mini-stat">
+                      <p className="muted-label">Pending Stock Transfers</p>
+                      <h3>{stockTransfers.filter((entry) => entry.transfer.status !== 'received' && entry.transfer.status !== 'cancelled').length}</h3>
+                      <p>Warehouse-to-store movements still in flight</p>
+                    </div>
+                  ) : null}
+                </div>
+              </SectionCard>
+
+              {(hasPermission('purchases.create') || hasPermission('purchases.view')) && (
+                <section ref={procurementSectionRef}>
+                  <SectionCard
+                    title="Procurement"
+                    subtitle="Raise purchase drafts from active vendors, submit them, and track approval through warehouse receipt."
+                    highlighted={arrivalSection === 'procurement'}
+                    highlightLabel={arrivalSection === 'procurement' ? "You're viewing Procurement" : undefined}
+                    dataTestId="arrival-procurement"
+                  >
+                  <div className="form-grid">
+                    {hasPermission('purchases.create') ? (
+                      <>
+                        {activeVendors.length === 0 ? (
+                          <EmptyState
+                            eyebrow="No active vendor"
+                            title="Create an active vendor first."
+                            message="Procurement stays locked to active suppliers so purchase and payable records remain clean."
+                            actionLabel="Go to Vendors"
+                            onAction={() => history.push('/vendors')}
+                          />
+                        ) : (
+                          <>
+                            <div className="dual-stat">
+                              <div className="picker-container">
+                                <p className="muted-label">Supplier</p>
+                                <IonButton
+                                  expand="block"
+                                  fill="outline"
+                                  onClick={() => setShowPurchaseVendorPicker(true)}
+                                >
+                                  {selectedPurchaseVendor ? selectedPurchaseVendor.name : 'Select Vendor'}
+                                </IonButton>
+                                {selectedPurchaseVendor ? (
+                                  <p className="muted-label">
+                                    {selectedPurchaseVendor.vendorCode} · {selectedPurchaseVendor.location}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <div className="picker-container">
+                                <p className="muted-label">Stock item</p>
+                                <IonButton
+                                  expand="block"
+                                  fill="outline"
+                                  onClick={() => setShowPurchaseProductPicker(true)}
+                                >
+                                  {selectedPurchaseProduct ? selectedPurchaseProduct.name : 'Select Item'}
+                                </IonButton>
+                                {selectedPurchaseProduct ? (
+                                  <p className="muted-label">
+                                    {selectedPurchaseProduct.inventoryId} · {selectProductCategoryDisplayLabel(state, selectedPurchaseProduct.categoryId)}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="dual-stat">
+                              <IonItem lines="none" className="app-item">
+                                <IonLabel position="stacked">Quantity</IonLabel>
+                                <IonInput type="number" value={purchaseQuantity} onIonInput={(event) => setPurchaseQuantity(event.detail.value === '' ? '' : Number(event.detail.value))} />
+                              </IonItem>
+                              <IonItem lines="none" className="app-item">
+                                <IonLabel position="stacked">Unit cost</IonLabel>
+                                <IonInput type="number" value={purchaseUnitCost} onIonInput={(event) => setPurchaseUnitCost(event.detail.value === '' ? '' : Number(event.detail.value))} />
+                              </IonItem>
+                            </div>
+                            <IonButton fill="outline" expand="block" onClick={handleAddPurchaseItem}>
+                              Add Purchase Line
+                            </IonButton>
+                            <div className="sale-items-list" style={{ marginTop: '12px' }}>
+                              <p className="muted-label" style={{ marginBottom: '12px' }}>Items Ordered</p>
+                              {purchaseDraftItems.length === 0 ? (
+                                <div className="list-row">
+                                  <div>
+                                    <strong>No purchase lines yet</strong>
+                                    <p>Add one or more items before creating a draft.</p>
+                                  </div>
+                                </div>
+                              ) : (
+                                purchaseDraftItems.map((item, index) => (
+                                  <div
+                                    className="sale-item-row"
+                                    key={`${item.productId}-${index}`}
+                                    style={{
+                                      display: 'grid',
+                                      gridTemplateColumns: '1fr 90px 40px',
+                                      gap: '12px',
+                                      alignItems: 'center',
+                                      marginBottom: '16px',
+                                      padding: '12px',
+                                      background: 'rgba(0,0,0,0.02)',
+                                      borderRadius: '8px',
+                                    }}
+                                  >
+                                    <div>
+                                      <strong>{item.productName}</strong>
+                                      <p>{item.quantity} units at {formatCurrency(item.unitCost, currency)}</p>
+                                      <p className="code-label">{item.vendorCode}</p>
+                                    </div>
+                                    <div className="right-meta">
+                                      <strong>{formatCurrency(item.totalCost, currency)}</strong>
+                                    </div>
+                                    <IonButton fill="clear" color="danger" onClick={() => handleRemovePurchaseItem(index)}>
+                                      ×
+                                    </IonButton>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                            <div className="sale-summary">
+                              <div>
+                                <p className="muted-label">Purchase order total</p>
+                                <h3>{formatCurrency(purchaseDraftTotal, currency)}</h3>
+                                <p className="muted-label">Purchase stock is added only after warehouse receipt.</p>
+                              </div>
+                              <div>
+                                <p className="muted-label">Order lines</p>
+                                <h3>{purchaseDraftItems.length}</h3>
+                              </div>
+                            </div>
+                            <IonButton expand="block" onClick={handleCreatePurchaseDraft} disabled={purchaseDraftItems.length === 0}>
+                              Create Purchase Order
+                            </IonButton>
+                            <SearchablePicker
+                              isOpen={showPurchaseVendorPicker}
+                              title="Select Vendor"
+                              placeholder="Search vendor name, code, or location..."
+                              items={purchaseVendorPickerItems}
+                              onDismiss={() => setShowPurchaseVendorPicker(false)}
+                              onSelect={(item) => {
+                                setPurchaseVendorId(item.id);
+                                setShowPurchaseVendorPicker(false);
+                              }}
+                            />
+                            <SearchablePicker
+                              isOpen={showPurchaseProductPicker}
+                              title="Select Stock Item"
+                              placeholder="Search name or inventory ID..."
+                              items={purchaseProductPickerItems}
+                              onDismiss={() => setShowPurchaseProductPicker(false)}
+                              onSelect={(item) => {
+                                setPurchaseProductId(item.id);
+                                setShowPurchaseProductPicker(false);
+                              }}
+                            />
+                          </>
+                        )}
+                      </>
+                    ) : null}
+
+                    {hasPermission('purchases.view') ? (
+                      <div className="list-block">
+                        <div className="list-row">
+                          <div>
+                            <strong>Purchase Queue</strong>
+                            <p>Drafts, approvals, receipts, and cancellations stay visible in one place.</p>
+                          </div>
+                          <IonBadge color="primary">{state.purchases.length}</IonBadge>
+                        </div>
+                        {purchaseViews.length === 0 ? (
+                          <div className="list-row">
+                            <div>
+                              <strong>No purchases yet</strong>
+                              <p>Procurement drafts will appear here once created.</p>
+                            </div>
+                          </div>
+                        ) : (
+                          purchaseViews.map(({ purchase, vendorName }) => (
+                            <div className="list-row" key={purchase.id}>
+                              <div>
+                                <strong>{purchase.purchaseCode}</strong>
+                                <p>{vendorName} • {purchase.vendorCode}</p>
+                                <p>{purchase.items.map((item) => `${item.productName} (${item.quantity})`).join(', ')}</p>
+                                <p className="muted-label">{formatReceiptDate(purchase.createdAt)}</p>
+                                <div className="button-group" style={{ marginTop: '8px' }}>
+                                  {purchase.status === 'draft' && hasPermission('purchases.create') ? (
+                                    <IonButton size="small" onClick={() => handlePurchaseAction(purchase.id, 'submit')}>Submit</IonButton>
+                                  ) : null}
+                                  {(purchase.status === 'submitted' || purchase.status === 'adminReviewed') && hasPermission('purchases.approve') ? (
+                                    <IonButton size="small" fill="outline" onClick={() => handlePurchaseAction(purchase.id, 'approve')}>Approve</IonButton>
+                                  ) : null}
+                                  {purchase.status === 'approved' && hasPermission('purchases.receive') ? (
+                                    <IonButton size="small" color="success" onClick={() => setSelectedReceiptPurchaseId(purchase.id)}>Prepare Receipt</IonButton>
+                                  ) : null}
+                                  {purchase.status !== 'cancelled' && purchase.status !== 'receivedToWarehouse' && hasPermission('purchases.approve') ? (
+                                    <IonButton size="small" fill="clear" color="danger" onClick={() => handlePurchaseAction(purchase.id, 'cancel')}>Cancel</IonButton>
+                                  ) : null}
+                                </div>
+                              </div>
+                              <div className="right-meta">
+                                <IonBadge color={
+                                  purchase.status === 'receivedToWarehouse' ? 'success' :
+                                  purchase.status === 'cancelled' ? 'medium' :
+                                  purchase.status === 'approved' ? 'primary' :
+                                  purchase.status === 'submitted' || purchase.status === 'adminReviewed' ? 'warning' : 'tertiary'
+                                }>
+                                  {purchase.status}
+                                </IonBadge>
+                                <strong>{formatCurrency(purchase.totalAmount, currency)}</strong>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    ) : null}
+
+                    {purchaseMessage ? <p className="form-message">{purchaseMessage}</p> : null}
+                  </div>
+                  </SectionCard>
+                </section>
+              )}
+
+              {hasPermission('purchases.receive') && (
+                <section ref={receiptsSectionRef}>
+                  <SectionCard
+                    title="Warehouse Receipts"
+                    subtitle="Receive approved purchases into a warehouse and create traceable stock-in movements."
+                    highlighted={arrivalSection === 'receipts'}
+                    highlightLabel={arrivalSection === 'receipts' ? "You're viewing Warehouse Receipts" : undefined}
+                    dataTestId="arrival-receipts"
+                  >
+                  {approvedPurchases.length === 0 || activeWarehouses.length === 0 ? (
+                    <EmptyState
+                      eyebrow="Nothing ready"
+                      title="No purchases awaiting receipt."
+                      message="Approve a purchase and make sure at least one warehouse location is active before receiving stock."
+                    />
+                  ) : (
+                    <div className="form-grid">
+                      <div className="dual-stat">
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Approved purchase</IonLabel>
+                          <IonSelect value={selectedReceiptPurchaseId} interface="popover" onIonChange={(event) => setSelectedReceiptPurchaseId(event.detail.value)}>
+                            {approvedPurchases.map((purchase) => (
+                              <IonSelectOption key={purchase.id} value={purchase.id}>
+                                {purchase.purchaseCode} - {purchase.vendorCode}
+                              </IonSelectOption>
+                            ))}
+                          </IonSelect>
+                        </IonItem>
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Warehouse</IonLabel>
+                          <IonSelect value={selectedReceiptWarehouseId} interface="popover" onIonChange={(event) => setSelectedReceiptWarehouseId(event.detail.value)}>
+                            {activeWarehouses.map((warehouse) => (
+                              <IonSelectOption key={warehouse.id} value={warehouse.id}>
+                                {warehouse.name}
+                              </IonSelectOption>
+                            ))}
+                          </IonSelect>
+                        </IonItem>
+                      </div>
+                      <div className="list-block">
+                        {(approvedPurchases.find((purchase) => purchase.id === selectedReceiptPurchaseId)?.items ?? []).map((item) => (
+                          <div className="list-row" key={item.productId}>
+                            <div>
+                              <strong>{item.productName}</strong>
+                              <p>Ordered: {item.quantity}</p>
+                            </div>
+                            <div style={{ minWidth: '120px' }}>
+                              <IonItem lines="none" className="app-item">
+                                <IonLabel position="stacked">Received qty</IonLabel>
+                                <IonInput
+                                  type="number"
+                                  value={purchaseReceiptQuantities[item.productId] ?? item.quantity}
+                                  onIonInput={(event) => setPurchaseReceiptQuantities((current) => ({
+                                    ...current,
+                                    [item.productId]: event.detail.value === '' ? '' : Number(event.detail.value),
+                                  }))}
+                                />
+                              </IonItem>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <IonButton expand="block" color="success" onClick={handleReceivePurchase}>
+                        Receive Into Warehouse
+                      </IonButton>
+                      {purchaseReceiptMessage ? <p className="form-message">{purchaseReceiptMessage}</p> : null}
+                    </div>
+                  )}
+                  </SectionCard>
+                </section>
+              )}
+
+              {hasPermission('transfers.create') && activeLocations.length > 1 && (
+                <section ref={transfersSectionRef}>
+                  <SectionCard
+                    title="Transfer Stock"
+                    subtitle="Create a warehouse-to-store transfer request using your saved supply routes."
+                    highlighted={arrivalSection === 'transfers'}
+                    highlightLabel={arrivalSection === 'transfers' ? "You're viewing Stock Transfers" : undefined}
+                    dataTestId="arrival-transfers-create"
+                  >
+                  {state.locationSupplyRoutes.filter((route) => route.isActive).length === 0 ? (
+                    <EmptyState
+                      eyebrow="No supply route"
+                      title="Create a warehouse-to-store route first."
+                      message="Routes are managed in Settings so transfers stay intentional and auditable."
+                      actionLabel="Open Settings"
+                      onAction={() => history.push('/settings')}
+                    />
+                  ) : (
+                    <div className="form-grid">
+                      <IonItem lines="none" className="app-item">
+                        <IonLabel position="stacked">Product</IonLabel>
+                        <IonSelect
+                          value={transferProductId}
+                          interface="popover"
+                          onIonChange={(event) => setTransferProductId(event.detail.value)}
+                        >
+                          {state.products.map((product) => (
+                            <IonSelectOption key={product.id} value={product.id}>
+                              {product.name}
+                            </IonSelectOption>
+                          ))}
+                        </IonSelect>
+                      </IonItem>
+                      <div className="dual-stat">
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Destination store</IonLabel>
+                          <IonSelect
+                            value={transferToLocationId}
+                            interface="popover"
+                            onIonChange={(event) => setTransferToLocationId(event.detail.value)}
+                          >
+                            {activeStores.map((location) => (
+                              <IonSelectOption key={location.id} value={location.id}>{location.name}</IonSelectOption>
+                            ))}
+                          </IonSelect>
+                        </IonItem>
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Source warehouse</IonLabel>
+                          <IonSelect
+                            value={transferFromLocationId}
+                            interface="popover"
+                            onIonChange={(event) => setTransferFromLocationId(event.detail.value)}
+                          >
+                            {transferSourceOptions.map((location) => (
+                              <IonSelectOption key={location.id} value={location.id}>
+                                {location.name} ({selectProductQuantityOnHand(state, transferProductId, location.id)} available)
+                              </IonSelectOption>
+                            ))}
+                          </IonSelect>
+                        </IonItem>
+                      </div>
+                      <div className="dual-stat">
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Quantity to transfer</IonLabel>
+                          <IonInput
+                            type="number"
+                            value={transferQuantity}
+                            placeholder="0"
+                            onIonInput={(event) => setTransferQuantity(event.detail.value === '' ? '' : Number(event.detail.value))}
+                          />
+                        </IonItem>
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Note</IonLabel>
+                          <IonInput
+                            value={transferNote}
+                            placeholder="Optional transfer note"
+                            onIonInput={(event) => setTransferNote(event.detail.value ?? '')}
+                          />
+                        </IonItem>
+                      </div>
+                      <IonButton expand="block" onClick={handleTransferStock}>
+                        Create Transfer
+                      </IonButton>
+                      {transferMessage ? <p className="form-message">{transferMessage}</p> : null}
+                    </div>
+                  )}
+                  </SectionCard>
+                </section>
+              )}
+
+              {hasPermission('transfers.view') && (
+                <section ref={!hasPermission('transfers.create') ? transfersSectionRef : undefined}>
+                  <SectionCard
+                    title="Stock Transfers"
+                    subtitle="Approve, dispatch, receive, or cancel transfers based on your access."
+                    highlighted={arrivalSection === 'transfers'}
+                    highlightLabel={arrivalSection === 'transfers' ? "You're viewing Stock Transfers" : undefined}
+                    dataTestId="arrival-transfers"
+                  >
+                  {stockTransfers.length === 0 ? (
+                    <EmptyState
+                      eyebrow="No transfers"
+                      title="No pending stock transfers."
+                      message="Transfer requests stay visible here from pending approval through final receipt."
+                    />
+                  ) : (
+                    <div className="list-block">
+                      {stockTransfers.map((entry) => (
+                        <div className="list-row" key={entry.transfer.id}>
+                          <div>
+                            <strong>{entry.transfer.transferCode}</strong>
+                            <p>{entry.fromWarehouseName} → {entry.toStoreName}</p>
+                            <p>{entry.totalItems} item line{entry.totalItems === 1 ? '' : 's'} • {entry.totalQuantity} units</p>
+                            <p className="muted-label">{formatReceiptDate(entry.transfer.createdAt)}</p>
+                            <p className="muted-label">
+                              {entry.transfer.items.map((item) => `${item.productName} (${item.quantity})`).join(', ')}
+                            </p>
+                            <div className="button-group" style={{ marginTop: '8px' }}>
+                              {entry.transfer.status === 'pending' && hasPermission('transfers.approve') ? (
+                                <IonButton size="small" onClick={() => handleTransferAction(entry.transfer.id, 'approve')}>Approve</IonButton>
+                              ) : null}
+                              {entry.transfer.status === 'approved' && hasPermission('transfers.dispatch') ? (
+                                <IonButton size="small" fill="outline" onClick={() => handleTransferAction(entry.transfer.id, 'dispatch')}>Dispatch</IonButton>
+                              ) : null}
+                              {(entry.transfer.status === 'approved' || entry.transfer.status === 'dispatched') && hasPermission('transfers.receive') ? (
+                                <IonButton size="small" color="success" onClick={() => handleTransferAction(entry.transfer.id, 'receive')}>Receive</IonButton>
+                              ) : null}
+                              {entry.transfer.status !== 'received' && entry.transfer.status !== 'cancelled' && hasPermission('transfers.approve') ? (
+                                <IonButton size="small" fill="clear" color="danger" onClick={() => handleTransferAction(entry.transfer.id, 'cancel')}>Cancel</IonButton>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="right-meta">
+                            <IonBadge color={
+                              entry.transfer.status === 'received' ? 'success' :
+                              entry.transfer.status === 'cancelled' ? 'medium' :
+                              entry.transfer.status === 'dispatched' ? 'tertiary' :
+                              entry.transfer.status === 'approved' ? 'primary' : 'warning'
+                            }>
+                              {entry.transfer.status}
+                            </IonBadge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  </SectionCard>
+                </section>
+              )}
+
+              <SectionCard
+                title="Transfer History"
+                subtitle="Audit recent movement between warehouses and stores."
+              >
+                {transferHistory.length === 0 ? (
+                  <EmptyState
+                    eyebrow="No transfers yet"
+                    title="Warehouse/store transfers will appear here."
+                    message="Once stock is moved between locations, the source and destination trail stays visible."
+                  />
+                ) : (
+                  <div className="list-block">
+                    {transferHistory.slice(0, 12).map((entry) => {
+                      const product = state.products.find((item) => item.id === entry.productId);
+                      const from = activeLocations.find((location) => location.id === entry.fromLocationId);
+                      const to = activeLocations.find((location) => location.id === entry.toLocationId);
+
+                      return (
+                        <div className="list-row" key={entry.transferId}>
+                          <div>
+                            <strong>{product?.name ?? 'Unknown product'}</strong>
+                            <p className="code-label">{entry.referenceNumber ?? entry.outboundMovement.movementNumber}</p>
+                            <p>{from?.name ?? 'Unknown source'} → {to?.name ?? 'Unknown destination'}</p>
+                            <p className="muted-label">{formatReceiptDate(entry.createdAt)}</p>
+                          </div>
+                          <div className="right-meta">
+                            <strong>{entry.quantity}</strong>
+                            <p>{product?.unit ?? 'units'}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </SectionCard>
+
               {/* REQUEST FORM - For Staff */}
               {selectedProductId && hasPermission('restockRequests.create') && (
                 <SectionCard 
@@ -837,6 +2097,7 @@ const InventoryPage: React.FC = () => {
                         <div>
                           <strong>Row {row.rowNumber}: {row.values['Item Name'] || 'Unnamed item'}</strong>
                           <p className="code-label">{row.values['Inventory ID'] || 'Auto-generate Inventory ID'} • {row.values['Unit'] || 'units'}</p>
+                          {row.values['Category'] ? <p className="muted-label">Category: {row.values['Category']}</p> : null}
                           <p>
                             Cost {row.values['Cost Price'] || '—'} • Price {row.values['Selling Price'] || '—'} • Stock {row.values['Quantity In Stock'] || '—'} • Reorder {row.values['Reorder Level'] || '—'}
                           </p>
@@ -887,6 +2148,30 @@ const InventoryPage: React.FC = () => {
         color="success"
         position="top"
         onDidDismiss={() => setShowRestockSuccess(false)}
+      />
+      <IonToast
+        isOpen={showTransferSuccess}
+        message="Stock transfer recorded."
+        duration={1800}
+        color="success"
+        position="top"
+        onDidDismiss={() => setShowTransferSuccess(false)}
+      />
+      <IonToast
+        isOpen={showPurchaseSuccess}
+        message="Purchase draft created."
+        duration={1800}
+        color="success"
+        position="top"
+        onDidDismiss={() => setShowPurchaseSuccess(false)}
+      />
+      <IonToast
+        isOpen={showPurchaseReceiptSuccess}
+        message="Purchase received into warehouse."
+        duration={1800}
+        color="success"
+        position="top"
+        onDidDismiss={() => setShowPurchaseReceiptSuccess(false)}
       />
       <IonToast
         isOpen={showReviewToast}

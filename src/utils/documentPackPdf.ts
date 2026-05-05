@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import type { BusinessProfile, Quotation, Sale } from '../data/seedBusiness';
 import type { Customer } from '../data/seedBusiness';
 import { formatCurrency, formatReceiptDate } from './format';
+import { selectDocumentTaxTotals, selectDocumentWithholdingTotals, selectSaleBalanceRemaining } from '../selectors/businessSelectors';
 
 type PdfContext = {
   businessProfile: BusinessProfile;
@@ -26,6 +27,56 @@ function formatPdfCurrency(value: number, currency = 'GHS') {
 
   const formatted = formatCurrency(value, currency);
   return formatted.replace(/\s+/g, ' ').trim();
+}
+
+export function buildDocumentTotalRows(
+  document: Pick<Sale | Quotation, 'subtotalAmount' | 'taxAmount' | 'totalAmount' | 'taxSnapshot' | 'withholdingTaxAmount' | 'netReceivableAmount' | 'withholdingTaxSnapshot'>,
+  totalLabel: string
+) {
+  const taxTotals = selectDocumentTaxTotals(document);
+  const withholdingTotals = selectDocumentWithholdingTotals(document);
+  const rows = [
+    {
+      label: 'Subtotal',
+      value: taxTotals.subtotalAmount,
+      highlight: false,
+    },
+  ];
+
+  if (taxTotals.hasTax && taxTotals.isExempt) {
+    rows.push({
+      label: taxTotals.exemptionReason ? `Tax exempt - ${taxTotals.exemptionReason}` : 'Tax exempt',
+      value: 0,
+      highlight: false,
+    });
+  } else if (taxTotals.hasTax) {
+    rows.push({
+      label: `Tax (${taxTotals.taxRate}%)`,
+      value: taxTotals.taxAmount,
+      highlight: false,
+    });
+  }
+
+  rows.push({
+    label: totalLabel,
+    value: taxTotals.totalAmount,
+    highlight: true,
+  });
+
+  if (withholdingTotals.hasWithholding) {
+    rows.push({
+      label: `${withholdingTotals.label} (${withholdingTotals.rate}%)`,
+      value: -withholdingTotals.amount,
+      highlight: false,
+    });
+    rows.push({
+      label: 'Net Receivable',
+      value: withholdingTotals.netReceivableAmount,
+      highlight: true,
+    });
+  }
+
+  return rows;
 }
 
 async function readBlobAsDataUrl(blob: Blob) {
@@ -174,10 +225,14 @@ export function buildInvoicePdf(sale: Sale, customer: Customer | undefined, cont
   const rightEdge = 196;
   const boxWidth = 70;
   const boxX = rightEdge - boxWidth;
-  const balanceDue = Math.max(0, sale.totalAmount - sale.paidAmount);
+  const balanceDue = selectSaleBalanceRemaining(sale);
 
   [
-    ['Invoice Total', formatPdfCurrency(sale.totalAmount, context.currency), false],
+    ...buildDocumentTotalRows(sale, 'Invoice Total').map((row) => [
+      row.label,
+      formatPdfCurrency(row.value, context.currency),
+      row.highlight,
+    ]),
     ['Paid To Date', formatPdfCurrency(sale.paidAmount, context.currency), false],
     ['Balance Due', formatPdfCurrency(balanceDue, context.currency), true],
   ].forEach(([label, value, highlight], index) => {
@@ -223,14 +278,21 @@ export function buildQuotationPdf(quotation: Quotation, context: PdfContext) {
   });
 
   const summaryTop = (doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 120;
-  doc.setFillColor(238, 244, 255);
-  doc.setDrawColor(208, 213, 221);
-  doc.roundedRect(126, summaryTop + 10, 70, 12, 2, 2, 'FD');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(24, 73, 169);
-  doc.text('Estimated Total', 130, summaryTop + 17.5);
-  doc.text(formatPdfCurrency(quotation.totalAmount, context.currency), 192, summaryTop + 17.5, { align: 'right' });
+  const rightEdge = 196;
+  const boxWidth = 70;
+  const boxX = rightEdge - boxWidth;
+
+  buildDocumentTotalRows(quotation, 'Estimated Total').forEach((row, index) => {
+    const y = summaryTop + 8 + index * 12;
+    doc.setFillColor(row.highlight ? 238 : 255, row.highlight ? 244 : 255, row.highlight ? 255 : 255);
+    doc.setDrawColor(208, 213, 221);
+    doc.roundedRect(boxX, y, boxWidth, 10, 2, 2, 'FD');
+    doc.setFont('helvetica', row.highlight ? 'bold' : 'normal');
+    doc.setFontSize(row.highlight ? 11 : 10);
+    doc.setTextColor(row.highlight ? 24 : 102, row.highlight ? 73 : 112, row.highlight ? 169 : 133);
+    doc.text(row.label, boxX + 4, y + 6.5);
+    doc.text(formatPdfCurrency(row.value, context.currency), boxX + boxWidth - 4, y + 6.5, { align: 'right' });
+  });
 
   return toPdfBytes(doc);
 }

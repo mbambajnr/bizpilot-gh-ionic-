@@ -19,12 +19,28 @@ export type SaveBusinessEmailConfigInput = {
   fromName: string;
 };
 
+async function parseApiPayload(response: Response, fallbackMessage: string) {
+  const rawText = await response.text();
+
+  if (!rawText.trim()) {
+    return { ok: false, message: fallbackMessage };
+  }
+
+  try {
+    return JSON.parse(rawText) as { ok?: boolean; message?: string; config?: BusinessEmailConfig | null };
+  } catch {
+    return { ok: false, message: fallbackMessage };
+  }
+}
+
 export async function loadBusinessEmailConfig(businessId: string) {
-  const response = await fetch(`/api/email/config/${encodeURIComponent(businessId)}`);
-  const payload = await response.json().catch(() => ({
-    ok: false,
-    message: 'Business email config returned an invalid response.',
-  }));
+  let response: Response;
+  try {
+    response = await fetch(`/api/email/config/${encodeURIComponent(businessId)}`);
+  } catch {
+    throw new Error('Business email service is unavailable. Start the email server and try again.');
+  }
+  const payload = await parseApiPayload(response, 'Business email config returned an invalid response.');
 
   if (!response.ok || !payload.ok) {
     throw new Error(payload.message || 'Business email config could not be loaded.');
@@ -34,18 +50,20 @@ export async function loadBusinessEmailConfig(businessId: string) {
 }
 
 export async function saveBusinessEmailConfig(input: SaveBusinessEmailConfigInput) {
-  const response = await fetch('/api/email/config', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(input),
-  });
+  let response: Response;
+  try {
+    response = await fetch('/api/email/config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    throw new Error('Business email service is unavailable. Start the email server and try again.');
+  }
 
-  const payload = await response.json().catch(() => ({
-    ok: false,
-    message: 'Business email config returned an invalid response.',
-  }));
+  const payload = await parseApiPayload(response, 'Business email config returned an invalid response.');
 
   if (!response.ok || !payload.ok) {
     throw new Error(payload.message || 'Business email config could not be saved.');

@@ -27,6 +27,23 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+type TestWindow = Window & {
+  Cypress?: unknown;
+  __BIZAPILOT_TEST_SESSION__?: Session | null;
+};
+
+const LOCAL_SESSION_KEY = 'bizpilot-local-session';
+const LOCAL_STATE_KEY = 'bizpilot-gh-state-v1';
+const LOCAL_EMPLOYEE_CREDENTIALS_KEY = 'bizpilot-employee-credentials-v1';
+
+type LocalEmployeeSession = {
+  kind: 'employee-local';
+  userId: string;
+  email: string;
+  username?: string;
+  issuedAt: string;
+};
+
 function useAuth() {
   const context = useContext(AuthContext);
 
@@ -41,21 +58,120 @@ function getAuthClient() {
   return getSupabaseClient().auth;
 }
 
-export function AuthProvider({ children }: PropsWithChildren) {
-  const [session, setSession] = useState<Session | null>(() => {
-    const local = window.localStorage.getItem('bizpilot-local-session');
-    if (local) {
-      try {
-        return JSON.parse(local);
-      } catch {
-        return null;
-      }
+function buildLocalEmployeeSession(user: Pick<UserAccessProfile, 'userId' | 'email' | 'username'>): Session {
+  return {
+    access_token: `local-${user.userId}`,
+    refresh_token: '',
+    expires_in: 60 * 60 * 24,
+    token_type: 'bearer',
+    user: {
+      id: user.userId,
+      email: user.email,
+      user_metadata: {
+        auth_mode: 'employee-local',
+        username: user.username,
+      },
+      app_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
+    } as User,
+  } as Session;
+}
+
+function readStoredUsers(): UserAccessProfile[] {
+  const usersById = new Map<string, UserAccessProfile>();
+  const raw = window.localStorage.getItem(LOCAL_STATE_KEY);
+
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as { users?: UserAccessProfile[] };
+      (parsed.users ?? []).forEach((user) => usersById.set(user.userId, user));
+    } catch {
+      // Ignore invalid local state and fall back to the credential cache.
     }
+  }
+
+  const rawCredentials = window.localStorage.getItem(LOCAL_EMPLOYEE_CREDENTIALS_KEY);
+
+  if (rawCredentials) {
+    try {
+      const parsed = JSON.parse(rawCredentials) as { users?: UserAccessProfile[] };
+      (parsed.users ?? []).forEach((user) => usersById.set(user.userId, user));
+    } catch {
+      // Ignore invalid credential cache.
+    }
+  }
+
+  return Array.from(usersById.values());
+}
+
+function readValidLocalEmployeeSession(): Session | null {
+  const raw = window.localStorage.getItem(LOCAL_SESSION_KEY);
+  if (!raw) {
     return null;
-  });
-  const [loading, setLoading] = useState(() => {
-    return !window.localStorage.getItem('bizpilot-local-session');
-  });
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<LocalEmployeeSession>;
+    if (parsed.kind !== 'employee-local' || !parsed.userId || !parsed.email) {
+      return null;
+    }
+
+    const matchingUser = readStoredUsers().find((user) =>
+      user.userId === parsed.userId &&
+      user.email === parsed.email &&
+      (user.accountStatus ?? 'active') === 'active'
+    );
+
+    if (!matchingUser) {
+      return null;
+    }
+
+    return buildLocalEmployeeSession(matchingUser);
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalEmployeeSession(user: Pick<UserAccessProfile, 'userId' | 'email' | 'username'>) {
+  const localSession: LocalEmployeeSession = {
+    kind: 'employee-local',
+    userId: user.userId,
+    email: user.email,
+    username: user.username,
+    issuedAt: new Date().toISOString(),
+  };
+
+  window.localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(localSession));
+}
+
+function findLocalEmployee(identifier: string) {
+  const normalizedIdentifier = identifier.trim().toLowerCase();
+  return readStoredUsers().find((user) =>
+    (user.email.trim().toLowerCase() === normalizedIdentifier ||
+      (user.username ?? '').trim().toLowerCase() === normalizedIdentifier) &&
+    (user.accountStatus ?? 'active') === 'active'
+  );
+}
+
+function signInWithLocalEmployee(identifier: string, password: string): AuthActionResult & { session?: Session } {
+  const matchingUser = findLocalEmployee(identifier);
+
+  if (!matchingUser || !matchingUser.temporaryPassword || matchingUser.temporaryPassword !== password) {
+    return { ok: false, message: 'Incorrect username, email, or password.' };
+  }
+
+  saveLocalEmployeeSession(matchingUser);
+  return {
+    ok: true,
+    message: 'Signed in successfully.',
+    session: buildLocalEmployeeSession(matchingUser),
+  };
+}
+
+export function AuthProvider({ children }: PropsWithChildren) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
   const [businessBootstrapStatus, setBusinessBootstrapStatus] = useState<BusinessBootstrapStatus>({
     loading: false,
     ready: false,
@@ -64,8 +180,33 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const bootstrappedOwnerRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (!hasSupabaseConfig && !(window as any).Cypress) {
+    const testWindow = window as TestWindow;
+    const injectedTestSession = testWindow.__BIZAPILOT_TEST_SESSION__ ?? null;
+
+    if (injectedTestSession) {
+      setSession(injectedTestSession);
+      setLoading(false);
+      setBusinessBootstrapStatus({
+        loading: false,
+        ready: true,
+        message: 'Test session active.',
+      });
+      return;
+    }
+
+    const localEmployeeSession = readValidLocalEmployeeSession();
+    if (localEmployeeSession) {
+      setSession(localEmployeeSession);
+      setLoading(false);
+      setBusinessBootstrapStatus({
+        loading: false,
+        ready: true,
+        message: 'Employee workspace ready.',
+      });
+      return;
+    }
+
+    if (!hasSupabaseConfig) {
       setLoading(false);
       setBusinessBootstrapStatus({
         loading: false,
@@ -75,68 +216,33 @@ export function AuthProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    // Bypass auth and bootstrap during Cypress E2E tests for determinism
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((window as any).Cypress) {
-      setSession({
-        user: { 
-          id: 'test-user', 
-          email: 'test@example.com', 
-          user_metadata: { business_name: '' } 
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any,
-        access_token: 'fake-token',
-        refresh_token: 'fake-refresh',
-        expires_in: 3600,
-        token_type: 'bearer',
-      });
-      setLoading(false);
-      setBusinessBootstrapStatus({
-        loading: false,
-        ready: true,
-        message: 'Test mode active (Cypress)',
-      });
-      return;
-    }
-
     const auth = getAuthClient();
     let mounted = true;
 
-    // Check for local session first
-    const localSession = window.localStorage.getItem('bizpilot-local-session');
-    if (localSession) {
-      try {
-        setSession(JSON.parse(localSession));
-        setLoading(false);
-      } catch {
-        window.localStorage.removeItem('bizpilot-local-session');
+    auth.getSession().then(({ data, error }) => {
+      if (!mounted) {
+        return;
       }
-    } else {
-      auth.getSession().then(({ data, error }) => {
-        if (!mounted) {
-          return;
-        }
 
-        if (!error && data.session) {
-          setSession(data.session);
-        }
+      if (!error && data.session) {
+        setSession(data.session);
+      }
 
+      setLoading(false);
+    });
+
+    // Safety timeout: Never stay stuck on "Checking session" for more than 2s
+    setTimeout(() => {
+      if (mounted) {
         setLoading(false);
-      });
-
-      // Safety timeout: Never stay stuck on \"Checking session\" for more than 2s
-      setTimeout(() => {
-        if (mounted) {
-          setLoading(false);
-        }
-      }, 2000);
-    }
+      }
+    }, 2000);
 
     const { data: listener } = auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setLoading(false);
 
-      if (!nextSession && !window.localStorage.getItem('bizpilot-local-session')) {
+      if (!nextSession) {
         bootstrappedOwnerRef.current = null;
         setBusinessBootstrapStatus({
           loading: false,
@@ -154,19 +260,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     const ownerId = session?.user.id;
+    const isLocalEmployeeSession = session?.user.user_metadata?.auth_mode === 'employee-local';
 
-    if (!ownerId || bootstrappedOwnerRef.current === ownerId) {
-      return;
-    }
-
-    // Skip cloud bootstrap for local/demo accounts
-    if (ownerId.startsWith('u-')) {
-      bootstrappedOwnerRef.current = ownerId;
-      setBusinessBootstrapStatus({
-        loading: false,
-        ready: true,
-        message: 'Using local demo profile.',
-      });
+    if (!ownerId || isLocalEmployeeSession || bootstrappedOwnerRef.current === ownerId) {
+      if (isLocalEmployeeSession) {
+        setBusinessBootstrapStatus({
+          loading: false,
+          ready: true,
+          message: 'Employee workspace ready.',
+        });
+      }
       return;
     }
 
@@ -241,51 +344,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
       isConfigured: hasSupabaseConfig,
       businessBootstrapStatus,
       async signIn(email, password) {
-        // Attempt LOCAL authentication check first (for RBAC users)
-        const storedState = window.localStorage.getItem('bizpilot-gh-state-v1');
-        if (storedState) {
-          try {
-            const state = JSON.parse(storedState);
-            const matchedEmailUser = state.users.find((u: UserAccessProfile) =>
-              u.email.toLowerCase() === email.trim().toLowerCase()
-            );
-            if (matchedEmailUser && (matchedEmailUser.accountStatus ?? 'active') === 'deactivated') {
-              return { ok: false, message: 'This employee account has been deactivated. Ask an admin to reactivate it.' };
-            }
-            const matchedUser = state.users.find((u: UserAccessProfile) => 
-              u.email.toLowerCase() === email.trim().toLowerCase() && 
-              (u.accountStatus ?? 'active') !== 'deactivated' &&
-              u.password === password
-            );
-
-            if (matchedUser) {
-              // Simulating a Supabase session for the local user
-              const localSession = {
-                user: {
-                  id: matchedUser.userId,
-                  email: matchedUser.email,
-                  user_metadata: { name: matchedUser.name, role: matchedUser.role },
-                },
-                access_token: 'local-token',
-                expires_in: 3600,
-                token_type: 'bearer',
-              };
-
-              // Update storage to target this user ID for BusinessProvider
-              state.currentUserId = matchedUser.userId;
-              window.localStorage.setItem('bizpilot-gh-state-v1', JSON.stringify(state));
-              window.localStorage.setItem('bizpilot-local-session', JSON.stringify(localSession));
-              
-              setSession(localSession as unknown as Session);
-              return { ok: true, message: `Signed in as ${matchedUser.name}.` };
-            }
-          } catch (e) {
-            console.error('Local auth check failed', e);
+        const localFallback = () => {
+          const result = signInWithLocalEmployee(email, password);
+          if (result.ok && result.session) {
+            setSession(result.session);
           }
+          return result;
+        };
+
+        if (findLocalEmployee(email)) {
+          return localFallback();
         }
 
         if (!hasSupabaseConfig) {
-          return { ok: false, message: 'Supabase is not configured. Local user not found.' };
+          return localFallback();
         }
 
         const { error } = await getAuthClient().signInWithPassword({
@@ -294,9 +366,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
         });
 
         if (error) {
+          const localResult = localFallback();
+          if (localResult.ok) {
+            return localResult;
+          }
+          if (/invalid login credentials/i.test(error.message)) {
+            return {
+              ok: false,
+              message:
+                'Invalid login credentials. If this is an employee temporary password, sign in with the username or employee email exactly as created by the admin.',
+            };
+          }
           return { ok: false, message: error.message };
         }
 
+        window.localStorage.removeItem(LOCAL_SESSION_KEY);
         return { ok: true, message: 'Signed in successfully.' };
       },
       async signUp(input) {
@@ -343,27 +427,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
         return { ok: true, message: 'Password reset instructions were sent if that email exists.' };
       },
       async signOut() {
-        window.localStorage.removeItem('bizpilot-local-session');
-        
-        // Optionally reset to Admin in stored state when logging out
-        const storedState = window.localStorage.getItem('bizpilot-gh-state-v1');
-        if (storedState) {
-          try {
-            const state = JSON.parse(storedState);
-            state.currentUserId = 'u-admin';
-            window.localStorage.setItem('bizpilot-gh-state-v1', JSON.stringify(state));
-          } catch (e) {
-            console.error('Signout state reset failed', e);
-          }
-        }
+        const testWindow = window as TestWindow;
+        testWindow.__BIZAPILOT_TEST_SESSION__ = null;
+        window.localStorage.removeItem(LOCAL_SESSION_KEY);
+        setSession(null);
+        bootstrappedOwnerRef.current = null;
+        setBusinessBootstrapStatus({
+          loading: false,
+          ready: false,
+          message: 'Waiting for owner sign-in.',
+        });
 
         if (!hasSupabaseConfig) {
-          setSession(null);
-          return { ok: true, message: 'Logged out from local session.' };
+          return { ok: true, message: 'Signed out.' };
         }
 
         const { error } = await getAuthClient().signOut();
-        setSession(null);
 
         if (error) {
           return { ok: false, message: error.message };

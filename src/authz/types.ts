@@ -1,4 +1,10 @@
-export type AppRole = 'Admin' | 'SalesManager' | 'Accountant';
+export type AppRole =
+  | 'Admin'
+  | 'SalesManager'
+  | 'Accountant'
+  | 'WarehouseManager'
+  | 'StoreManager'
+  | 'PurchaseManager';
 
 export type AppPermission =
   | 'users.manage'
@@ -23,6 +29,28 @@ export type AppPermission =
   | 'customers.edit'
   | 'customers.email.send'
   | 'customers.ledger.view'
+  | 'vendors.view'
+  | 'vendors.manage'
+  | 'vendors.create'
+  | 'vendors.edit'
+  | 'purchases.view'
+  | 'purchases.create'
+  | 'purchases.approve'
+  | 'purchases.receive'
+  | 'procurement.view'
+  | 'procurement.create'
+  | 'procurement.approve'
+  | 'payables.view'
+  | 'payables.manage'
+  | 'payables.approve'
+  | 'payables.pay'
+  | 'payments.view'
+  | 'payments.record'
+  | 'transfers.view'
+  | 'transfers.create'
+  | 'transfers.approve'
+  | 'transfers.dispatch'
+  | 'transfers.receive'
   | 'accounting.access'
   | 'expenses.view'
   | 'expenses.create'
@@ -45,7 +73,9 @@ export interface UserAccessProfile {
   userId: string;
   name: string;
   email: string;
-  password?: string;
+  username?: string;
+  temporaryPassword?: string;
+  credentialsGeneratedAt?: string;
   accountStatus?: 'active' | 'deactivated';
   deactivatedAt?: string;
   roleLabel?: string;

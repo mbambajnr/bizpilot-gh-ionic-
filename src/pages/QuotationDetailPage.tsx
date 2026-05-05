@@ -18,13 +18,14 @@ import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
 import { useBusiness } from '../context/BusinessContext';
 import DocumentHeader from '../components/DocumentHeader';
-import { selectQuotationStatusDisplay } from '../selectors/businessSelectors';
+import { selectCustomerTypeDisplayLabel, selectDocumentTaxTotals, selectDocumentWithholdingTotals, selectQuotationStatusDisplay } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate } from '../utils/format';
 
 const QuotationDetailPage: React.FC = () => {
   const { quotationId } = useParams<{ quotationId: string }>();
   const { state, hasPermission } = useBusiness();
   const currency = state.businessProfile.currency;
+  const isCustomerClassificationEnabled = state.businessProfile.customerClassificationEnabled;
 
   const quotation = useMemo(
     () => state.quotations.find((item) => item.id === quotationId) ?? null,
@@ -62,6 +63,8 @@ const QuotationDetailPage: React.FC = () => {
   }
 
   const statusDisplay = selectQuotationStatusDisplay(quotation);
+  const taxTotals = selectDocumentTaxTotals(quotation);
+  const withholdingTotals = selectDocumentWithholdingTotals(quotation);
   const canPrintQuotation = hasPermission('quotations.print');
   const canExportQuotationPdf = hasPermission('quotations.export_pdf');
 
@@ -115,6 +118,9 @@ const QuotationDetailPage: React.FC = () => {
                   <p className="muted-label">Requested by</p>
                   <strong>{customer?.name ?? quotation.customerName}</strong>
                   <p className="code-label">{customer?.clientId ?? quotation.clientId}</p>
+                  {isCustomerClassificationEnabled ? (
+                    <p className="code-label">Customer type snapshot: {selectCustomerTypeDisplayLabel(quotation.customerTypeSnapshot)}</p>
+                  ) : null}
                 </div>
                 <div className="right-meta">
                   <p className="muted-label">Valid until</p>
@@ -153,12 +159,35 @@ const QuotationDetailPage: React.FC = () => {
               <div className="receipt-summary" style={{ width: '100%', maxWidth: '300px' }}>
                 <div className="summary-line">
                   <span>Subtotal</span>
-                  <strong>{formatCurrency(quotation.totalAmount, currency)}</strong>
+                  <strong>{formatCurrency(taxTotals.subtotalAmount, currency)}</strong>
                 </div>
+                {taxTotals.hasTax && taxTotals.isExempt ? (
+                  <div className="summary-line">
+                    <span>{taxTotals.exemptionReason ? `Tax exempt - ${taxTotals.exemptionReason}` : 'Tax exempt'}</span>
+                    <strong>{formatCurrency(0, currency)}</strong>
+                  </div>
+                ) : taxTotals.hasTax ? (
+                  <div className="summary-line">
+                    <span>Tax ({taxTotals.taxRate}%)</span>
+                    <strong>{formatCurrency(taxTotals.taxAmount, currency)}</strong>
+                  </div>
+                ) : null}
                 <div className="summary-line highlight">
-                  <span>Quotation Total</span>
+                  <span>{withholdingTotals.hasWithholding ? 'Gross Total' : 'Quotation Total'}</span>
                   <strong>{formatCurrency(quotation.totalAmount, currency)}</strong>
                 </div>
+                {withholdingTotals.hasWithholding ? (
+                  <>
+                    <div className="summary-line">
+                      <span>{withholdingTotals.label} ({withholdingTotals.rate}%)</span>
+                      <strong>-{formatCurrency(withholdingTotals.amount, currency)}</strong>
+                    </div>
+                    <div className="summary-line highlight">
+                      <span>Net Receivable</span>
+                      <strong>{formatCurrency(withholdingTotals.netReceivableAmount, currency)}</strong>
+                    </div>
+                  </>
+                ) : null}
               </div>
 
               <div className="receipt-footer" style={{ marginTop: '32px' }}>

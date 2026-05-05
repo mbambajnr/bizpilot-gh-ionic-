@@ -47,7 +47,7 @@ describe('inventoryImport', () => {
 
   it('normalizes valid rows into addProduct inputs', () => {
     const csv = [
-      INVENTORY_IMPORT_COLUMNS.join(','),
+      'Item Name,Inventory ID,Unit,Cost Price,Selling Price,Quantity In Stock,Reorder Level,Image URL',
       'Blue Detergent,INV-NEW-101,bottles,15,22,25,5,https://example.com/image.png',
     ].join('\n');
 
@@ -66,5 +66,102 @@ describe('inventoryImport', () => {
       reorderLevel: 5,
       image: 'https://example.com/image.png',
     });
+  });
+
+  it('accepts an optional category column and maps active categories when enabled', () => {
+    const csv = [
+      INVENTORY_IMPORT_COLUMNS.join(','),
+      'Blue Detergent,INV-NEW-201,bottles,15,22,25,5,https://example.com/image.png,Household',
+    ].join('\n');
+
+    const preview = validateInventoryImportCsv(csv, seedState.products, {
+      inventoryCategoriesEnabled: true,
+      productCategories: [
+        {
+          id: 'pc-1',
+          name: 'Household',
+          slug: 'household',
+          sortOrder: 0,
+          isActive: true,
+        },
+      ],
+    });
+
+    expect(preview.headerErrors).toHaveLength(0);
+    expect(preview.invalidRows).toHaveLength(0);
+    expect(preview.validRows[0].normalizedInput?.categoryId).toBe('pc-1');
+  });
+
+  it('keeps category optional and supports legacy uncategorized rows safely', () => {
+    const csv = [
+      'Item Name,Inventory ID,Unit,Cost Price,Selling Price,Quantity In Stock,Reorder Level,Image URL',
+      'Blue Detergent,INV-NEW-301,bottles,15,22,25,5,https://example.com/image.png',
+    ].join('\n');
+
+    const preview = validateInventoryImportCsv(csv, seedState.products, {
+      inventoryCategoriesEnabled: true,
+      productCategories: [
+        {
+          id: 'pc-1',
+          name: 'Household',
+          slug: 'household',
+          sortOrder: 0,
+          isActive: true,
+        },
+      ],
+    });
+
+    expect(preview.headerErrors).toHaveLength(0);
+    expect(preview.invalidRows).toHaveLength(0);
+    expect(preview.validRows[0].normalizedInput?.categoryId).toBeUndefined();
+  });
+
+  it('ignores category values when categories are disabled', () => {
+    const csv = [
+      INVENTORY_IMPORT_COLUMNS.join(','),
+      'Blue Detergent,INV-NEW-401,bottles,15,22,25,5,https://example.com/image.png,Household',
+    ].join('\n');
+
+    const preview = validateInventoryImportCsv(csv, seedState.products, {
+      inventoryCategoriesEnabled: false,
+      productCategories: [
+        {
+          id: 'pc-1',
+          name: 'Household',
+          slug: 'household',
+          sortOrder: 0,
+          isActive: true,
+        },
+      ],
+    });
+
+    expect(preview.headerErrors).toHaveLength(0);
+    expect(preview.invalidRows).toHaveLength(0);
+    expect(preview.validRows[0].normalizedInput?.categoryId).toBeUndefined();
+  });
+
+  it('rejects missing or inactive categories when category import is used and enabled', () => {
+    const csv = [
+      INVENTORY_IMPORT_COLUMNS.join(','),
+      'Blue Detergent,INV-NEW-501,bottles,15,22,25,5,https://example.com/image.png,Missing category',
+      'Green Detergent,INV-NEW-502,bottles,15,22,25,5,https://example.com/image.png,Archived',
+    ].join('\n');
+
+    const preview = validateInventoryImportCsv(csv, seedState.products, {
+      inventoryCategoriesEnabled: true,
+      productCategories: [
+        {
+          id: 'pc-2',
+          name: 'Archived',
+          slug: 'archived',
+          sortOrder: 0,
+          isActive: false,
+        },
+      ],
+    });
+
+    expect(preview.validRows).toHaveLength(0);
+    expect(preview.invalidRows[0].errors.join(' ')).toContain('Category could not be found');
+    expect(preview.invalidRows[1].errors.join(' ')).toContain('Category is inactive');
   });
 });

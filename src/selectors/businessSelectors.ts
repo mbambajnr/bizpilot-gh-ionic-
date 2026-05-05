@@ -1,11 +1,18 @@
 import type {
   ActivityLogEntry,
   BusinessState,
+  BusinessLocation,
   CustomerLedgerEntry,
+  CustomerType,
+  LocationSupplyRoute,
+  ProductCategory,
   Quotation,
   Sale,
+  StockTransfer,
   StockMovement,
+  TaxSnapshot,
 } from '../data/seedBusiness';
+import { getSelectorAnalytics } from './selectorAnalytics';
 
 export type SalePaymentStatus = 'Paid' | 'Partial' | 'Unpaid' | 'Reversed';
 export type StatusTone = 'success' | 'warning' | 'danger' | 'medium';
@@ -34,8 +41,171 @@ export type RevenueTrendPoint = {
   value: number;
 };
 
+export type InventoryCategoryFilterValue = 'all' | 'uncategorized' | `category:${string}`;
+export type CustomerClassificationFilterValue = 'all' | CustomerType | 'unclassified';
+export type InventoryLocationFilterValue = 'all' | `location:${string}`;
+
+export type TransferHistoryEntry = {
+  transferId: string;
+  referenceNumber?: string;
+  productId: string;
+  fromLocationId?: string;
+  toLocationId?: string;
+  quantity: number;
+  createdAt: string;
+  note: string;
+  outboundMovement: StockMovement;
+  inboundMovement?: StockMovement;
+};
+
+export type InventoryCategoryReportEntry = {
+  categoryId?: string;
+  label: string;
+  productCount: number;
+  quantityOnHand: number;
+  stockValue: number;
+};
+
+export type InventoryLocationReportEntry = {
+  locationId: string;
+  label: string;
+  type: BusinessLocation['type'];
+  productCount: number;
+  quantityOnHand: number;
+  stockValue: number;
+  lowStockCount: number;
+};
+
+export type TransferSummaryEntry = {
+  key: string;
+  label: string;
+  transferCount: number;
+  quantityMoved: number;
+};
+
+export type WarehouseStockBalanceEntry = {
+  productId: string;
+  productName: string;
+  warehouseId: string;
+  warehouseName: string;
+  quantityAvailable: number;
+  lastMovementAt?: string;
+  vendorCode?: string;
+};
+
+export type StoreStockBalanceEntry = {
+  productId: string;
+  productName: string;
+  storeId: string;
+  storeName: string;
+  quantityAvailable: number;
+  lastMovementAt?: string;
+};
+
+export type FastMovingInventoryEntry = {
+  productId: string;
+  locationId: string;
+  quantityMoved: number;
+  movementCount: number;
+  lastMovedAt?: string;
+};
+
+export type StockTransferRecordView = {
+  transfer: StockTransfer;
+  fromWarehouseName: string;
+  toStoreName: string;
+  totalItems: number;
+  totalQuantity: number;
+};
+
+export type ProcurementWorklistSummary = {
+  draftCount: number;
+  awaitingApprovalCount: number;
+  cancelledCount: number;
+};
+
+export type WarehouseWorklistSummary = {
+  approvedPurchasesAwaitingReceiptCount: number;
+  transfersAwaitingDispatchCount: number;
+  transfersAwaitingReceiptCount: number;
+};
+
+export type AccountsPayableWorklistSummary = {
+  openCount: number;
+  approvedAwaitingPaymentCount: number;
+  partiallyPaidCount: number;
+  overdueCount: number;
+  totalOutstandingBalance: number;
+};
+
+export type ReceivableWorklistEntry = {
+  customerId: string;
+  customerName: string;
+  balance: number;
+  lastPayment: string;
+};
+
+export type SnapshotSalesSegmentEntry = {
+  label: string;
+  customerType?: CustomerType;
+  transactionCount: number;
+  totalAmount: number;
+};
+
+export function selectCustomerTypeDisplayLabel(customerType?: CustomerType) {
+  return customerType ?? 'Unclassified';
+}
+
+export function selectDocumentTaxTotals(document: { subtotalAmount?: number; taxAmount?: number; totalAmount: number; taxSnapshot?: TaxSnapshot }) {
+  return {
+    subtotalAmount: document.subtotalAmount ?? Math.max(0, document.totalAmount - (document.taxAmount ?? 0)),
+    taxAmount: document.taxAmount ?? 0,
+    totalAmount: document.totalAmount,
+    taxRate: document.taxSnapshot?.totalRate ?? 0,
+    hasTax: Boolean(document.taxSnapshot?.enabled),
+    isExempt: Boolean(document.taxSnapshot?.exempt),
+    exemptionReason: document.taxSnapshot?.exemptionReason,
+  };
+}
+
+export function selectDocumentWithholdingTotals(document: {
+  totalAmount: number;
+  withholdingTaxAmount?: number;
+  netReceivableAmount?: number;
+  withholdingTaxSnapshot?: { enabled: true; rate: number; label: string; amount: number };
+}) {
+  const withholdingAmount = document.withholdingTaxSnapshot?.amount ?? document.withholdingTaxAmount ?? 0;
+
+  return {
+    hasWithholding: Boolean(document.withholdingTaxSnapshot?.enabled),
+    label: document.withholdingTaxSnapshot?.label ?? 'Withholding Tax',
+    rate: document.withholdingTaxSnapshot?.rate ?? 0,
+    amount: withholdingAmount,
+    netReceivableAmount: document.netReceivableAmount ?? Number((document.totalAmount - withholdingAmount).toFixed(2)),
+  };
+}
+
+export function selectCustomerSummariesByClassification(state: BusinessState, filter: CustomerClassificationFilterValue) {
+  const summaries = selectCustomerSummaries(state);
+
+  if (filter === 'all') {
+    return summaries;
+  }
+
+  if (filter === 'unclassified') {
+    return summaries.filter(({ customer }) => !customer.customerType);
+  }
+
+  return summaries.filter(({ customer }) => customer.customerType === filter);
+}
+
+export function selectCustomerClassificationBreakdown(state: BusinessState) {
+  return getSelectorAnalytics(state).customerClassificationBreakdown;
+}
+
 export function selectSaleBalanceRemaining(sale: Sale) {
-  return sale.status === 'Reversed' ? 0 : Math.max(0, sale.totalAmount - sale.paidAmount);
+  const receivableAmount = sale.netReceivableAmount ?? sale.totalAmount;
+  return sale.status === 'Reversed' ? 0 : Math.max(0, receivableAmount - sale.paidAmount);
 }
 
 export function selectSalePaymentStatus(sale: Sale): SalePaymentStatus {
@@ -92,7 +262,14 @@ export function selectSaleStatusDisplay(sale: Sale): StatusDisplay {
 }
 
 export function selectQuotationStatusDisplay(quotation: Quotation): StatusDisplay {
-  if (quotation.status === 'Converted') {
+  const normalizedStatus = quotation.status.trim().toLowerCase();
+  const validUntilTime = quotation.validUntil ? new Date(quotation.validUntil).getTime() : Number.NaN;
+  const isExpired =
+    Number.isFinite(validUntilTime) &&
+    validUntilTime < Date.now() &&
+    ['draft', 'open', 'approved'].includes(normalizedStatus);
+
+  if (normalizedStatus === 'converted') {
     return {
       label: 'Converted to invoice',
       helper: quotation.convertedAt ? 'Invoice records created from this quotation' : 'Converted into invoice records',
@@ -100,17 +277,47 @@ export function selectQuotationStatusDisplay(quotation: Quotation): StatusDispla
     };
   }
 
+  if (isExpired) {
+    return {
+      label: 'Expired quotation',
+      helper: 'Valid period elapsed before conversion',
+      tone: 'danger',
+    };
+  }
+
+  if (normalizedStatus === 'approved') {
+    return {
+      label: 'Approved quotation',
+      helper: 'Ready for conversion into invoice',
+      tone: 'success',
+    };
+  }
+
+  if (normalizedStatus === 'rejected') {
+    return {
+      label: 'Rejected quotation',
+      helper: quotation.rejectionReason || 'Quotation was rejected before conversion',
+      tone: 'danger',
+    };
+  }
+
+  if (normalizedStatus === 'cancelled') {
+    return {
+      label: 'Cancelled quotation',
+      helper: 'Closed without changing stock levels',
+      tone: 'medium',
+    };
+  }
+
   return {
-    label: 'Draft quotation',
+    label: normalizedStatus === 'open' ? 'Open quotation' : 'Draft quotation',
     helper: 'Ready to review or convert',
     tone: 'warning',
   };
 }
 
 export function selectProductMovements(state: BusinessState, productId: string) {
-  return state.stockMovements
-    .filter((movement) => movement.productId === productId)
-    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+  return getSelectorAnalytics(state).productMovementsByProduct.get(productId) ?? [];
 }
 
 export function selectStockMovementDisplay(movement: StockMovement): StatusDisplay {
@@ -138,6 +345,36 @@ export function selectStockMovementDisplay(movement: StockMovement): StatusDispl
     };
   }
 
+  if (movement.type === 'transfer') {
+    return movement.quantityDelta < 0
+      ? {
+          label: 'Transfer out',
+          helper: 'Quantity moved to another location',
+          tone: 'warning',
+        }
+      : {
+          label: 'Transfer in',
+          helper: 'Quantity received from another location',
+          tone: 'success',
+        };
+  }
+
+  if (movement.type === 'purchase') {
+    return {
+      label: 'Purchase received',
+      helper: 'Quantity added to warehouse from procurement',
+      tone: 'success',
+    };
+  }
+
+  if (movement.type === 'adjustment') {
+    return {
+      label: 'Adjustment',
+      helper: 'Manual inventory correction with source trace',
+      tone: 'medium',
+    };
+  }
+
   return {
     label: 'Reversal restored stock',
     helper: 'Quantity restored after invoice reversal',
@@ -145,39 +382,259 @@ export function selectStockMovementDisplay(movement: StockMovement): StatusDispl
   };
 }
 
-export function selectProductQuantityOnHand(state: BusinessState, productId: string) {
-  return state.stockMovements
-    .filter((movement) => movement.productId === productId)
-    .reduce((sum, movement) => sum + movement.quantityDelta, 0);
+export function selectActiveSupplyRoutes(state: BusinessState): LocationSupplyRoute[] {
+  return [...(state.locationSupplyRoutes ?? [])]
+    .filter((route) => route.isActive)
+    .sort((left, right) => {
+      const leftFrom = selectLocationDisplayLabel(state, left.fromLocationId);
+      const rightFrom = selectLocationDisplayLabel(state, right.fromLocationId);
+      return leftFrom.localeCompare(rightFrom) ||
+        selectLocationDisplayLabel(state, left.toLocationId).localeCompare(selectLocationDisplayLabel(state, right.toLocationId));
+    });
+}
+
+export function selectSupplyRoutesForStore(state: BusinessState, storeLocationId: string): LocationSupplyRoute[] {
+  return selectActiveSupplyRoutes(state).filter((route) => route.toLocationId === storeLocationId);
+}
+
+export function selectSupplyRoutesFromWarehouse(state: BusinessState, warehouseLocationId: string): LocationSupplyRoute[] {
+  return selectActiveSupplyRoutes(state).filter((route) => route.fromLocationId === warehouseLocationId);
+}
+
+export function selectTransferHistory(state: BusinessState): TransferHistoryEntry[] {
+  return getSelectorAnalytics(state).transferHistory;
+}
+
+export function selectStockTransfers(state: BusinessState): StockTransferRecordView[] {
+  return getSelectorAnalytics(state).stockTransferViews;
+}
+
+export function selectWarehouseStockBalances(state: BusinessState): WarehouseStockBalanceEntry[] {
+  return getSelectorAnalytics(state).warehouseStockBalances;
+}
+
+export function selectStoreStockBalances(state: BusinessState): StoreStockBalanceEntry[] {
+  return getSelectorAnalytics(state).storeStockBalances;
+}
+
+export function selectProcurementWorklist(state: BusinessState): ProcurementWorklistSummary {
+  return state.purchases.reduce<ProcurementWorklistSummary>(
+    (summary, purchase) => {
+      if (purchase.status === 'draft') {
+        summary.draftCount += 1;
+      } else if (purchase.status === 'submitted' || purchase.status === 'adminReviewed') {
+        summary.awaitingApprovalCount += 1;
+      } else if (purchase.status === 'cancelled') {
+        summary.cancelledCount += 1;
+      }
+
+      return summary;
+    },
+    {
+      draftCount: 0,
+      awaitingApprovalCount: 0,
+      cancelledCount: 0,
+    }
+  );
+}
+
+export function selectWarehouseWorklist(state: BusinessState): WarehouseWorklistSummary {
+  return {
+    approvedPurchasesAwaitingReceiptCount: state.purchases.filter((purchase) => purchase.status === 'approved').length,
+    transfersAwaitingDispatchCount: state.stockTransfers.filter((transfer) => transfer.status === 'approved').length,
+    transfersAwaitingReceiptCount: state.stockTransfers.filter((transfer) => transfer.status === 'dispatched').length,
+  };
+}
+
+export function selectAccountsPayableWorklist(state: BusinessState): AccountsPayableWorklistSummary {
+  const now = Date.now();
+
+  return state.accountsPayable.reduce<AccountsPayableWorklistSummary>(
+    (summary, payable) => {
+      const hasOutstandingBalance = payable.balance > 0;
+      const isClosed = payable.status === 'paid' || payable.status === 'cancelled';
+
+      if (!isClosed && hasOutstandingBalance) {
+        summary.openCount += 1;
+        summary.totalOutstandingBalance += payable.balance;
+      }
+
+      if (payable.status === 'approved' && hasOutstandingBalance) {
+        summary.approvedAwaitingPaymentCount += 1;
+      }
+
+      if (payable.status === 'partiallyPaid' && hasOutstandingBalance) {
+        summary.partiallyPaidCount += 1;
+      }
+
+      if (
+        payable.dueDate &&
+        hasOutstandingBalance &&
+        new Date(payable.dueDate).getTime() < now &&
+        payable.status !== 'pendingReview' &&
+        payable.status !== 'cancelled'
+      ) {
+        summary.overdueCount += 1;
+      }
+
+      return summary;
+    },
+    {
+      openCount: 0,
+      approvedAwaitingPaymentCount: 0,
+      partiallyPaidCount: 0,
+      overdueCount: 0,
+      totalOutstandingBalance: 0,
+    }
+  );
+}
+
+export function selectOutstandingReceivables(state: BusinessState, limit = 5): ReceivableWorklistEntry[] {
+  return selectCustomerSummaries(state)
+    .filter((summary) => summary.balance > 0)
+    .sort((left, right) => right.balance - left.balance || left.customer.name.localeCompare(right.customer.name))
+    .slice(0, limit)
+    .map((summary) => ({
+      customerId: summary.customer.id,
+      customerName: summary.customer.name,
+      balance: summary.balance,
+      lastPayment: summary.lastPayment,
+    }));
+}
+
+export function selectTransferHistoryByLocation(state: BusinessState, locationId: string): TransferHistoryEntry[] {
+  return selectTransferHistory(state).filter((entry) =>
+    entry.fromLocationId === locationId || entry.toLocationId === locationId
+  );
+}
+
+export function selectTransferHistoryByProduct(state: BusinessState, productId: string): TransferHistoryEntry[] {
+  return selectTransferHistory(state).filter((entry) => entry.productId === productId);
+}
+
+export function selectActiveLocations(state: BusinessState): BusinessLocation[] {
+  return getSelectorAnalytics(state).activeLocations;
+}
+
+export function selectDefaultLocation(state: BusinessState): BusinessLocation {
+  return getSelectorAnalytics(state).defaultLocation;
+}
+
+export function selectLocationById(state: BusinessState, locationId?: string) {
+  if (!locationId) {
+    return null;
+  }
+
+  return getSelectorAnalytics(state).locationById.get(locationId) ?? null;
+}
+
+export function selectLocationDisplayLabel(state: BusinessState, locationId?: string) {
+  const location = selectLocationById(state, locationId);
+  if (!location) {
+    return selectDefaultLocation(state).name;
+  }
+
+  return location.isActive ? location.name : `${location.name} (inactive)`;
+}
+
+export function selectProductQuantityOnHand(state: BusinessState, productId: string, locationId?: string) {
+  const analytics = getSelectorAnalytics(state);
+  if (locationId) {
+    return analytics.productQuantityByLocation.get(`${productId}:${locationId}`) ?? 0;
+  }
+
+  return analytics.productQuantityTotals.get(productId) ?? 0;
+}
+
+export function selectActiveProductCategories(state: BusinessState): ProductCategory[] {
+  return getSelectorAnalytics(state).activeProductCategories;
+}
+
+export function selectProductCategoryById(state: BusinessState, categoryId?: string) {
+  if (!categoryId) {
+    return null;
+  }
+
+  return state.productCategories.find((category) => category.id === categoryId) ?? null;
+}
+
+export function selectProductCategoryDisplayLabel(state: BusinessState, categoryId?: string) {
+  if (!categoryId) {
+    return 'Uncategorized';
+  }
+
+  return getSelectorAnalytics(state).productCategoryLabelById.get(categoryId) ?? 'Unknown category';
+}
+
+export function selectInventorySummariesByCategory(state: BusinessState, filter: InventoryCategoryFilterValue) {
+  const summaries = selectInventorySummaries(state);
+
+  if (filter === 'all') {
+    return summaries;
+  }
+
+  if (filter === 'uncategorized') {
+    return summaries.filter(({ product }) => !product.categoryId);
+  }
+
+  if (filter.startsWith('category:')) {
+    const categoryId = filter.slice('category:'.length);
+    return summaries.filter(({ product }) => product.categoryId === categoryId);
+  }
+
+  return summaries;
 }
 
 export function selectInventorySummaries(state: BusinessState) {
-  return state.products.map((product) => {
-    const quantityOnHand = selectProductQuantityOnHand(state, product.id);
-    const latestMovement = selectProductMovements(state, product.id)[0] ?? null;
-    const lowStock = quantityOnHand <= product.reorderLevel;
-    const stockStatus = lowStock ? 'Restock soon' : 'In stock';
-    const stockStatusDisplay: StatusDisplay = lowStock
-      ? {
-          label: 'Restock soon',
-          helper: `At or below reorder level of ${product.reorderLevel}`,
-          tone: 'warning',
-        }
-      : {
-          label: 'In stock',
-          helper: 'Above reorder level',
-          tone: 'success',
-        };
+  return getSelectorAnalytics(state).inventorySummaries;
+}
 
-    return {
-      product,
-      quantityOnHand,
-      latestMovement,
-      lowStock,
-      stockStatus,
-      stockStatusDisplay,
-    };
-  });
+export function selectInventorySummariesByLocation(state: BusinessState, locationId?: string) {
+  const analytics = getSelectorAnalytics(state);
+  if (!locationId) {
+    return analytics.inventorySummaries;
+  }
+
+  return analytics.inventorySummariesByLocation.get(locationId) ?? [];
+}
+
+export function selectInventoryCategoryReport(state: BusinessState): InventoryCategoryReportEntry[] {
+  return getSelectorAnalytics(state).inventoryCategoryReport;
+}
+
+export function selectInventoryLocationReport(state: BusinessState): InventoryLocationReportEntry[] {
+  return getSelectorAnalytics(state).inventoryLocationReport;
+}
+
+export function selectTransferSummaryBySource(state: BusinessState): TransferSummaryEntry[] {
+  return getSelectorAnalytics(state).transferSummaryBySource;
+}
+
+export function selectTransferSummaryByDestination(state: BusinessState): TransferSummaryEntry[] {
+  return getSelectorAnalytics(state).transferSummaryByDestination;
+}
+
+export function selectTransferSummaryByProduct(state: BusinessState): TransferSummaryEntry[] {
+  return getSelectorAnalytics(state).transferSummaryByProduct;
+}
+
+export function selectLowStockByLocation(state: BusinessState, locationId?: string) {
+  const entries = getSelectorAnalytics(state).lowStockByLocation;
+  return locationId ? entries.filter((entry) => entry.locationId === locationId) : entries;
+}
+
+export function selectFastMovingProductsByLocation(state: BusinessState, days = 30): FastMovingInventoryEntry[] {
+  const entries = getSelectorAnalytics(state).fastMovingByLocation;
+  if (days === 30) {
+    return entries;
+  }
+
+  const threshold = Date.now() - days * 24 * 60 * 60 * 1000;
+  return entries.filter((entry) => !entry.lastMovedAt || new Date(entry.lastMovedAt).getTime() >= threshold);
+}
+
+export function selectSalesSnapshotSegmentation(state: BusinessState): SnapshotSalesSegmentEntry[] {
+  return getSelectorAnalytics(state).salesSegmentation;
 }
 
 export function selectCustomerLedgerEntries(state: BusinessState, customerId: string) {
@@ -187,26 +644,12 @@ export function selectCustomerLedgerEntries(state: BusinessState, customerId: st
 }
 
 export function selectCustomerStatement(state: BusinessState, customerId: string): CustomerStatement {
-  const entries = state.customerLedgerEntries.filter((entry) => entry.customerId === customerId);
-
-  return {
-    openingBalance: entries
-      .filter((entry) => entry.type === 'opening_balance')
-      .reduce((sum, entry) => sum + entry.amountDelta, 0),
-    invoiceCharges: entries
-      .filter((entry) => entry.type === 'sale_charge')
-      .reduce((sum, entry) => sum + entry.amountDelta, 0),
-    paymentsReceived: Math.abs(
-      entries
-        .filter((entry) => entry.type === 'payment_received')
-        .reduce((sum, entry) => sum + entry.amountDelta, 0)
-    ),
-    reversals: Math.abs(
-      entries
-        .filter((entry) => entry.type === 'reversal')
-        .reduce((sum, entry) => sum + entry.amountDelta, 0)
-    ),
-    closingBalance: entries.reduce((sum, entry) => sum + entry.amountDelta, 0),
+  return getSelectorAnalytics(state).customerStatementById.get(customerId) ?? {
+    openingBalance: 0,
+    invoiceCharges: 0,
+    paymentsReceived: 0,
+    reversals: 0,
+    closingBalance: 0,
   };
 }
 
@@ -247,73 +690,7 @@ export function selectLedgerEntryDisplay(entry: CustomerLedgerEntry): LedgerEntr
 }
 
 export function selectCustomerBalance(state: BusinessState, customerId: string) {
-  return state.customerLedgerEntries
-    .filter((entry) => entry.customerId === customerId)
-    .reduce((sum, entry) => sum + entry.amountDelta, 0);
-}
-
-function buildWeeklyRevenueTrend(activeSales: Sale[], now: Date): RevenueTrendPoint[] {
-  return Array.from({ length: 7 }, (_, offset) => {
-    const date = new Date(now);
-    date.setDate(now.getDate() - (6 - offset));
-    const dayKey = date.toDateString();
-    const label = new Intl.DateTimeFormat('en-GH', { weekday: 'short' }).format(date);
-    const value = activeSales
-      .filter((sale) => new Date(sale.createdAt).toDateString() === dayKey)
-      .reduce((sum, sale) => sum + sale.totalAmount, 0);
-
-    return {
-      label,
-      shortLabel: label.slice(0, 2),
-      value,
-    };
-  });
-}
-
-function buildMonthlyRevenueTrend(activeSales: Sale[], now: Date): RevenueTrendPoint[] {
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
-  const weekCount = Math.ceil(lastDayOfMonth / 7);
-
-  return Array.from({ length: weekCount }, (_, index) => {
-    const startDay = index * 7 + 1;
-    const endDay = Math.min(startDay + 6, lastDayOfMonth);
-    const value = activeSales
-      .filter((sale) => {
-        const saleDate = new Date(sale.createdAt);
-        const saleDay = saleDate.getDate();
-        return saleDate.getFullYear() === year && saleDate.getMonth() === month && saleDay >= startDay && saleDay <= endDay;
-      })
-      .reduce((sum, sale) => sum + sale.totalAmount, 0);
-
-    return {
-      label: `Week ${index + 1}`,
-      shortLabel: `W${index + 1}`,
-      value,
-    };
-  });
-}
-
-function buildAnnualRevenueTrend(activeSales: Sale[], now: Date): RevenueTrendPoint[] {
-  const year = now.getFullYear();
-
-  return Array.from({ length: 12 }, (_, monthIndex) => {
-    const date = new Date(year, monthIndex, 1);
-    const label = new Intl.DateTimeFormat('en-GH', { month: 'short' }).format(date);
-    const value = activeSales
-      .filter((sale) => {
-        const saleDate = new Date(sale.createdAt);
-        return saleDate.getFullYear() === year && saleDate.getMonth() === monthIndex;
-      })
-      .reduce((sum, sale) => sum + sale.totalAmount, 0);
-
-    return {
-      label,
-      shortLabel: label.slice(0, 3),
-      value,
-    };
-  });
+  return getSelectorAnalytics(state).customerBalanceById.get(customerId) ?? 0;
 }
 
 function formatRelativePaymentLabel(dateValue: string, paymentMethod: string) {
@@ -384,52 +761,7 @@ export function selectCustomerSummaries(state: BusinessState) {
 }
 
 export function selectDashboardMetrics(state: BusinessState) {
-  const todayKey = new Date().toDateString();
-  const activeSales = state.sales.filter((sale) => sale.status !== 'Reversed');
-  const salesToday = activeSales
-    .filter((sale) => new Date(sale.createdAt).toDateString() === todayKey)
-    .reduce((sum, sale) => sum + sale.totalAmount, 0);
-
-  const activeSaleIds = new Set(activeSales.map((sale) => sale.id));
-  const todayPayments = state.customerLedgerEntries.filter(
-    (entry) =>
-      entry.type === 'payment_received' &&
-      entry.relatedSaleId &&
-      activeSaleIds.has(entry.relatedSaleId) &&
-      new Date(entry.createdAt).toDateString() === todayKey
-  );
-
-  const cashInHand = todayPayments
-    .filter((entry) => entry.paymentMethod === 'Cash')
-    .reduce((sum, entry) => sum + Math.abs(entry.amountDelta), 0);
-
-  const mobileMoneyReceived = todayPayments
-    .filter((entry) => entry.paymentMethod === 'Mobile Money')
-    .reduce((sum, entry) => sum + Math.abs(entry.amountDelta), 0);
-
-  const receivables = state.customers.reduce((sum, customer) => sum + selectCustomerBalance(state, customer.id), 0);
-  const inventorySummaries = selectInventorySummaries(state);
-  const lowStockCount = inventorySummaries.filter((item) => item.lowStock).length;
-  const customersOwingCount = state.customers.filter((customer) => selectCustomerBalance(state, customer.id) > 0).length;
-  const now = new Date();
-  const weeklyRevenueTrend = buildWeeklyRevenueTrend(activeSales, now);
-  const monthlyRevenueTrend = buildMonthlyRevenueTrend(activeSales, now);
-  const annualRevenueTrend = buildAnnualRevenueTrend(activeSales, now);
-
-  return {
-    salesToday,
-    cashInHand,
-    mobileMoneyReceived,
-    receivables,
-    lowStockCount,
-    customersOwingCount,
-    weeklyRevenueTrend,
-    monthlyRevenueTrend,
-    annualRevenueTrend,
-    activeSales,
-    inventorySummaries,
-    todayPayments,
-  };
+  return getSelectorAnalytics(state).dashboardMetrics;
 }
 
 export function selectRecentSales(state: BusinessState) {

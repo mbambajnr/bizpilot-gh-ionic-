@@ -13,9 +13,12 @@ import {
   IonSearchbar,
   IonSegment,
   IonSegmentButton,
+  IonSelect,
+  IonSelectOption,
   IonTextarea,
   IonTitle,
   IonToast,
+  IonToggle,
   IonToolbar,
 } from '@ionic/react';
 import { addOutline, closeOutline, createOutline, logoWhatsapp, powerOutline, refreshOutline } from 'ionicons/icons';
@@ -25,14 +28,17 @@ import EmptyState from '../components/EmptyState';
 import PhoneInputField from '../components/PhoneInputField';
 import SectionCard from '../components/SectionCard';
 import { useBusiness } from '../context/BusinessContext';
+import type { CustomerType } from '../data/seedBusiness';
 import { BusinessEmailConfig, loadBusinessEmailConfig } from '../lib/businessEmailConfigClient';
 import { sendEmail } from '../lib/emailClient';
 import {
+  CustomerClassificationFilterValue,
   selectCustomerBalance,
+  selectCustomerSummariesByClassification,
   selectCustomerLastPaymentLabel,
   selectCustomerLedgerEntries,
   selectCustomerStatement,
-  selectCustomerSummaries,
+  selectCustomerTypeDisplayLabel,
   selectLedgerEntryDisplay,
   selectProductById,
   selectSaleBalanceRemaining,
@@ -44,6 +50,7 @@ const resolveCustomerContactNumber = (customer?: { phone?: string; whatsapp?: st
   customer?.whatsapp?.trim() || customer?.phone?.trim() || '';
 
 const getCustomerStatusBadgeColor = (status: 'active' | 'terminated') => (status === 'terminated' ? 'medium' : 'success');
+const getCustomerTypeBadgeColor = (customerType?: CustomerType) => customerType === 'B2B' ? 'secondary' : customerType === 'B2C' ? 'tertiary' : 'medium';
 
 const CustomersPage: React.FC = () => {
   const { state, currentUser, addCustomer, updateCustomer, updateCustomerStatus, hasPermission } = useBusiness();
@@ -51,6 +58,7 @@ const CustomersPage: React.FC = () => {
   const [selectedCustomerId, setSelectedCustomerId] = useState(state.customers[0]?.id ?? '');
   const [searchTerm, setSearchTerm] = useState('');
   const [customerFilter, setCustomerFilter] = useState<'active' | 'terminated' | 'all'>('active');
+  const [customerTypeFilter, setCustomerTypeFilter] = useState<CustomerClassificationFilterValue>('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showTerminateModal, setShowTerminateModal] = useState(false);
@@ -61,12 +69,18 @@ const CustomersPage: React.FC = () => {
   const [addClientId, setAddClientId] = useState('');
   const [addContactNumber, setAddContactNumber] = useState('');
   const [addEmail, setAddEmail] = useState('');
+  const [addCustomerType, setAddCustomerType] = useState<CustomerType | ''>('');
+  const [addTaxExempt, setAddTaxExempt] = useState(false);
+  const [addTaxExemptionReason, setAddTaxExemptionReason] = useState('');
   const [addMessage, setAddMessage] = useState('');
   const [isAddContactNumberValid, setIsAddContactNumberValid] = useState(true);
 
   const [editName, setEditName] = useState('');
   const [editContactNumber, setEditContactNumber] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editCustomerType, setEditCustomerType] = useState<CustomerType | ''>('');
+  const [editTaxExempt, setEditTaxExempt] = useState(false);
+  const [editTaxExemptionReason, setEditTaxExemptionReason] = useState('');
   const [editMessage, setEditMessage] = useState('');
   const [isEditContactNumberValid, setIsEditContactNumberValid] = useState(true);
   const [terminationReason, setTerminationReason] = useState('');
@@ -88,13 +102,17 @@ const CustomersPage: React.FC = () => {
   const [whatsAppMessage, setWhatsAppMessage] = useState('');
 
   const currency = state.businessProfile.currency;
+  const isCustomerClassificationEnabled = state.businessProfile.customerClassificationEnabled;
+  const isTaxEnabled = state.businessProfile.taxEnabled;
   const canSendCustomerEmail = hasPermission('customers.email.send');
   const canViewCustomerLedger = hasPermission('customers.ledger.view');
   const assignedSenderName = currentUser.customerEmailSenderName?.trim() || businessEmailConfig?.fromName || state.businessProfile.businessName || 'BisaPilot';
   const assignedSenderEmail = currentUser.customerEmailSenderEmail?.trim() || businessEmailConfig?.fromEmail || state.businessProfile.email || '';
 
   const customerSummaries = useMemo(() => {
-    const all = selectCustomerSummaries(state);
+    const all = isCustomerClassificationEnabled
+      ? selectCustomerSummariesByClassification(state, customerTypeFilter)
+      : selectCustomerSummariesByClassification(state, 'all');
     const filteredByStatus = all.filter(({ customer }) =>
       customerFilter === 'all'
         ? true
@@ -114,7 +132,7 @@ const CustomersPage: React.FC = () => {
       (customer.email && customer.email.toLowerCase().includes(lower)) ||
       resolveCustomerContactNumber(customer).toLowerCase().includes(lower)
     );
-  }, [customerFilter, searchTerm, state]);
+  }, [customerFilter, customerTypeFilter, isCustomerClassificationEnabled, searchTerm, state]);
 
   useEffect(() => {
     if (!selectedCustomerId) {
@@ -161,6 +179,9 @@ const CustomersPage: React.FC = () => {
     setEditName(selectedCustomer?.name ?? '');
     setEditContactNumber(resolveCustomerContactNumber(selectedCustomer));
     setEditEmail(selectedCustomer?.email ?? '');
+    setEditCustomerType(selectedCustomer?.customerType ?? '');
+    setEditTaxExempt(selectedCustomer?.taxExempt ?? false);
+    setEditTaxExemptionReason(selectedCustomer?.taxExemptionReason ?? '');
     setEditMessage('');
   }, [selectedCustomer]);
 
@@ -209,6 +230,9 @@ const CustomersPage: React.FC = () => {
     setAddClientId('');
     setAddContactNumber('');
     setAddEmail('');
+    setAddCustomerType('');
+    setAddTaxExempt(false);
+    setAddTaxExemptionReason('');
     setAddMessage('');
     setIsAddContactNumberValid(true);
   };
@@ -279,6 +303,9 @@ const CustomersPage: React.FC = () => {
       whatsapp: contactNumber,
       email: addEmail.trim(),
       channel: buildCustomerChannel(contactNumber),
+      customerType: isCustomerClassificationEnabled && addCustomerType ? addCustomerType : undefined,
+      taxExempt: isTaxEnabled ? addTaxExempt : undefined,
+      taxExemptionReason: isTaxEnabled && addTaxExempt ? addTaxExemptionReason : undefined,
     });
 
     if (!result.ok) {
@@ -317,6 +344,9 @@ const CustomersPage: React.FC = () => {
       whatsapp: contactNumber,
       email: editEmail.trim(),
       channel: buildCustomerChannel(contactNumber, selectedCustomer.channel),
+      customerType: isCustomerClassificationEnabled && editCustomerType ? editCustomerType : undefined,
+      taxExempt: isTaxEnabled ? editTaxExempt : undefined,
+      taxExemptionReason: isTaxEnabled && editTaxExempt ? editTaxExemptionReason : undefined,
     });
 
     if (!result.ok) {
@@ -561,6 +591,19 @@ const CustomersPage: React.FC = () => {
                 <IonSegmentButton value="all">All</IonSegmentButton>
               </IonSegment>
 
+              {isCustomerClassificationEnabled ? (
+                <IonSegment
+                  data-testid="customer-type-filter"
+                  value={customerTypeFilter}
+                  onIonChange={(event) => setCustomerTypeFilter(event.detail.value as CustomerClassificationFilterValue)}
+                >
+                  <IonSegmentButton value="all">All Types</IonSegmentButton>
+                  <IonSegmentButton value="B2B">B2B</IonSegmentButton>
+                  <IonSegmentButton value="B2C">B2C</IonSegmentButton>
+                  <IonSegmentButton value="unclassified">Unclassified</IonSegmentButton>
+                </IonSegment>
+              ) : null}
+
               {customerSummaries.length === 0 ? (
                 <EmptyState
                   eyebrow={customerFilter === 'terminated' ? 'No terminated accounts' : 'No customers yet'}
@@ -591,6 +634,16 @@ const CustomersPage: React.FC = () => {
                           <strong>{customer.name}</strong>
                           <p className="code-label">{customer.clientId}</p>
                           <IonBadge color={getCustomerStatusBadgeColor(customer.status)}>{customer.status === 'terminated' ? 'Terminated' : 'Active'}</IonBadge>
+                          {isCustomerClassificationEnabled ? (
+                            <IonBadge color={getCustomerTypeBadgeColor(customer.customerType)} style={{ marginLeft: '6px' }}>
+                              {selectCustomerTypeDisplayLabel(customer.customerType)}
+                            </IonBadge>
+                          ) : null}
+                          {isTaxEnabled && customer.taxExempt ? (
+                            <IonBadge color="warning" style={{ marginLeft: '6px' }}>
+                              Tax exempt
+                            </IonBadge>
+                          ) : null}
                           <p>{selectedCustomerId === customer.id ? 'Private details and history opened below' : 'Tap to open private details'}</p>
                         </div>
 
@@ -620,6 +673,12 @@ const CustomersPage: React.FC = () => {
                           <div className="customer-inline-grid">
                             <div className="customer-inline-card">
                               <p className="muted-label">Private details</p>
+                              {isCustomerClassificationEnabled ? (
+                                <p>Customer type: {selectCustomerTypeDisplayLabel(customer.customerType)}</p>
+                              ) : null}
+                              {isTaxEnabled && customer.taxExempt ? (
+                                <p>Tax exemption: {customer.taxExemptionReason || 'No reason recorded'}</p>
+                              ) : null}
                               {resolveCustomerContactNumber(customer) ? (
                                 <p>
                                   WhatsApp / follow-up:{' '}
@@ -711,6 +770,16 @@ const CustomersPage: React.FC = () => {
                       <IonBadge color={getCustomerStatusBadgeColor(selectedCustomer.status)}>
                         {selectedCustomer.status === 'terminated' ? 'Terminated account' : 'Active account'}
                       </IonBadge>
+                      {isCustomerClassificationEnabled ? (
+                        <IonBadge color={getCustomerTypeBadgeColor(selectedCustomer.customerType)} style={{ marginLeft: '6px' }}>
+                          {selectCustomerTypeDisplayLabel(selectedCustomer.customerType)}
+                        </IonBadge>
+                      ) : null}
+                      {isTaxEnabled && selectedCustomer.taxExempt ? (
+                        <IonBadge color="warning" style={{ marginLeft: '6px' }}>
+                          Tax exempt
+                        </IonBadge>
+                      ) : null}
                       {resolveCustomerContactNumber(selectedCustomer) ? (
                         <p>
                           WhatsApp / follow-up number:{' '}
@@ -743,6 +812,9 @@ const CustomersPage: React.FC = () => {
                       ) : null}
                       {selectedCustomer.status === 'terminated' && selectedCustomer.terminationReason ? (
                         <p>Reason: {selectedCustomer.terminationReason}</p>
+                      ) : null}
+                      {isTaxEnabled && selectedCustomer.taxExempt ? (
+                        <p>Tax exemption: {selectedCustomer.taxExemptionReason || 'No reason recorded'}</p>
                       ) : null}
                       <p>Last payment: {selectCustomerLastPaymentLabel(state, selectedCustomer.id)}</p>
                     </div>
@@ -988,6 +1060,51 @@ const CustomersPage: React.FC = () => {
                   />
                 </IonItem>
 
+                {isCustomerClassificationEnabled ? (
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Customer type (optional)</IonLabel>
+                    <IonSelect
+                      data-testid="add-customer-type-select"
+                      value={addCustomerType}
+                      placeholder="Unclassified"
+                      onIonChange={(event) => setAddCustomerType((event.detail.value ?? '') as CustomerType | '')}
+                      interface="popover"
+                    >
+                      <IonSelectOption value="">Unclassified</IonSelectOption>
+                      <IonSelectOption value="B2B">B2B</IonSelectOption>
+                      <IonSelectOption value="B2C">B2C</IonSelectOption>
+                    </IonSelect>
+                  </IonItem>
+                ) : null}
+
+                {isTaxEnabled ? (
+                  <>
+                    <div className="list-block">
+                      <div className="list-row">
+                        <div>
+                          <strong>Tax exempt customer</strong>
+                          <p>New taxed documents for this customer will snapshot a zero-tax exemption.</p>
+                        </div>
+                        <IonToggle
+                          data-testid="add-customer-tax-exempt-toggle"
+                          checked={addTaxExempt}
+                          onIonChange={(event) => setAddTaxExempt(event.detail.checked)}
+                        />
+                      </div>
+                    </div>
+                    {addTaxExempt ? (
+                      <IonItem lines="none" className="app-item">
+                        <IonLabel position="stacked">Exemption reason (optional)</IonLabel>
+                        <IonTextarea
+                          value={addTaxExemptionReason}
+                          placeholder="e.g. VAT exemption certificate"
+                          onIonInput={(event) => setAddTaxExemptionReason(event.detail.value ?? '')}
+                        />
+                      </IonItem>
+                    ) : null}
+                  </>
+                ) : null}
+
                 <IonButton expand="block" onClick={handleAddCustomer}>
                   Save Customer
                 </IonButton>
@@ -1048,6 +1165,51 @@ const CustomersPage: React.FC = () => {
                     onIonInput={(event) => setEditEmail(event.detail.value ?? '')}
                   />
                 </IonItem>
+
+                {isCustomerClassificationEnabled ? (
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Customer type (optional)</IonLabel>
+                    <IonSelect
+                      data-testid="edit-customer-type-select"
+                      value={editCustomerType}
+                      placeholder="Unclassified"
+                      onIonChange={(event) => setEditCustomerType((event.detail.value ?? '') as CustomerType | '')}
+                      interface="popover"
+                    >
+                      <IonSelectOption value="">Unclassified</IonSelectOption>
+                      <IonSelectOption value="B2B">B2B</IonSelectOption>
+                      <IonSelectOption value="B2C">B2C</IonSelectOption>
+                    </IonSelect>
+                  </IonItem>
+                ) : null}
+
+                {isTaxEnabled ? (
+                  <>
+                    <div className="list-block">
+                      <div className="list-row">
+                        <div>
+                          <strong>Tax exempt customer</strong>
+                          <p>Preserved values are not wiped when tax is disabled later.</p>
+                        </div>
+                        <IonToggle
+                          data-testid="edit-customer-tax-exempt-toggle"
+                          checked={editTaxExempt}
+                          onIonChange={(event) => setEditTaxExempt(event.detail.checked)}
+                        />
+                      </div>
+                    </div>
+                    {editTaxExempt ? (
+                      <IonItem lines="none" className="app-item">
+                        <IonLabel position="stacked">Exemption reason (optional)</IonLabel>
+                        <IonTextarea
+                          value={editTaxExemptionReason}
+                          placeholder="e.g. VAT exemption certificate"
+                          onIonInput={(event) => setEditTaxExemptionReason(event.detail.value ?? '')}
+                        />
+                      </IonItem>
+                    ) : null}
+                  </>
+                ) : null}
 
                 <IonButton expand="block" onClick={handleUpdateCustomer}>
                   Save Changes

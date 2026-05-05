@@ -18,6 +18,7 @@ import {
   IonRefresher,
   IonRefresherContent,
   IonIcon,
+  IonToggle,
 } from '@ionic/react';
 import { useEffect, useMemo, useState } from 'react';
 import { useHistory, useLocation } from 'react-router-dom';
@@ -27,14 +28,18 @@ import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
 import SearchablePicker, { PickerItem } from '../components/SearchablePicker';
 import { useBusiness } from '../context/BusinessContext';
-import type { NewSaleLineItemInput } from '../utils/businessLogic';
+import { buildTaxSnapshot, buildWithholdingTaxSnapshot, calculateTaxTotals, type NewSaleLineItemInput } from '../utils/businessLogic';
 import type { PaymentMethod } from '../data/seedBusiness';
 import {
   selectDashboardMetrics,
+  selectProductCategoryDisplayLabel,
   selectProductQuantityOnHand,
   selectRecentSales,
   selectSaleBalanceRemaining,
   selectSaleStatusDisplay,
+  selectCustomerTypeDisplayLabel,
+  selectDocumentTaxTotals,
+  selectDocumentWithholdingTotals,
 } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate, formatRelativeDate } from '../utils/format';
 import { toPositiveInteger, toValidPaidAmount } from '../utils/salesMath';
@@ -81,6 +86,9 @@ const SalesPage: React.FC = () => {
   const [latestReceipt, setLatestReceipt] = useState<ReceiptView | null>(null);
   const [invoiceSearchTerm, setInvoiceSearchTerm] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
+  const [saleTaxExempt, setSaleTaxExempt] = useState(false);
+  const [saleTaxExemptionReason, setSaleTaxExemptionReason] = useState('');
+  const [applyWithholdingTax, setApplyWithholdingTax] = useState(state.businessProfile.withholdingTaxEnabled);
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [showProductPickerIndex, setShowProductPickerIndex] = useState<number | null>(null);
   const [showQuotationPicker, setShowQuotationPicker] = useState(false);
@@ -103,6 +111,8 @@ const SalesPage: React.FC = () => {
   const canViewInvoices = hasPermission('invoices.view');
   const canRecordSale = hasProducts && canCreateSales;
   const currency = state.businessProfile.currency;
+  const isCustomerClassificationEnabled = state.businessProfile.customerClassificationEnabled;
+  const isTaxEnabled = state.businessProfile.taxEnabled;
 
   const walkInCustomer = useMemo(
     () =>
@@ -137,6 +147,10 @@ const SalesPage: React.FC = () => {
   }, [pendingWalkInSelection, walkInCustomer]);
 
   useEffect(() => {
+    setApplyWithholdingTax(state.businessProfile.withholdingTaxEnabled);
+  }, [state.businessProfile.withholdingTaxEnabled]);
+
+  useEffect(() => {
     if (saleItems.length === 0 && state.products.length > 0) {
       setSaleItems([{ productId: state.products[0].id, quantity: 1 }]);
     }
@@ -157,23 +171,40 @@ const SalesPage: React.FC = () => {
     setSaleItems(saleItems.filter((_, i) => i !== index));
   };
 
+  const selectedCustomer = useMemo(
+    () => activeCustomers.find((c) => c.id === customerId) ?? null,
+    [activeCustomers, customerId]
+  );
+
   const saleTotal = useMemo(() => {
     return saleItems.reduce((acc, item) => {
       const p = state.products.find(prod => prod.id === item.productId);
       return acc + (p ? p.price * item.quantity : 0);
     }, 0);
   }, [saleItems, state.products]);
+  const effectiveSaleTaxExempt = saleTaxExempt || Boolean(selectedCustomer?.taxExempt);
+  const effectiveSaleTaxExemptionReason = saleTaxExemptionReason.trim() || selectedCustomer?.taxExemptionReason;
+  const saleTaxPreview = useMemo(
+    () => calculateTaxTotals(saleTotal, buildTaxSnapshot(state.businessProfile, {
+      exempt: effectiveSaleTaxExempt,
+      exemptionReason: effectiveSaleTaxExemptionReason,
+    })),
+    [effectiveSaleTaxExempt, effectiveSaleTaxExemptionReason, saleTotal, state.businessProfile]
+  );
+  const saleWithholdingPreview = useMemo(
+    () => buildWithholdingTaxSnapshot(state.businessProfile, saleTaxPreview, applyWithholdingTax),
+    [applyWithholdingTax, saleTaxPreview, state.businessProfile]
+  );
+  const saleReceivableTotal = saleWithholdingPreview
+    ? Number((saleTaxPreview.totalAmount - saleWithholdingPreview.amount).toFixed(2))
+    : saleTaxPreview.totalAmount;
 
   const correctionSourceSale = useMemo(
     () => state.sales.find((sale) => sale.id === correctionSourceSaleId) ?? null,
     [correctionSourceSaleId, state.sales]
   );
-  const normalizedPaidAmount = toValidPaidAmount(paidAmountInput, saleTotal);
-  const outstandingAmount = Math.max(0, saleTotal - normalizedPaidAmount);
-  const selectedCustomer = useMemo(
-    () => activeCustomers.find((c) => c.id === customerId) ?? null,
-    [activeCustomers, customerId]
-  );
+  const normalizedPaidAmount = toValidPaidAmount(paidAmountInput, saleReceivableTotal);
+  const outstandingAmount = Math.max(0, saleReceivableTotal - normalizedPaidAmount);
 
   const customerQuotations = useMemo(
     () => state.quotations.filter((q) => q.customerId === customerId && q.status === 'Draft'),
@@ -204,7 +235,9 @@ const SalesPage: React.FC = () => {
           id: customer.id,
           title: customer.name,
           subtitle: customer.clientId,
-          meta: customer.phone || customer.whatsapp || 'No phone',
+          meta: isCustomerClassificationEnabled
+            ? selectCustomerTypeDisplayLabel(customer.customerType)
+            : customer.phone || customer.whatsapp || 'No phone',
         }));
 
       const walkInItem: PickerItem = walkInCustomer
@@ -223,14 +256,14 @@ const SalesPage: React.FC = () => {
 
       return [walkInItem, ...baseItems];
     },
-    [state.customers, walkInCustomer]
+    [isCustomerClassificationEnabled, state.customers, walkInCustomer]
   );
 
   const productPickerItems = useMemo<PickerItem[]>(
     () => state.products.map((p) => ({
       id: p.id,
       title: p.name,
-      subtitle: p.inventoryId,
+      subtitle: `${p.inventoryId} • ${selectProductCategoryDisplayLabel(state, p.categoryId)}`,
       meta: `${selectProductQuantityOnHand(state, p.id)} left`,
       image: p.image,
     })),
@@ -306,6 +339,9 @@ const SalesPage: React.FC = () => {
       paymentReference: paymentReference.trim() || undefined,
       correctionOfSaleId: correctionSourceSaleId || undefined,
       createdAt: saleDate ? new Date(saleDate).toISOString() : undefined,
+      taxExempt: isTaxEnabled ? effectiveSaleTaxExempt : undefined,
+      taxExemptionReason: isTaxEnabled && effectiveSaleTaxExempt ? effectiveSaleTaxExemptionReason : undefined,
+      applyWithholdingTax: isTaxEnabled ? applyWithholdingTax : undefined,
     });
 
     if (!result.ok) {
@@ -314,7 +350,7 @@ const SalesPage: React.FC = () => {
     }
 
     setFormMessage('');
-    setSaleSuccessMessage(`Sale recorded and invoice created for ${formatCurrency(saleTotal, currency)}.`);
+    setSaleSuccessMessage(`Sale recorded and invoice created for ${formatCurrency(saleTaxPreview.totalAmount, currency)}.`);
     setLatestReceipt(result.receipt);
 
     setLowStockMessage('');
@@ -327,6 +363,9 @@ const SalesPage: React.FC = () => {
     setSaleItems([{ productId: state.products[0]?.id || '', quantity: 1 }]);
     setPaidAmountInput('');
     setPaymentReference('');
+    setSaleTaxExempt(false);
+    setSaleTaxExemptionReason('');
+    setApplyWithholdingTax(state.businessProfile.withholdingTaxEnabled);
     setCorrectionSourceSaleId('');
   };
 
@@ -449,6 +488,11 @@ const SalesPage: React.FC = () => {
                     >
                       {selectedCustomer ? selectedCustomer.name : 'Select Customer'}
                     </IonButton>
+                    {isCustomerClassificationEnabled && selectedCustomer ? (
+                      <p className="muted-label">
+                        Customer type: {selectCustomerTypeDisplayLabel(selectedCustomer.customerType)}
+                      </p>
+                    ) : null}
                   </div>
 
                   {customerQuotations.length > 0 && canConvertQuotations && !correctionSourceSale && (
@@ -471,6 +515,9 @@ const SalesPage: React.FC = () => {
                   <p className="muted-label" style={{ marginBottom: '12px' }}>Items Purchased</p>
                   {saleItems.map((item, index) => {
                     const product = state.products.find(p => p.id === item.productId);
+                    const productCategoryLabel = product
+                      ? selectProductCategoryDisplayLabel(state, product.categoryId)
+                      : null;
                     return (
                       <div key={index} className="sale-item-row" style={{ 
                         display: 'grid', 
@@ -492,6 +539,7 @@ const SalesPage: React.FC = () => {
                           >
                             {product ? product.name : 'Select Item'}
                           </IonButton>
+                          {product ? <p className="muted-label">{productCategoryLabel}</p> : null}
                         </div>
                         <div className="input-container">
                            <IonInput
@@ -647,14 +695,61 @@ const SalesPage: React.FC = () => {
                     type="number"
                     inputmode="decimal"
                     min={0}
-                    max={saleTotal}
+                    max={saleReceivableTotal}
                     value={paidAmountInput}
-                    helperText={`Total value: ${formatCurrency(saleTotal, currency)}`}
+                    helperText={`Receivable value: ${formatCurrency(saleReceivableTotal, currency)}`}
                     onIonInput={(event) => {
                       setPaidAmountInput(event.detail.value ?? '');
                     }}
                   />
                 </IonItem>
+
+                {isTaxEnabled ? (
+                  <>
+                    <div className="list-block">
+                      <div className="list-row">
+                        <div>
+                          <strong>Tax exempt sale</strong>
+                          <p>
+                            {selectedCustomer?.taxExempt
+                              ? 'This customer is marked tax exempt; the invoice will snapshot zero tax.'
+                              : 'Use only when this invoice should not apply Ghana Standard tax.'}
+                          </p>
+                        </div>
+                        <IonToggle
+                          checked={effectiveSaleTaxExempt}
+                          disabled={Boolean(selectedCustomer?.taxExempt)}
+                          onIonChange={(event) => setSaleTaxExempt(event.detail.checked)}
+                        />
+                      </div>
+                    </div>
+                    {effectiveSaleTaxExempt ? (
+                      <IonItem lines="none" className="app-item">
+                        <IonLabel position="stacked">Exemption reason (optional)</IonLabel>
+                        <IonInput
+                          value={effectiveSaleTaxExemptionReason ?? ''}
+                          placeholder="e.g. exemption certificate"
+                          disabled={Boolean(selectedCustomer?.taxExempt && selectedCustomer.taxExemptionReason)}
+                          onIonInput={(event) => setSaleTaxExemptionReason(event.detail.value ?? '')}
+                        />
+                      </IonItem>
+                    ) : null}
+                    {state.businessProfile.withholdingTaxEnabled ? (
+                      <div className="list-block">
+                        <div className="list-row">
+                          <div>
+                            <strong>Apply withholding tax</strong>
+                            <p>Deduct {state.businessProfile.defaultWithholdingTaxRate}% from the receivable amount.</p>
+                          </div>
+                          <IonToggle
+                            checked={applyWithholdingTax}
+                            onIonChange={(event) => setApplyWithholdingTax(event.detail.checked)}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
 
                 <IonItem lines="none" className="app-item">
                   <IonLabel position="stacked">Payment Reference (e.g. MoMo, bank, or cash note)</IonLabel>
@@ -668,7 +763,21 @@ const SalesPage: React.FC = () => {
                 <div className="sale-summary">
                   <div>
                     <p className="muted-label">Sale total</p>
-                    <h3>{formatCurrency(saleTotal, currency)}</h3>
+                    <h3>{formatCurrency(saleTaxPreview.totalAmount, currency)}</h3>
+                    {saleTaxPreview.hasTax && saleTaxPreview.taxAmount === 0 && effectiveSaleTaxExempt ? (
+                      <p className="muted-label">
+                        Subtotal {formatCurrency(saleTaxPreview.subtotalAmount, currency)} · tax exempt
+                      </p>
+                    ) : saleTaxPreview.hasTax ? (
+                      <p className="muted-label">
+                        Subtotal {formatCurrency(saleTaxPreview.subtotalAmount, currency)} + tax {formatCurrency(saleTaxPreview.taxAmount, currency)}
+                      </p>
+                    ) : null}
+                    {saleWithholdingPreview ? (
+                      <p className="muted-label">
+                        Less {saleWithholdingPreview.label} {formatCurrency(saleWithholdingPreview.amount, currency)} · net receivable {formatCurrency(saleReceivableTotal, currency)}
+                      </p>
+                    ) : null}
                   </div>
                   <div>
                     <p className="muted-label">Outstanding after sale</p>
@@ -802,6 +911,8 @@ const SalesPage: React.FC = () => {
                   const customer = state.customers.find((item) => item.id === sale.customerId);
                   const balanceLeft = selectSaleBalanceRemaining(sale);
                   const invoiceStatus = selectSaleStatusDisplay(sale);
+                  const taxTotals = selectDocumentTaxTotals(sale);
+                  const withholdingTotals = selectDocumentWithholdingTotals(sale);
 
                   return (
                     <div className="list-row" key={sale.id}>
@@ -811,6 +922,25 @@ const SalesPage: React.FC = () => {
                           <p className="code-label">
                             {sale.invoiceNumber} · {(customer?.clientId ?? 'CLT-UNK')}
                           </p>
+                          {isCustomerClassificationEnabled ? (
+                            <p className="muted-label">
+                              Snapshot type: {selectCustomerTypeDisplayLabel(sale.customerTypeSnapshot)}
+                            </p>
+                          ) : null}
+                          {taxTotals.hasTax && taxTotals.isExempt ? (
+                            <p className="muted-label">
+                              Tax exempt{taxTotals.exemptionReason ? `: ${taxTotals.exemptionReason}` : ''}
+                            </p>
+                          ) : taxTotals.hasTax ? (
+                            <p className="muted-label">
+                              Tax snapshot: {formatCurrency(taxTotals.taxAmount, currency)} at {taxTotals.taxRate}%
+                            </p>
+                          ) : null}
+                          {withholdingTotals.hasWithholding ? (
+                            <p className="muted-label">
+                              {withholdingTotals.label}: -{formatCurrency(withholdingTotals.amount, currency)} · net {formatCurrency(withholdingTotals.netReceivableAmount, currency)}
+                            </p>
+                          ) : null}
                           <p>
                             {sale.items?.length || 1} line items • {sale.paymentMethod} • {formatRelativeDate(sale.createdAt)}
                           </p>

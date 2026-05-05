@@ -14,6 +14,7 @@ import {
   IonSearchbar,
   IonRefresher,
   IonRefresherContent,
+  IonToggle,
 } from '@ionic/react';
 import { chevronDownCircleOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
@@ -24,7 +25,8 @@ import SectionCard from '../components/SectionCard';
 import SearchablePicker, { PickerItem } from '../components/SearchablePicker';
 import { useBusiness } from '../context/BusinessContext';
 import type { PaymentMethod } from '../data/seedBusiness';
-import { selectQuotationStatusDisplay } from '../selectors/businessSelectors';
+import { buildTaxSnapshot, buildWithholdingTaxSnapshot, calculateTaxTotals } from '../utils/businessLogic';
+import { selectCustomerTypeDisplayLabel, selectDocumentTaxTotals, selectDocumentWithholdingTotals, selectProductCategoryDisplayLabel, selectQuotationStatusDisplay } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate } from '../utils/format';
 import { toPositiveInteger, toValidPaidAmount } from '../utils/salesMath';
 
@@ -44,6 +46,7 @@ const createDraftLine = (productId = ''): DraftLine => ({
 const QuotationsPage: React.FC = () => {
   const history = useHistory();
   const { state, addQuotation, convertQuotationToSale, hasPermission } = useBusiness();
+  const isCustomerClassificationEnabled = state.businessProfile.customerClassificationEnabled;
   const canCreateQuotations = hasPermission('quotations.create');
   const canConvertQuotations = hasPermission('quotations.convert');
   const activeCustomers = useMemo(
@@ -78,6 +81,9 @@ const QuotationsPage: React.FC = () => {
     }>
   >([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [quotationTaxExempt, setQuotationTaxExempt] = useState(false);
+  const [quotationTaxExemptionReason, setQuotationTaxExemptionReason] = useState('');
+  const [applyWithholdingTax, setApplyWithholdingTax] = useState(state.businessProfile.withholdingTaxEnabled);
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [activePickingLineId, setActivePickingLineId] = useState<string | null>(null);
@@ -108,6 +114,10 @@ const QuotationsPage: React.FC = () => {
     [activeCustomers, customerId]
   );
 
+  useEffect(() => {
+    setApplyWithholdingTax(state.businessProfile.withholdingTaxEnabled);
+  }, [state.businessProfile.withholdingTaxEnabled]);
+
   const quotationPreview = useMemo(() => {
     const items = lines
       .map((line) => {
@@ -126,12 +136,26 @@ const QuotationsPage: React.FC = () => {
         };
       })
       .filter(Boolean);
+    const lineSubtotal = items.reduce((sum, item) => sum + (item?.total ?? 0), 0);
+    const effectiveTaxExempt = quotationTaxExempt || Boolean(selectedCustomer?.taxExempt);
+    const exemptionReason = quotationTaxExemptionReason.trim() || selectedCustomer?.taxExemptionReason;
+    const taxTotals = calculateTaxTotals(lineSubtotal, buildTaxSnapshot(state.businessProfile, {
+      exempt: effectiveTaxExempt,
+      exemptionReason,
+    }));
+    const withholdingTaxSnapshot = buildWithholdingTaxSnapshot(state.businessProfile, taxTotals, applyWithholdingTax);
 
     return {
       items,
-      totalAmount: items.reduce((sum, item) => sum + (item?.total ?? 0), 0),
+      ...taxTotals,
+      isTaxExempt: effectiveTaxExempt,
+      exemptionReason,
+      withholdingTaxSnapshot,
+      netReceivableAmount: withholdingTaxSnapshot
+        ? Number((taxTotals.totalAmount - withholdingTaxSnapshot.amount).toFixed(2))
+        : taxTotals.totalAmount,
     };
-  }, [lines, state.products]);
+  }, [applyWithholdingTax, lines, quotationTaxExempt, quotationTaxExemptionReason, selectedCustomer, state.businessProfile, state.products]);
 
   const activeQuotation = useMemo(
     () => state.quotations.find((quotation) => quotation.id === convertingQuotationId) ?? null,
@@ -165,20 +189,20 @@ const QuotationsPage: React.FC = () => {
       id: c.id,
       title: c.name,
       subtitle: c.clientId,
-      meta: c.phone || 'No phone',
+      meta: isCustomerClassificationEnabled ? selectCustomerTypeDisplayLabel(c.customerType) : c.phone || 'No phone',
     })),
-    [activeCustomers]
+    [activeCustomers, isCustomerClassificationEnabled]
   );
 
   const productPickerItems = useMemo<PickerItem[]>(
     () => state.products.map((p) => ({
       id: p.id,
       title: p.name,
-      subtitle: p.inventoryId,
+      subtitle: `${p.inventoryId} • ${selectProductCategoryDisplayLabel(state, p.categoryId)}`,
       meta: `${formatCurrency(p.price)}`,
       image: p.image,
     })),
-    [state.products]
+    [state]
   );
 
   const handleCreateQuotation = () => {
@@ -195,6 +219,9 @@ const QuotationsPage: React.FC = () => {
           productId: line.productId,
           quantity: toPositiveInteger(line.quantityInput, 1),
         })),
+      taxExempt: state.businessProfile.taxEnabled ? quotationPreview.isTaxExempt : undefined,
+      taxExemptionReason: state.businessProfile.taxEnabled && quotationPreview.isTaxExempt ? quotationPreview.exemptionReason : undefined,
+      applyWithholdingTax: state.businessProfile.taxEnabled ? applyWithholdingTax : undefined,
     });
 
     if (!result.ok) {
@@ -209,6 +236,9 @@ const QuotationsPage: React.FC = () => {
     setLatestQuotationNumber(savedQuotation?.quotationNumber ?? fallbackNumber);
     setShowSuccessToast(true);
     setLines([createDraftLine(state.products[0]?.id ?? '')]);
+    setQuotationTaxExempt(false);
+    setQuotationTaxExemptionReason('');
+    setApplyWithholdingTax(state.businessProfile.withholdingTaxEnabled);
   };
 
   const handleStartConversion = (quotationId: string) => {
@@ -301,6 +331,11 @@ const QuotationsPage: React.FC = () => {
                     >
                         {selectedCustomer ? selectedCustomer.name : 'Select Client'}
                     </IonButton>
+                    {isCustomerClassificationEnabled && selectedCustomer ? (
+                      <p className="muted-label">
+                        Customer type: {selectCustomerTypeDisplayLabel(selectedCustomer.customerType)}
+                      </p>
+                    ) : null}
                 </div>
 
                 <SearchablePicker
@@ -330,6 +365,7 @@ const QuotationsPage: React.FC = () => {
 
                 {lines.map((line, index) => {
                   const previewItem = quotationPreview.items.find((item) => item?.id === line.id) ?? null;
+                  const lineProduct = state.products.find((product) => product.id === line.productId);
 
                   return (
                     <div className="selected-product" key={line.id}>
@@ -346,6 +382,9 @@ const QuotationsPage: React.FC = () => {
                             >
                                 {state.products.find(p => p.id === line.productId)?.name || 'Select Product'}
                             </IonButton>
+                            {lineProduct ? (
+                              <p className="muted-label">{selectProductCategoryDisplayLabel(state, lineProduct.categoryId)}</p>
+                            ) : null}
                         </div>
 
                         <IonItem lines="none" className="app-item">
@@ -386,6 +425,53 @@ const QuotationsPage: React.FC = () => {
                   Add another item
                 </IonButton>
 
+                {state.businessProfile.taxEnabled ? (
+                  <>
+                    <div className="list-block">
+                      <div className="list-row">
+                        <div>
+                          <strong>Tax exempt quotation</strong>
+                          <p>
+                            {selectedCustomer?.taxExempt
+                              ? 'This customer is marked tax exempt; the quotation will snapshot zero tax.'
+                              : 'Use only when this quotation should not apply Ghana Standard tax.'}
+                          </p>
+                        </div>
+                        <IonToggle
+                          checked={quotationPreview.isTaxExempt}
+                          disabled={Boolean(selectedCustomer?.taxExempt)}
+                          onIonChange={(event) => setQuotationTaxExempt(event.detail.checked)}
+                        />
+                      </div>
+                    </div>
+                    {quotationPreview.isTaxExempt ? (
+                      <IonItem lines="none" className="app-item">
+                        <IonLabel position="stacked">Exemption reason (optional)</IonLabel>
+                        <IonInput
+                          value={quotationPreview.exemptionReason ?? ''}
+                          placeholder="e.g. exemption certificate"
+                          disabled={Boolean(selectedCustomer?.taxExempt && selectedCustomer.taxExemptionReason)}
+                          onIonInput={(event) => setQuotationTaxExemptionReason(event.detail.value ?? '')}
+                        />
+                      </IonItem>
+                    ) : null}
+                    {state.businessProfile.withholdingTaxEnabled ? (
+                      <div className="list-block">
+                        <div className="list-row">
+                          <div>
+                            <strong>Apply withholding tax</strong>
+                            <p>Deduct {state.businessProfile.defaultWithholdingTaxRate}% from the receivable amount.</p>
+                          </div>
+                          <IonToggle
+                            checked={applyWithholdingTax}
+                            onIonChange={(event) => setApplyWithholdingTax(event.detail.checked)}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+
                 <div className="sale-summary">
                   <div>
                     <p className="muted-label">Client</p>
@@ -394,6 +480,20 @@ const QuotationsPage: React.FC = () => {
                   <div>
                     <p className="muted-label">Grand total</p>
                     <h3>{formatCurrency(quotationPreview.totalAmount)}</h3>
+                    {quotationPreview.hasTax && quotationPreview.isTaxExempt ? (
+                      <p className="muted-label">
+                        Subtotal {formatCurrency(quotationPreview.subtotalAmount)} · tax exempt
+                      </p>
+                    ) : quotationPreview.hasTax ? (
+                      <p className="muted-label">
+                        Subtotal {formatCurrency(quotationPreview.subtotalAmount)} + tax {formatCurrency(quotationPreview.taxAmount)}
+                      </p>
+                    ) : null}
+                    {quotationPreview.withholdingTaxSnapshot ? (
+                      <p className="muted-label">
+                        Less {quotationPreview.withholdingTaxSnapshot.label} {formatCurrency(quotationPreview.withholdingTaxSnapshot.amount)} · net receivable {formatCurrency(quotationPreview.netReceivableAmount)}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 
@@ -425,6 +525,8 @@ const QuotationsPage: React.FC = () => {
               <div className="list-block">
                 {filteredQuotations.map((quotation) => {
                   const quotationStatus = selectQuotationStatusDisplay(quotation);
+                  const taxTotals = selectDocumentTaxTotals(quotation);
+                  const withholdingTotals = selectDocumentWithholdingTotals(quotation);
 
                   return (
                   <div className="selected-product" key={quotation.id}>
@@ -435,6 +537,25 @@ const QuotationsPage: React.FC = () => {
                           <p className="code-label">
                             {quotation.quotationNumber} · {quotation.clientId}
                           </p>
+                          {isCustomerClassificationEnabled ? (
+                            <p className="muted-label">
+                              Snapshot type: {selectCustomerTypeDisplayLabel(quotation.customerTypeSnapshot)}
+                            </p>
+                          ) : null}
+                          {taxTotals.hasTax && taxTotals.isExempt ? (
+                            <p className="muted-label">
+                              Tax exempt{taxTotals.exemptionReason ? `: ${taxTotals.exemptionReason}` : ''}
+                            </p>
+                          ) : taxTotals.hasTax ? (
+                            <p className="muted-label">
+                              Tax snapshot: {formatCurrency(taxTotals.taxAmount)} at {taxTotals.taxRate}%
+                            </p>
+                          ) : null}
+                          {withholdingTotals.hasWithholding ? (
+                            <p className="muted-label">
+                              {withholdingTotals.label}: -{formatCurrency(withholdingTotals.amount)} · net {formatCurrency(withholdingTotals.netReceivableAmount)}
+                            </p>
+                          ) : null}
                           <p>{formatReceiptDate(quotation.createdAt)}</p>
                           {quotation.convertedAt ? <p>Converted: {formatReceiptDate(quotation.convertedAt)}</p> : null}
                         </div>

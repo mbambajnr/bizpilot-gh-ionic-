@@ -31,6 +31,9 @@ import {
   selectSaleBalanceRemaining,
   selectSaleStatusDisplay,
   selectStockMovementDisplay,
+  selectCustomerTypeDisplayLabel,
+  selectDocumentTaxTotals,
+  selectDocumentWithholdingTotals,
 } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate } from '../utils/format';
 
@@ -43,6 +46,7 @@ const InvoiceDetailPage: React.FC = () => {
   const [formMessage, setFormMessage] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const currency = state.businessProfile.currency;
+  const isCustomerClassificationEnabled = state.businessProfile.customerClassificationEnabled;
 
   const sale = useMemo(() => state.sales.find((item) => item.id === saleId) ?? null, [saleId, state.sales]);
   const customer = useMemo(() => state.customers.find((item) => item.id === sale?.customerId) ?? null, [sale, state.customers]);
@@ -93,6 +97,8 @@ const InvoiceDetailPage: React.FC = () => {
 
   const balanceRemaining = selectSaleBalanceRemaining(sale);
   const invoiceStatus = selectSaleStatusDisplay(sale);
+  const taxTotals = selectDocumentTaxTotals(sale);
+  const withholdingTotals = selectDocumentWithholdingTotals(sale);
   const receiptState = sale.status === 'Reversed' ? 'Void' : 'Valid';
   const customerName = customer?.name ?? 'Customer';
   const invoiceSummaryLine = `${sale.invoiceNumber} • ${customerName} • ${formatCurrency(sale.totalAmount, currency)} • ${sale.status}`;
@@ -272,6 +278,11 @@ const InvoiceDetailPage: React.FC = () => {
                   <p style={{ fontSize: '0.7rem', fontWeight: '800', color: '#666', marginBottom: '8px', textTransform: 'uppercase' }}>Bill To</p>
                   <strong style={{ display: 'block', fontSize: '1.25rem' }}>{customer?.name}</strong>
                   <p style={{ margin: '2px 0', fontSize: '0.95rem' }}><strong>Client ID:</strong> {customer?.clientId}</p>
+                  {isCustomerClassificationEnabled ? (
+                    <p style={{ margin: '2px 0', fontSize: '0.95rem' }}>
+                      <strong>Customer Type Snapshot:</strong> {selectCustomerTypeDisplayLabel(sale.customerTypeSnapshot)}
+                    </p>
+                  ) : null}
                   {customerPhone && <p style={{ margin: '2px 0', fontSize: '0.95rem' }}><strong>Phone:</strong> {customerPhone}</p>}
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -325,8 +336,35 @@ const InvoiceDetailPage: React.FC = () => {
                   <tbody>
                     <tr style={{ borderTop: '2px solid #000' }}>
                       <td style={{ padding: '10px 0', fontSize: '0.95rem', fontWeight: '600' }}>SUBTOTAL</td>
-                      <td style={{ padding: '10px 0', textAlign: 'right', fontSize: '1.1rem', fontWeight: '700' }}>{formatCurrency(sale.totalAmount, currency)}</td>
+                      <td style={{ padding: '10px 0', textAlign: 'right', fontSize: '1.1rem', fontWeight: '700' }}>{formatCurrency(taxTotals.subtotalAmount, currency)}</td>
                     </tr>
+                    {taxTotals.hasTax && taxTotals.isExempt ? (
+                      <tr style={{ borderTop: '1px solid #eee' }}>
+                        <td style={{ padding: '10px 0', color: '#555', fontSize: '0.95rem' }}>{taxTotals.exemptionReason ? `TAX EXEMPT - ${taxTotals.exemptionReason}` : 'TAX EXEMPT'}</td>
+                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: '700' }}>{formatCurrency(0, currency)}</td>
+                      </tr>
+                    ) : taxTotals.hasTax ? (
+                      <tr style={{ borderTop: '1px solid #eee' }}>
+                        <td style={{ padding: '10px 0', color: '#555', fontSize: '0.95rem' }}>TAX ({taxTotals.taxRate}%)</td>
+                        <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: '700' }}>{formatCurrency(taxTotals.taxAmount, currency)}</td>
+                      </tr>
+                    ) : null}
+                    {withholdingTotals.hasWithholding ? (
+                      <>
+                        <tr style={{ borderTop: '1px solid #eee' }}>
+                          <td style={{ padding: '10px 0', color: '#555', fontSize: '0.95rem' }}>GROSS TOTAL</td>
+                          <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: '700' }}>{formatCurrency(sale.totalAmount, currency)}</td>
+                        </tr>
+                        <tr style={{ borderTop: '1px solid #eee' }}>
+                          <td style={{ padding: '10px 0', color: '#555', fontSize: '0.95rem' }}>{withholdingTotals.label.toUpperCase()} ({withholdingTotals.rate}%)</td>
+                          <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: '700' }}>-{formatCurrency(withholdingTotals.amount, currency)}</td>
+                        </tr>
+                        <tr style={{ borderTop: '1px solid #eee' }}>
+                          <td style={{ padding: '10px 0', color: '#555', fontSize: '0.95rem' }}>NET RECEIVABLE</td>
+                          <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: '700' }}>{formatCurrency(withholdingTotals.netReceivableAmount, currency)}</td>
+                        </tr>
+                      </>
+                    ) : null}
                     <tr style={{ borderTop: '1px solid #eee' }}>
                       <td style={{ padding: '10px 0', color: '#555', fontSize: '0.95rem' }}>PAID TO DATE</td>
                       <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: '700', color: '#2e8b57' }}>{formatCurrency(sale.paidAmount, currency)}</td>

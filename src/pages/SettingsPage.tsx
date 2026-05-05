@@ -28,12 +28,13 @@ import { resizeImage } from '../utils/imageUtils';
 
 import SectionCard from '../components/SectionCard';
 import PhoneInputField from '../components/PhoneInputField';
-import { roadmapSteps } from '../data/seedBusiness';
+import { roadmapSteps, type TaxComponent } from '../data/seedBusiness';
 import { useAuth } from '../context/AuthContext';
 import { useBusiness } from '../context/BusinessContext';
+import { calculateTaxComponentTotalRate, getBusinessLaunchState } from '../utils/businessLogic';
 import { loadBusinessEmailConfig, saveBusinessEmailConfig } from '../lib/businessEmailConfigClient';
 import { getPermissionList } from '../authz/permissions';
-import { ROLE_DEFAULT_PERMISSIONS } from '../authz/defaults';
+import { ROLE_DEFAULT_PERMISSIONS, ROLE_LABELS } from '../authz/defaults';
 import { hasSupabaseConfig } from '../lib/supabase';
 import { AppPermission, AppRole } from '../authz/types';
 import { RestockRequestStatus } from '../data/seedBusiness';
@@ -95,6 +96,20 @@ const permissionGroups: Array<{ title: string; items: Array<{ permission: AppPer
       { permission: 'expenses.view', label: 'View expenses' },
       { permission: 'expenses.create', label: 'Create expenses' },
       { permission: 'expenses.edit', label: 'Edit expenses' },
+      { permission: 'vendors.view', label: 'View vendors' },
+      { permission: 'vendors.manage', label: 'Manage vendors' },
+      { permission: 'purchases.view', label: 'View purchases' },
+      { permission: 'purchases.create', label: 'Create purchases' },
+      { permission: 'purchases.approve', label: 'Approve purchases' },
+      { permission: 'purchases.receive', label: 'Receive purchases to warehouse' },
+      { permission: 'payables.view', label: 'View payables' },
+      { permission: 'payables.manage', label: 'Manage payables' },
+      { permission: 'payables.pay', label: 'Record payable payments' },
+      { permission: 'transfers.view', label: 'View transfers' },
+      { permission: 'transfers.create', label: 'Create transfers' },
+      { permission: 'transfers.approve', label: 'Approve transfers' },
+      { permission: 'transfers.dispatch', label: 'Dispatch transfers' },
+      { permission: 'transfers.receive', label: 'Receive transfers' },
       { permission: 'restockRequests.view', label: 'View restock requests' },
       { permission: 'restockRequests.create', label: 'Create restock requests' },
       { permission: 'restockRequests.manage', label: 'Manage restock requests' },
@@ -106,7 +121,7 @@ const permissionGroups: Array<{ title: string; items: Array<{ permission: AppPer
 
 const SettingsPage: React.FC = () => {
   const { user, businessBootstrapStatus, signOut } = useAuth();
-  const { state, currentUser, backendStatus, updateBusinessProfile, switchUser, updateUserPermissions, updateUserProfile, addUserAccount, updateEmployeeAccount, hasPermission, reviewRestockRequest, updateBranding, updateThemePreference } = useBusiness();
+  const { state, currentUser, backendStatus, updateBusinessProfile, launchBusinessWorkspace, switchUser, updateUserProfile, addUserAccount, resetEmployeeTemporaryPassword, updateEmployeeAccount, hasPermission, reviewRestockRequest, updateBranding, updateThemePreference, createProductCategory, updateProductCategory, setProductCategoryActive, setInventoryCategoriesEnabled, createBusinessLocation, updateBusinessLocation, createSupplyRoute, setSupplyRouteActive, setCustomerClassificationEnabled, setBusinessTaxSettings } = useBusiness();
   
   const [businessName, setBusinessName] = useState(state.businessProfile.businessName);
   const [businessType, setBusinessType] = useState(state.businessProfile.businessType);
@@ -123,6 +138,9 @@ const SettingsPage: React.FC = () => {
   const [isPhoneValid, setIsPhoneValid] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [successToastMessage, setSuccessToastMessage] = useState('Business settings updated and synced.');
+  const [isLaunchingBusiness, setIsLaunchingBusiness] = useState(false);
+  const [launchMessage, setLaunchMessage] = useState('');
   const [businessEmailConfigMessage, setBusinessEmailConfigMessage] = useState('');
   const [showBusinessEmailToast, setShowBusinessEmailToast] = useState(false);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
@@ -137,24 +155,56 @@ const SettingsPage: React.FC = () => {
   const [hasSavedSmtpPassword, setHasSavedSmtpPassword] = useState(false);
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [newEmployeeEmail, setNewEmployeeEmail] = useState('');
-  const [newEmployeePassword, setNewEmployeePassword] = useState('');
   const [newEmployeeRole, setNewEmployeeRole] = useState<AppRole>('SalesManager');
-  const [newEmployeeRoleLabel, setNewEmployeeRoleLabel] = useState('Sales Manager');
+  const [newEmployeeRoleLabel, setNewEmployeeRoleLabel] = useState(ROLE_LABELS.SalesManager);
   const [newEmployeePermissions, setNewEmployeePermissions] = useState<AppPermission[]>([...ROLE_DEFAULT_PERMISSIONS.SalesManager]);
   const [newEmployeeMessage, setNewEmployeeMessage] = useState('');
+  const [newEmployeeCredentials, setNewEmployeeCredentials] = useState<{ username: string; temporaryPassword: string } | null>(null);
   const [showEditEmployeeModal, setShowEditEmployeeModal] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState('');
   const [editEmployeeName, setEditEmployeeName] = useState('');
   const [editEmployeeEmail, setEditEmployeeEmail] = useState('');
-  const [editEmployeePassword, setEditEmployeePassword] = useState('');
   const [editEmployeeRole, setEditEmployeeRole] = useState<AppRole>('SalesManager');
-  const [editEmployeeRoleLabel, setEditEmployeeRoleLabel] = useState('Sales Manager');
+  const [editEmployeeRoleLabel, setEditEmployeeRoleLabel] = useState(ROLE_LABELS.SalesManager);
   const [editEmployeePermissions, setEditEmployeePermissions] = useState<AppPermission[]>([...ROLE_DEFAULT_PERMISSIONS.SalesManager]);
   const [editEmployeeStatus, setEditEmployeeStatus] = useState<'active' | 'deactivated'>('active');
   const [editEmployeeSenderName, setEditEmployeeSenderName] = useState('');
   const [editEmployeeSenderEmail, setEditEmployeeSenderEmail] = useState('');
   const [editEmployeeMessage, setEditEmployeeMessage] = useState('');
-  const [myPassword, setMyPassword] = useState(currentUser.password ?? '');
+  const [editEmployeeUsername, setEditEmployeeUsername] = useState('');
+  const [editEmployeeCredentials, setEditEmployeeCredentials] = useState<{ username: string; temporaryPassword: string } | null>(null);
+  const [customerClassificationEnabledDraft, setCustomerClassificationEnabledDraft] = useState(state.businessProfile.customerClassificationEnabled);
+  const [customerClassificationMessage, setCustomerClassificationMessage] = useState('');
+  const [inventoryCategoriesEnabledDraft, setInventoryCategoriesEnabledDraft] = useState(state.businessProfile.inventoryCategoriesEnabled);
+  const [categoryMessage, setCategoryMessage] = useState('');
+  const [taxEnabledDraft, setTaxEnabledDraft] = useState(state.businessProfile.taxEnabled);
+  const [taxModeDraft, setTaxModeDraft] = useState(state.businessProfile.taxMode);
+  const [applyTaxByDefaultDraft, setApplyTaxByDefaultDraft] = useState(state.businessProfile.applyTaxByDefault);
+  const [taxComponentDrafts, setTaxComponentDrafts] = useState<TaxComponent[]>(state.businessProfile.taxComponents);
+  const [withholdingTaxEnabledDraft, setWithholdingTaxEnabledDraft] = useState(state.businessProfile.withholdingTaxEnabled);
+  const [withholdingTaxRateDraft, setWithholdingTaxRateDraft] = useState(String(state.businessProfile.defaultWithholdingTaxRate));
+  const [withholdingTaxLabelDraft, setWithholdingTaxLabelDraft] = useState(state.businessProfile.defaultWithholdingTaxLabel);
+  const [withholdingTaxBasisDraft, setWithholdingTaxBasisDraft] = useState(state.businessProfile.defaultWithholdingTaxBasis);
+  const [taxMessage, setTaxMessage] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryDescription, setNewCategoryDescription] = useState('');
+  const [newCategoryParentId, setNewCategoryParentId] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState('');
+  const [editCategoryName, setEditCategoryName] = useState('');
+  const [editCategoryDescription, setEditCategoryDescription] = useState('');
+  const [editCategoryParentId, setEditCategoryParentId] = useState('');
+  const [locationMessage, setLocationMessage] = useState('');
+  const [newStoreName, setNewStoreName] = useState('');
+  const [newStoreDefault, setNewStoreDefault] = useState(false);
+  const [newWarehouseName, setNewWarehouseName] = useState('');
+  const [editingLocationId, setEditingLocationId] = useState('');
+  const [editLocationName, setEditLocationName] = useState('');
+  const [editLocationType, setEditLocationType] = useState<'store' | 'warehouse'>('store');
+  const [editLocationDefault, setEditLocationDefault] = useState(false);
+  const [editLocationActive, setEditLocationActive] = useState(true);
+  const [routeMessage, setRouteMessage] = useState('');
+  const [newRouteFromLocationId, setNewRouteFromLocationId] = useState('');
+  const [newRouteToLocationId, setNewRouteToLocationId] = useState('');
 
   useEffect(() => {
     setBusinessName(state.businessProfile.businessName);
@@ -168,16 +218,82 @@ const SettingsPage: React.FC = () => {
     setAddress(state.businessProfile.address);
     setWebsite(state.businessProfile.website ?? '');
     setWaybillPrefix(state.businessProfile.waybillPrefix);
-  }, [state.businessProfile.id]);
-
-  useEffect(() => {
-    setMyPassword(currentUser.password ?? '');
-  }, [currentUser.userId, currentUser.password]);
+    setCustomerClassificationEnabledDraft(state.businessProfile.customerClassificationEnabled);
+    setInventoryCategoriesEnabledDraft(state.businessProfile.inventoryCategoriesEnabled);
+    setTaxEnabledDraft(state.businessProfile.taxEnabled);
+    setTaxModeDraft(state.businessProfile.taxMode);
+    setApplyTaxByDefaultDraft(state.businessProfile.applyTaxByDefault);
+    setTaxComponentDrafts(state.businessProfile.taxComponents);
+    setWithholdingTaxEnabledDraft(state.businessProfile.withholdingTaxEnabled);
+    setWithholdingTaxRateDraft(String(state.businessProfile.defaultWithholdingTaxRate));
+    setWithholdingTaxLabelDraft(state.businessProfile.defaultWithholdingTaxLabel);
+    setWithholdingTaxBasisDraft(state.businessProfile.defaultWithholdingTaxBasis);
+  }, [state.businessProfile.id, state.businessProfile.inventoryCategoriesEnabled, state.businessProfile.customerClassificationEnabled, state.businessProfile.taxEnabled, state.businessProfile.taxMode, state.businessProfile.applyTaxByDefault, state.businessProfile.taxComponents, state.businessProfile.withholdingTaxEnabled, state.businessProfile.defaultWithholdingTaxRate, state.businessProfile.defaultWithholdingTaxLabel, state.businessProfile.defaultWithholdingTaxBasis]);
 
   const [brandingMessage, setBrandingMessage] = useState('');
   const [showBrandingToast, setShowBrandingToast] = useState(false);
   const canManageBusinessEmail = hasPermission('business.edit');
+  const canManageCustomerClassification = hasPermission('business.edit');
+  const canManageInventoryCategories = hasPermission('business.edit');
+  const canManageTaxSettings = hasPermission('business.edit');
+  const canManageLocations = hasPermission('business.edit');
+  const businessLaunchState = getBusinessLaunchState(state.businessProfile);
+  const launchStatusMeta =
+    businessLaunchState === 'live'
+      ? {
+          pillClassName: 'success',
+          pillLabel: 'Business live',
+          title: 'Your workspace is officially open.',
+          helper:
+            'Assigned users can now enter their role-based dashboards and worklists as soon as they sign in.',
+          checklist: [
+            { label: 'Business setup details saved', done: true },
+            { label: 'Business officially launched', done: true },
+            { label: 'Brand identity uploaded', done: Boolean(state.businessProfile.logoUrl?.trim()) },
+          ],
+        }
+      : businessLaunchState === 'readyToLaunch'
+        ? {
+            pillClassName: 'warning',
+            pillLabel: 'Ready to launch',
+            title: 'Your business setup is saved. Launch the business to open the workspace for your team.',
+            helper:
+              'As a new business admin, your next step is simple: save the business setup, then launch the workspace so staff can enter their assigned dashboards.',
+            checklist: [
+              { label: 'Business setup details saved', done: true },
+              { label: 'Business officially launched', done: false },
+              { label: 'Brand identity uploaded', done: Boolean(state.businessProfile.logoUrl?.trim()) },
+            ],
+          }
+        : {
+            pillClassName: 'danger',
+            pillLabel: 'Setup incomplete',
+            title: 'Finish the business setup before the workspace opens to the rest of the team.',
+            helper:
+              'Complete the core company profile first. After you save it, you will be able to launch the business for assigned staff.',
+            checklist: [
+              { label: 'Business setup details saved', done: false },
+              { label: 'Business officially launched', done: false },
+              { label: 'Brand identity uploaded', done: Boolean(state.businessProfile.logoUrl?.trim()) },
+            ],
+          };
   const editableEmployees = state.users.filter((userProfile) => userProfile.userId !== currentUser.userId);
+  const sortedProductCategories = [...state.productCategories].sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name));
+  const sortedLocations = [...state.locations].sort((left, right) => Number(right.isDefault) - Number(left.isDefault) || left.name.localeCompare(right.name));
+  const activeWarehouses = sortedLocations.filter((location) => location.isActive && location.type === 'warehouse');
+  const activeStores = sortedLocations.filter((location) => location.isActive && location.type === 'store');
+  const sortedSupplyRoutes = [...state.locationSupplyRoutes].sort((left, right) => {
+    const leftFrom = sortedLocations.find((location) => location.id === left.fromLocationId)?.name ?? '';
+    const rightFrom = sortedLocations.find((location) => location.id === right.fromLocationId)?.name ?? '';
+    return leftFrom.localeCompare(rightFrom);
+  });
+  const derivedTaxRate = calculateTaxComponentTotalRate(taxComponentDrafts);
+
+  const updateTaxComponentDraft = (index: number, updates: Partial<TaxComponent>) => {
+    setTaxComponentDrafts((current) => current.map((component, componentIndex) =>
+      componentIndex === index ? { ...component, ...updates } : component
+    ));
+  };
 
   useEffect(() => {
     const businessId = state.businessProfile.id?.trim();
@@ -234,7 +350,7 @@ const SettingsPage: React.FC = () => {
     try {
       setBrandingMessage(`Processing ${type}...`);
       const resized = await resizeImage(file, 400, 400); // Practical size for docs
-      const result = updateBranding({
+      const result = await updateBranding({
         [type === 'logo' ? 'logoUrl' : 'signatureUrl']: resized
       });
       if (result.ok) {
@@ -309,30 +425,32 @@ const SettingsPage: React.FC = () => {
   const openAddEmployeeModal = () => {
     setNewEmployeeName('');
     setNewEmployeeEmail('');
-    setNewEmployeePassword('');
     setNewEmployeeRole('SalesManager');
-    setNewEmployeeRoleLabel('Sales Manager');
+    setNewEmployeeRoleLabel(ROLE_LABELS.SalesManager);
     setNewEmployeePermissions([...ROLE_DEFAULT_PERMISSIONS.SalesManager]);
     setNewEmployeeMessage('');
+    setNewEmployeeCredentials(null);
     setShowAddEmployeeModal(true);
   };
 
   const closeAddEmployeeModal = () => {
     setShowAddEmployeeModal(false);
     setNewEmployeeMessage('');
+    setNewEmployeeCredentials(null);
   };
 
   const openEditEmployeeModal = (userProfile: typeof state.users[number]) => {
     setEditingEmployeeId(userProfile.userId);
     setEditEmployeeName(userProfile.name);
     setEditEmployeeEmail(userProfile.email);
-    setEditEmployeePassword('');
     setEditEmployeeRole(userProfile.role);
     setEditEmployeeRoleLabel(userProfile.roleLabel || userProfile.name);
     setEditEmployeePermissions(getPermissionList(userProfile));
     setEditEmployeeStatus(userProfile.accountStatus ?? 'active');
     setEditEmployeeSenderName(userProfile.customerEmailSenderName ?? '');
     setEditEmployeeSenderEmail(userProfile.customerEmailSenderEmail ?? '');
+    setEditEmployeeUsername(userProfile.username ?? '');
+    setEditEmployeeCredentials(null);
     setEditEmployeeMessage('');
     setShowEditEmployeeModal(true);
   };
@@ -340,9 +458,10 @@ const SettingsPage: React.FC = () => {
   const closeEditEmployeeModal = () => {
     setShowEditEmployeeModal(false);
     setEditingEmployeeId('');
-    setEditEmployeePassword('');
     setEditEmployeeSenderName('');
     setEditEmployeeSenderEmail('');
+    setEditEmployeeUsername('');
+    setEditEmployeeCredentials(null);
     setEditEmployeeMessage('');
   };
 
@@ -352,18 +471,10 @@ const SettingsPage: React.FC = () => {
       return;
     }
 
-    if (!state.businessProfile.logoUrl) {
-      setFormMessage('Upload your company logo before completing business setup. The logo is required for branded PDFs.');
-      return;
-    }
-
     setIsSaving(true);
-    console.log('[DEBUG-SUBMIT] Saving Business Info:', { businessName, phone });
-    // Short delay to allow the 'Saving...' state to render and provide visual feedback
-    await new Promise(resolve => setTimeout(resolve, 400));
 
     try {
-      const result = updateBusinessProfile({
+      const result = await updateBusinessProfile({
         businessName,
         businessType,
         currency,
@@ -383,27 +494,249 @@ const SettingsPage: React.FC = () => {
       }
 
       setFormMessage('');
+      setSuccessToastMessage(result.message ?? 'Business setup saved.');
       setShowSuccessToast(true);
     } finally {
       setIsSaving(false);
     }
   };
 
+  const handleLaunchBusiness = async () => {
+    setIsLaunchingBusiness(true);
+
+    try {
+      const result = await launchBusinessWorkspace();
+      if (!result.ok) {
+        setLaunchMessage(result.message);
+        return;
+      }
+
+      setLaunchMessage('');
+      setSuccessToastMessage(result.message ?? 'Business launched. Your team can now access their assigned dashboards.');
+      setShowSuccessToast(true);
+    } finally {
+      setIsLaunchingBusiness(false);
+    }
+  };
+
+  const handleSaveInventoryCategorySetting = async () => {
+    const result = await setInventoryCategoriesEnabled({
+      enabled: inventoryCategoriesEnabledDraft,
+    });
+
+    if (!result.ok) {
+      setCategoryMessage(result.message);
+      return;
+    }
+
+    setCategoryMessage('');
+    setSuccessToastMessage(result.message ?? 'Inventory category setting saved.');
+    setShowSuccessToast(true);
+  };
+
+  const handleSaveCustomerClassificationSetting = async () => {
+    const result = await setCustomerClassificationEnabled({
+      enabled: customerClassificationEnabledDraft,
+    });
+
+    if (!result.ok) {
+      setCustomerClassificationMessage(result.message);
+      return;
+    }
+
+    setCustomerClassificationMessage('');
+    setSuccessToastMessage(result.message ?? 'Customer classification setting saved.');
+    setShowSuccessToast(true);
+  };
+
+  const handleSaveTaxSettings = async () => {
+    const result = await setBusinessTaxSettings({
+      enabled: taxEnabledDraft,
+      preset: 'ghana-standard',
+      mode: taxModeDraft,
+      applyTaxByDefault: applyTaxByDefaultDraft,
+      taxComponents: taxComponentDrafts,
+      withholdingTaxEnabled: withholdingTaxEnabledDraft,
+      withholdingTaxRate: Number(withholdingTaxRateDraft || 0),
+      withholdingTaxLabel: withholdingTaxLabelDraft,
+      withholdingTaxBasis: withholdingTaxBasisDraft,
+    });
+
+    if (!result.ok) {
+      setTaxMessage(result.message);
+      return;
+    }
+
+    setTaxMessage('');
+    setSuccessToastMessage(result.message ?? 'Tax settings saved.');
+    setShowSuccessToast(true);
+  };
+
+  const handleCreateCategory = async () => {
+    const result = await createProductCategory({
+      name: newCategoryName,
+      description: newCategoryDescription,
+      parentCategoryId: newCategoryParentId || undefined,
+    });
+
+    if (!result.ok) {
+      setCategoryMessage(result.message);
+      return;
+    }
+
+    setNewCategoryName('');
+    setNewCategoryDescription('');
+    setNewCategoryParentId('');
+    setCategoryMessage('');
+    setSuccessToastMessage('Product category created.');
+    setShowSuccessToast(true);
+  };
+
+  const openEditCategory = (category: typeof state.productCategories[number]) => {
+    setEditingCategoryId(category.id);
+    setEditCategoryName(category.name);
+    setEditCategoryDescription(category.description ?? '');
+    setEditCategoryParentId(category.parentCategoryId ?? '');
+    setCategoryMessage('');
+  };
+
+  const closeEditCategory = () => {
+    setEditingCategoryId('');
+    setEditCategoryName('');
+    setEditCategoryDescription('');
+    setEditCategoryParentId('');
+  };
+
+  const handleSaveCategory = async () => {
+    const result = await updateProductCategory({
+      categoryId: editingCategoryId,
+      name: editCategoryName,
+      description: editCategoryDescription,
+      parentCategoryId: editCategoryParentId || undefined,
+    });
+
+    if (!result.ok) {
+      setCategoryMessage(result.message);
+      return;
+    }
+
+    closeEditCategory();
+    setCategoryMessage('');
+    setSuccessToastMessage('Product category updated.');
+    setShowSuccessToast(true);
+  };
+
+  const handleToggleCategoryActive = async (categoryId: string, isActive: boolean) => {
+    const result = await setProductCategoryActive({ categoryId, isActive });
+
+    if (!result.ok) {
+      setCategoryMessage(result.message);
+      return;
+    }
+
+    if (editingCategoryId === categoryId && !isActive) {
+      closeEditCategory();
+    }
+    setCategoryMessage('');
+    setSuccessToastMessage(isActive ? 'Product category reactivated.' : 'Product category archived.');
+    setShowSuccessToast(true);
+  };
+
+  const handleCreateLocation = async (type: 'store' | 'warehouse') => {
+    const result = await createBusinessLocation({
+      name: type === 'store' ? newStoreName : newWarehouseName,
+      type,
+      isDefault: type === 'store' ? newStoreDefault : false,
+    });
+
+    if (!result.ok) {
+      setLocationMessage(result.message);
+      return;
+    }
+
+    if (type === 'store') {
+      setNewStoreName('');
+      setNewStoreDefault(false);
+    } else {
+      setNewWarehouseName('');
+    }
+    setLocationMessage('');
+    setSuccessToastMessage(result.message ?? `${type === 'store' ? 'Store' : 'Warehouse'} created.`);
+    setShowSuccessToast(true);
+  };
+
+  const openEditLocation = (location: typeof state.locations[number]) => {
+    setEditingLocationId(location.id);
+    setEditLocationName(location.name);
+    setEditLocationType(location.type);
+    setEditLocationDefault(location.isDefault);
+    setEditLocationActive(location.isActive);
+    setLocationMessage('');
+  };
+
+  const closeEditLocation = () => {
+    setEditingLocationId('');
+    setEditLocationName('');
+    setEditLocationType('store');
+    setEditLocationDefault(false);
+    setEditLocationActive(true);
+  };
+
+  const handleSaveLocation = async () => {
+    const result = await updateBusinessLocation({
+      locationId: editingLocationId,
+      name: editLocationName,
+      type: editLocationType,
+      isDefault: editLocationDefault,
+      isActive: editLocationActive,
+    });
+
+    if (!result.ok) {
+      setLocationMessage(result.message);
+      return;
+    }
+
+    closeEditLocation();
+    setLocationMessage('');
+    setSuccessToastMessage(result.message ?? 'Location updated.');
+    setShowSuccessToast(true);
+  };
+
+  const handleCreateSupplyRoute = async () => {
+    const result = await createSupplyRoute({
+      fromLocationId: newRouteFromLocationId,
+      toLocationId: newRouteToLocationId,
+    });
+
+    if (!result.ok) {
+      setRouteMessage(result.message);
+      return;
+    }
+
+    setNewRouteFromLocationId('');
+    setNewRouteToLocationId('');
+    setRouteMessage('');
+    setSuccessToastMessage('Supply route created.');
+    setShowSuccessToast(true);
+  };
+
+  const handleToggleSupplyRoute = async (routeId: string, isActive: boolean) => {
+    const result = await setSupplyRouteActive({ routeId, isActive });
+
+    if (!result.ok) {
+      setRouteMessage(result.message);
+      return;
+    }
+
+    setRouteMessage('');
+    setSuccessToastMessage(isActive ? 'Supply route reactivated.' : 'Supply route archived.');
+    setShowSuccessToast(true);
+  };
+
   const handleSignOut = async () => {
     const result = await signOut();
 
     if (!result.ok) {
-      setFormMessage(result.message);
-    }
-  };
-
-  const handleUpdateMyPassword = () => {
-    const result = updateUserProfile(currentUser.userId, { 
-      password: myPassword 
-    });
-    if (result.ok) {
-      setShowSuccessToast(true);
-    } else {
       setFormMessage(result.message);
     }
   };
@@ -417,7 +750,6 @@ const SettingsPage: React.FC = () => {
     const result = addUserAccount({
       name: newEmployeeName,
       email: newEmployeeEmail,
-      password: newEmployeePassword,
       role: newEmployeeRole,
       roleLabel: newEmployeeRoleLabel,
       grantedPermissions,
@@ -429,17 +761,17 @@ const SettingsPage: React.FC = () => {
       return;
     }
 
+    setNewEmployeeCredentials(result.data ?? null);
+    setNewEmployeeMessage('');
+    setSuccessToastMessage('Employee account created.');
     setShowSuccessToast(true);
-    closeAddEmployeeModal();
   };
 
   const handleChangeNewEmployeeRole = (role: AppRole) => {
     setNewEmployeeRole(role);
     setNewEmployeePermissions([...ROLE_DEFAULT_PERMISSIONS[role]]);
     if (!newEmployeeRoleLabel.trim()) {
-      setNewEmployeeRoleLabel(
-        role === 'SalesManager' ? 'Sales Manager' : role === 'Accountant' ? 'Accountant' : 'Admin'
-      );
+      setNewEmployeeRoleLabel(ROLE_LABELS[role]);
     }
   };
 
@@ -459,7 +791,7 @@ const SettingsPage: React.FC = () => {
     setEditEmployeeRole(role);
     setEditEmployeePermissions([...ROLE_DEFAULT_PERMISSIONS[role]]);
     if (!editEmployeeRoleLabel.trim()) {
-      setEditEmployeeRoleLabel(role === 'SalesManager' ? 'Sales Manager' : role === 'Accountant' ? 'Accountant' : 'Admin');
+      setEditEmployeeRoleLabel(ROLE_LABELS[role]);
     }
   };
 
@@ -485,7 +817,6 @@ const SettingsPage: React.FC = () => {
       userId: editingEmployeeId,
       name: editEmployeeName,
       email: editEmployeeEmail,
-      password: editEmployeePassword || undefined,
       role: editEmployeeRole,
       roleLabel: editEmployeeRoleLabel,
       grantedPermissions,
@@ -512,6 +843,24 @@ const SettingsPage: React.FC = () => {
     closeEditEmployeeModal();
   };
 
+  const handleCreateTemporaryPassword = () => {
+    const result = resetEmployeeTemporaryPassword(editingEmployeeId);
+
+    if (!result.ok) {
+      setEditEmployeeMessage(result.message);
+      return;
+    }
+
+    if (result.data) {
+      setEditEmployeeUsername(result.data.username);
+      setEditEmployeeCredentials(result.data);
+    }
+
+    setEditEmployeeMessage('');
+    setSuccessToastMessage('Temporary password created for employee.');
+    setShowSuccessToast(true);
+  };
+
   return (
     <IonPage>
       <IonHeader translucent={true}>
@@ -521,6 +870,57 @@ const SettingsPage: React.FC = () => {
       </IonHeader>
       <IonContent fullscreen={true}>
         <div className="page-shell">
+          {hasPermission('business.view') ? (
+            <SectionCard
+              title="Business launch status"
+              subtitle="Track whether this workspace is still being prepared or officially open for the team."
+              highlighted={businessLaunchState !== 'live'}
+              highlightLabel={
+                businessLaunchState === 'live'
+                  ? "You're viewing the live business status"
+                  : businessLaunchState === 'readyToLaunch'
+                    ? "You're one final step away from opening the workspace"
+                    : "You're still finishing the business setup"
+              }
+              dataTestId="business-launch-status"
+            >
+              <div className="diagnostic-grid">
+                <div className="list-row">
+                  <div>
+                    <strong>{launchStatusMeta.title}</strong>
+                    <p>{launchStatusMeta.helper}</p>
+                  </div>
+                  <span className={`status-pill ${launchStatusMeta.pillClassName}`}>{launchStatusMeta.pillLabel}</span>
+                </div>
+                <div className="launch-checklist" data-testid={`launch-state-${businessLaunchState}`}>
+                  {launchStatusMeta.checklist.map((item) => (
+                    <div key={item.label} className="launch-checklist-item">
+                      <IonIcon
+                        icon={item.done ? checkmarkCircleOutline : closeOutline}
+                        color={item.done ? 'success' : businessLaunchState === 'readyToLaunch' ? 'warning' : 'medium'}
+                      />
+                      <span>{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+                {hasPermission('business.edit') && businessLaunchState === 'readyToLaunch' ? (
+                  <IonButton
+                    expand="block"
+                    onClick={handleLaunchBusiness}
+                    disabled={isLaunchingBusiness}
+                    data-testid="launch-business-button"
+                  >
+                    {isLaunchingBusiness ? 'Launching business...' : 'Launch Business'}
+                  </IonButton>
+                ) : null}
+                {launchMessage ? <p className="form-message">{launchMessage}</p> : null}
+                {businessLaunchState === 'live' && state.businessProfile.launchedAt ? (
+                  <p className="form-message">Business launched on {new Date(state.businessProfile.launchedAt).toLocaleString()}.</p>
+                ) : null}
+              </div>
+            </SectionCard>
+          ) : null}
+
           <SectionCard
             title="Cloud integrity"
             subtitle="Verify your workspace is correctly synchronized with the Supabase backend."
@@ -666,8 +1066,9 @@ const SettingsPage: React.FC = () => {
                        {editableEmployees.map((userProfile) => (
                          <div className="list-row" key={userProfile.userId}>
                            <div>
-                             <strong>{userProfile.name}</strong>
+                           <strong>{userProfile.name}</strong>
                              <p>{userProfile.email}</p>
+                             {userProfile.username ? <p className="code-label">Username: {userProfile.username}</p> : null}
                              <p className="code-label">{userProfile.roleLabel || userProfile.role}</p>
                            </div>
                            <div className="right-meta">
@@ -689,22 +1090,592 @@ const SettingsPage: React.FC = () => {
 
           <SectionCard
             title="Security"
-            subtitle="Secure your identity by keeping your password updated."
+            subtitle="Authentication credentials are managed by the configured identity provider, not by local workspace state."
           >
-            <div className="form-grid">
-              <IonItem lines="none" className="app-item">
-                <IonLabel position="stacked">My password</IonLabel>
-                <IonInput 
-                  type="password" 
-                  value={myPassword} 
-                  onIonInput={(e) => setMyPassword(e.detail.value ?? '')} 
-                />
-              </IonItem>
-              <IonButton expand="block" fill="outline" onClick={handleUpdateMyPassword}>
-                Change my password
-              </IonButton>
+            <div className="list-block">
+              <div className="list-row">
+                <div>
+                  <strong>Owner authentication</strong>
+                  <p>Use the sign-in screen or password reset flow to manage your owner credentials securely through Supabase Auth.</p>
+                </div>
+              </div>
             </div>
           </SectionCard>
+
+          {canManageCustomerClassification && (
+            <SectionCard
+              title="Customer classification"
+              subtitle="Turn B2B/B2C classification on only if your business needs that customer distinction."
+            >
+              <div className="form-grid">
+                <div className="stats-row">
+                  <div className="app-card stat-pill">
+                    <p className="muted-label">Active vendors</p>
+                    <h2>{state.vendors.filter((vendor) => vendor.status === 'active').length}</h2>
+                  </div>
+                  <div className="app-card stat-pill">
+                    <p className="muted-label">Inactive vendors</p>
+                    <h2>{state.vendors.filter((vendor) => vendor.status === 'inactive').length}</h2>
+                  </div>
+                </div>
+                <div className="list-block">
+                  <div className="list-row">
+                    <div>
+                      <strong>Enable B2B/B2C classification</strong>
+                      <p>Classification stays optional. Customers and documents can remain unclassified when needed.</p>
+                    </div>
+                    <IonToggle
+                      checked={customerClassificationEnabledDraft}
+                      onIonChange={(event) => setCustomerClassificationEnabledDraft(event.detail.checked)}
+                    />
+                  </div>
+                </div>
+
+                <IonButton expand="block" fill="outline" onClick={handleSaveCustomerClassificationSetting}>
+                  Save Customer Classification Setting
+                </IonButton>
+                {customerClassificationMessage ? <p className="form-message">{customerClassificationMessage}</p> : null}
+              </div>
+            </SectionCard>
+          )}
+
+          {canManageTaxSettings && (
+            <SectionCard
+              title="Ghana tax"
+              subtitle="Enable tax only when this business needs VAT/NHIL/GETFund treatment on new documents."
+            >
+              <div className="form-grid">
+                <div className="list-block">
+                  <div className="list-row">
+                    <div>
+                      <strong>Enable Ghana Standard tax</strong>
+                      <p>Uses VAT 12.5%, NHIL 2.5%, and GETFund 2.5% for a combined 17.5% snapshot on new documents.</p>
+                    </div>
+                    <IonToggle
+                      checked={taxEnabledDraft}
+                      onIonChange={(event) => setTaxEnabledDraft(event.detail.checked)}
+                    />
+                  </div>
+                </div>
+
+                {taxEnabledDraft ? (
+                  <>
+                    <IonItem lines="none" className="app-item">
+                      <IonLabel position="stacked">Tax mode</IonLabel>
+                      <IonSelect
+                        value={taxModeDraft}
+                        interface="popover"
+                        onIonChange={(event) => setTaxModeDraft(event.detail.value)}
+                      >
+                        <IonSelectOption value="exclusive">Exclusive - add tax on top</IonSelectOption>
+                        <IonSelectOption value="inclusive">Inclusive - prices already include tax</IonSelectOption>
+                      </IonSelect>
+                    </IonItem>
+
+                    <div className="list-block">
+                      <div className="list-row">
+                        <div>
+                          <strong>Ghana Standard components</strong>
+                          <p>Edit the active default rates for future documents. Existing quotations and invoices keep their saved snapshots.</p>
+                        </div>
+                        <IonBadge color="primary">{derivedTaxRate}% total</IonBadge>
+                      </div>
+                      {taxComponentDrafts.map((component, index) => (
+                        <div className="list-row" key={component.key}>
+                          <div style={{ flex: 1 }}>
+                            <IonItem lines="none" className="app-item">
+                              <IonLabel position="stacked">Component label</IonLabel>
+                              <IonInput
+                                value={component.label}
+                                onIonInput={(event) => updateTaxComponentDraft(index, { label: event.detail.value ?? '' })}
+                              />
+                            </IonItem>
+                          </div>
+                          <div style={{ width: '130px' }}>
+                            <IonItem lines="none" className="app-item">
+                              <IonLabel position="stacked">Rate (%)</IonLabel>
+                              <IonInput
+                                type="number"
+                                min={0}
+                                max={100}
+                                inputmode="decimal"
+                                value={String(component.rate)}
+                                onIonInput={(event) => updateTaxComponentDraft(index, { rate: Number(event.detail.value || 0) })}
+                              />
+                            </IonItem>
+                          </div>
+                          <IonToggle
+                            aria-label={`Enable ${component.label || component.key}`}
+                            checked={component.enabled !== false}
+                            onIonChange={(event) => updateTaxComponentDraft(index, { enabled: event.detail.checked })}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="list-block">
+                      <div className="list-row">
+                        <div>
+                          <strong>Apply tax by default</strong>
+                          <p>New quotations and invoices capture the current tax settings automatically.</p>
+                        </div>
+                        <IonToggle
+                          checked={applyTaxByDefaultDraft}
+                          onIonChange={(event) => setApplyTaxByDefaultDraft(event.detail.checked)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="list-block">
+                      <div className="list-row">
+                        <div>
+                          <strong>Enable withholding tax defaults</strong>
+                          <p>Shows withholding as a deduction from the gross invoice amount, separate from VAT/NHIL/GETFund.</p>
+                        </div>
+                        <IonToggle
+                          checked={withholdingTaxEnabledDraft}
+                          onIonChange={(event) => setWithholdingTaxEnabledDraft(event.detail.checked)}
+                        />
+                      </div>
+                    </div>
+
+                    {withholdingTaxEnabledDraft ? (
+                      <>
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Default withholding label</IonLabel>
+                          <IonInput
+                            value={withholdingTaxLabelDraft}
+                            placeholder="Withholding Tax"
+                            onIonInput={(event) => setWithholdingTaxLabelDraft(event.detail.value ?? '')}
+                          />
+                        </IonItem>
+                        <div className="dual-stat">
+                          <IonItem lines="none" className="app-item">
+                            <IonLabel position="stacked">Default withholding rate (%)</IonLabel>
+                            <IonInput
+                              type="number"
+                              min={0}
+                              max={100}
+                              inputmode="decimal"
+                              value={withholdingTaxRateDraft}
+                              onIonInput={(event) => setWithholdingTaxRateDraft(event.detail.value ?? '0')}
+                            />
+                          </IonItem>
+                          <IonItem lines="none" className="app-item">
+                            <IonLabel position="stacked">Withholding basis</IonLabel>
+                            <IonSelect
+                              value={withholdingTaxBasisDraft}
+                              interface="popover"
+                              onIonChange={(event) => setWithholdingTaxBasisDraft(event.detail.value)}
+                            >
+                              <IonSelectOption value="taxInclusiveTotal">Gross total after tax</IonSelectOption>
+                              <IonSelectOption value="subtotal">Subtotal</IonSelectOption>
+                              <IonSelectOption value="taxExclusiveSubtotal">Tax-exclusive subtotal</IonSelectOption>
+                            </IonSelect>
+                          </IonItem>
+                        </div>
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+
+                <IonButton expand="block" fill="outline" onClick={handleSaveTaxSettings}>
+                  Save Tax Settings
+                </IonButton>
+                {taxMessage ? <p className="form-message">{taxMessage}</p> : null}
+              </div>
+            </SectionCard>
+          )}
+
+          {canManageLocations && (
+            <SectionCard
+              title="Locations"
+              subtitle="Set up stores, warehouses, and simple warehouse-to-store supply routes."
+            >
+              <div className="form-grid">
+                <div className="list-block">
+                  <div className="list-row">
+                    <div>
+                      <strong>Current locations</strong>
+                      <p>Every business keeps one default location so single-location workflows stay simple.</p>
+                    </div>
+                    <IonBadge color="primary">{sortedLocations.length}</IonBadge>
+                  </div>
+                  {sortedLocations.map((location) => (
+                    <div className="list-row" key={location.id}>
+                      <div>
+                        <strong>{location.name}</strong>
+                        <p>{location.type === 'warehouse' ? 'Warehouse' : 'Store'}</p>
+                      </div>
+                      <div className="right-meta">
+                        {location.isDefault ? <IonBadge color="success">Default</IonBadge> : null}
+                        {!location.isActive ? <IonBadge color="medium">Inactive</IonBadge> : null}
+                        <IonButton fill="clear" size="small" onClick={() => openEditLocation(location)}>
+                          <IonIcon slot="icon-only" icon={createOutline} />
+                        </IonButton>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="list-block">
+                  <div className="list-row">
+                    <div>
+                      <strong>Create store</strong>
+                      <p>Set up a selling location separately from warehouses so admin work stays clear.</p>
+                    </div>
+                  </div>
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Store name</IonLabel>
+                    <IonInput
+                      value={newStoreName}
+                      placeholder="e.g. Main Store"
+                      onIonInput={(event) => setNewStoreName(event.detail.value ?? '')}
+                    />
+                  </IonItem>
+                  <div className="list-row">
+                    <div>
+                      <strong>Make this the main store</strong>
+                      <p>The main store stays editable and can remain the default point for simple workflows.</p>
+                    </div>
+                    <IonToggle checked={newStoreDefault} onIonChange={(event) => setNewStoreDefault(event.detail.checked)} />
+                  </div>
+                  <IonButton expand="block" onClick={() => handleCreateLocation('store')}>
+                    Create Store
+                  </IonButton>
+                </div>
+
+                <div className="list-block">
+                  <div className="list-row">
+                    <div>
+                      <strong>Create warehouse</strong>
+                      <p>Create warehouse locations separately so transfer and receipt workflows stay easy to understand.</p>
+                    </div>
+                  </div>
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Warehouse name</IonLabel>
+                    <IonInput
+                      value={newWarehouseName}
+                      placeholder="e.g. North Warehouse"
+                      onIonInput={(event) => setNewWarehouseName(event.detail.value ?? '')}
+                    />
+                  </IonItem>
+                  <IonButton expand="block" fill="outline" onClick={() => handleCreateLocation('warehouse')}>
+                    Create Warehouse
+                  </IonButton>
+                </div>
+
+                {editingLocationId ? (
+                  <div className="list-block">
+                    <div className="list-row">
+                      <div>
+                        <strong>Edit location</strong>
+                        <p>Keep one active default location for stable inventory behavior.</p>
+                      </div>
+                    </div>
+                    <IonItem lines="none" className="app-item">
+                      <IonLabel position="stacked">Location name</IonLabel>
+                      <IonInput value={editLocationName} onIonInput={(event) => setEditLocationName(event.detail.value ?? '')} />
+                    </IonItem>
+                    <IonItem lines="none" className="app-item">
+                      <IonLabel position="stacked">Type</IonLabel>
+                      <IonSelect value={editLocationType} interface="popover" onIonChange={(event) => setEditLocationType(event.detail.value)}>
+                        <IonSelectOption value="store">Store</IonSelectOption>
+                        <IonSelectOption value="warehouse">Warehouse</IonSelectOption>
+                      </IonSelect>
+                    </IonItem>
+                    <div className="list-row">
+                      <div>
+                        <strong>Default location</strong>
+                        <p>Only one location can be default at a time.</p>
+                      </div>
+                      <IonToggle checked={editLocationDefault} onIonChange={(event) => setEditLocationDefault(event.detail.checked)} />
+                    </div>
+                    <div className="list-row">
+                      <div>
+                        <strong>Active location</strong>
+                        <p>Inactive locations stay preserved but are hidden from normal stock entry.</p>
+                      </div>
+                      <IonToggle checked={editLocationActive} onIonChange={(event) => setEditLocationActive(event.detail.checked)} />
+                    </div>
+                    <div className="dual-stat">
+                      <IonButton expand="block" onClick={handleSaveLocation}>
+                        Save Location
+                      </IonButton>
+                      <IonButton expand="block" fill="outline" color="medium" onClick={closeEditLocation}>
+                        Cancel
+                      </IonButton>
+                    </div>
+                  </div>
+                ) : null}
+
+                {locationMessage ? <p className="form-message">{locationMessage}</p> : null}
+
+                <div className="list-block">
+                  <div className="list-row">
+                    <div>
+                      <strong>Warehouse to store supply routes</strong>
+                      <p>Routes keep transfer choices simple and prevent accidental store-to-store movement.</p>
+                    </div>
+                    <IonBadge color="primary">{sortedSupplyRoutes.filter((route) => route.isActive).length}</IonBadge>
+                  </div>
+
+                  {sortedSupplyRoutes.length === 0 ? (
+                    <div className="list-row">
+                      <div>
+                        <strong>No supply routes yet</strong>
+                        <p>Create a warehouse and a store, then connect them here.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    sortedSupplyRoutes.map((route) => {
+                      const from = sortedLocations.find((location) => location.id === route.fromLocationId);
+                      const to = sortedLocations.find((location) => location.id === route.toLocationId);
+
+                      return (
+                        <div className="list-row" key={route.id}>
+                          <div>
+                            <strong>{from?.name ?? 'Unknown warehouse'} → {to?.name ?? 'Unknown store'}</strong>
+                            <p>Warehouse supply route</p>
+                          </div>
+                          <div className="right-meta">
+                            <IonBadge color={route.isActive ? 'success' : 'medium'}>
+                              {route.isActive ? 'Active' : 'Archived'}
+                            </IonBadge>
+                            <IonButton
+                              fill="clear"
+                              size="small"
+                              onClick={() => handleToggleSupplyRoute(route.id, !route.isActive)}
+                            >
+                              {route.isActive ? 'Archive' : 'Reactivate'}
+                            </IonButton>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="dual-stat">
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Source warehouse</IonLabel>
+                    <IonSelect
+                      value={newRouteFromLocationId}
+                      interface="popover"
+                      placeholder="Choose warehouse"
+                      onIonChange={(event) => setNewRouteFromLocationId(event.detail.value)}
+                    >
+                      {activeWarehouses.map((location) => (
+                        <IonSelectOption key={location.id} value={location.id}>{location.name}</IonSelectOption>
+                      ))}
+                    </IonSelect>
+                  </IonItem>
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Destination store</IonLabel>
+                    <IonSelect
+                      value={newRouteToLocationId}
+                      interface="popover"
+                      placeholder="Choose store"
+                      onIonChange={(event) => setNewRouteToLocationId(event.detail.value)}
+                    >
+                      {activeStores.map((location) => (
+                        <IonSelectOption key={location.id} value={location.id}>{location.name}</IonSelectOption>
+                      ))}
+                    </IonSelect>
+                  </IonItem>
+                </div>
+
+                <IonButton
+                  expand="block"
+                  fill="outline"
+                  onClick={handleCreateSupplyRoute}
+                  disabled={activeWarehouses.length === 0 || activeStores.length === 0}
+                >
+                  Create Supply Route
+                </IonButton>
+                {routeMessage ? <p className="form-message">{routeMessage}</p> : null}
+              </div>
+            </SectionCard>
+          )}
+
+          {canManageInventoryCategories && (
+            <SectionCard
+              title="Inventory categories"
+              subtitle="Turn optional product categorization on only if your business needs extra inventory structure."
+            >
+              <div className="form-grid">
+                <div className="list-block">
+                  <div className="list-row">
+                    <div>
+                      <strong>Enable inventory categories</strong>
+                      <p>
+                        Categories stay optional. Products can remain uncategorized even when this is enabled.
+                      </p>
+                    </div>
+                    <IonToggle
+                      checked={inventoryCategoriesEnabledDraft}
+                      onIonChange={(event) => setInventoryCategoriesEnabledDraft(event.detail.checked)}
+                    />
+                  </div>
+                </div>
+
+                <IonButton expand="block" fill="outline" onClick={handleSaveInventoryCategorySetting}>
+                  Save Inventory Category Setting
+                </IonButton>
+
+                {inventoryCategoriesEnabledDraft && (
+                  <>
+                    <div className="list-block">
+                      <div className="list-row">
+                        <div>
+                          <strong>Create category</strong>
+                          <p>Use a simple business-scoped category name. Duplicate names are blocked.</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <IonItem lines="none" className="app-item">
+                      <IonLabel position="stacked">Category name</IonLabel>
+                      <IonInput
+                        value={newCategoryName}
+                        placeholder="e.g. Household"
+                        onIonInput={(event) => setNewCategoryName(event.detail.value ?? '')}
+                      />
+                    </IonItem>
+
+                    <IonItem lines="none" className="app-item">
+                      <IonLabel position="stacked">Description (optional)</IonLabel>
+                      <IonInput
+                        value={newCategoryDescription}
+                        placeholder="e.g. Fast-moving home supplies"
+                        onIonInput={(event) => setNewCategoryDescription(event.detail.value ?? '')}
+                      />
+                    </IonItem>
+
+                    <IonItem lines="none" className="app-item">
+                      <IonLabel position="stacked">Parent category (optional)</IonLabel>
+                      <IonSelect
+                        value={newCategoryParentId}
+                        placeholder="None"
+                        interface="popover"
+                        onIonChange={(event) => setNewCategoryParentId(event.detail.value ?? '')}
+                      >
+                        <IonSelectOption value="">None</IonSelectOption>
+                        {sortedProductCategories.map((category) => (
+                          <IonSelectOption key={category.id} value={category.id}>
+                            {category.name}
+                          </IonSelectOption>
+                        ))}
+                      </IonSelect>
+                    </IonItem>
+
+                    <IonButton expand="block" onClick={handleCreateCategory}>
+                      Create Product Category
+                    </IonButton>
+
+                    <div className="list-block">
+                      <div className="list-row">
+                        <div>
+                          <strong>Saved categories</strong>
+                          <p>Archive categories you want to retire. Existing product links remain intact.</p>
+                        </div>
+                        <IonBadge color="primary">{sortedProductCategories.length}</IonBadge>
+                      </div>
+
+                      {sortedProductCategories.length === 0 ? (
+                        <p className="diagnostic-detail">No categories have been created yet.</p>
+                      ) : (
+                        sortedProductCategories.map((category) => (
+                          <div className="list-row" key={category.id}>
+                            <div style={{ flex: 1 }}>
+                              <strong>{category.name}</strong>
+                              <p>{category.description || 'No description provided.'}</p>
+                              {category.parentCategoryId ? (
+                                <p className="muted-label">
+                                  Parent: {state.productCategories.find((item) => item.id === category.parentCategoryId)?.name ?? 'Unknown category'}
+                                </p>
+                              ) : null}
+                              <p className="code-label">{category.slug}</p>
+                            </div>
+                            <div className="right-meta">
+                              <IonBadge color={category.isActive ? 'success' : 'medium'}>
+                                {category.isActive ? 'Active' : 'Archived'}
+                              </IonBadge>
+                              <IonButton fill="clear" size="small" onClick={() => openEditCategory(category)}>
+                                <IonIcon slot="icon-only" icon={createOutline} />
+                              </IonButton>
+                              {category.isActive ? (
+                                <IonButton fill="clear" size="small" color="medium" onClick={() => handleToggleCategoryActive(category.id, false)}>
+                                  <IonIcon slot="icon-only" icon={powerOutline} />
+                                </IonButton>
+                              ) : (
+                                <IonButton fill="clear" size="small" color="success" onClick={() => handleToggleCategoryActive(category.id, true)}>
+                                  <IonIcon slot="icon-only" icon={refreshOutline} />
+                                </IonButton>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {editingCategoryId ? (
+                      <div className="list-block">
+                        <div className="list-row">
+                          <div>
+                            <strong>Edit category</strong>
+                            <p>Rename or clarify the selected category without changing any existing product links.</p>
+                          </div>
+                        </div>
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Category name</IonLabel>
+                          <IonInput
+                            value={editCategoryName}
+                            onIonInput={(event) => setEditCategoryName(event.detail.value ?? '')}
+                          />
+                        </IonItem>
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Description (optional)</IonLabel>
+                          <IonInput
+                            value={editCategoryDescription}
+                            onIonInput={(event) => setEditCategoryDescription(event.detail.value ?? '')}
+                          />
+                        </IonItem>
+                        <IonItem lines="none" className="app-item">
+                          <IonLabel position="stacked">Parent category (optional)</IonLabel>
+                          <IonSelect
+                            value={editCategoryParentId}
+                            placeholder="None"
+                            interface="popover"
+                            onIonChange={(event) => setEditCategoryParentId(event.detail.value ?? '')}
+                          >
+                            <IonSelectOption value="">None</IonSelectOption>
+                            {sortedProductCategories
+                              .filter((category) => category.id !== editingCategoryId)
+                              .map((category) => (
+                                <IonSelectOption key={category.id} value={category.id}>
+                                  {category.name}
+                                </IonSelectOption>
+                              ))}
+                          </IonSelect>
+                        </IonItem>
+                        <div className="dual-stat">
+                          <IonButton expand="block" onClick={handleSaveCategory}>
+                            Save Category
+                          </IonButton>
+                          <IonButton expand="block" fill="outline" color="medium" onClick={closeEditCategory}>
+                            Cancel
+                          </IonButton>
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+
+                {categoryMessage ? <p className="form-message">{categoryMessage}</p> : null}
+              </div>
+            </SectionCard>
+          )}
 
            {canManageBusinessEmail && (
             <SectionCard
@@ -866,6 +1837,21 @@ const SettingsPage: React.FC = () => {
                 </div>
 
                 {formMessage ? <p className="form-message">{formMessage}</p> : null}
+                <IonButton 
+                  expand="block" 
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="save-settings-btn"
+                >
+                  {isSaving ? (
+                    <>
+                      <IonSpinner name="crescent" style={{ marginRight: '8px' }} />
+                      Saving business setup...
+                    </>
+                  ) : (
+                    'Save Business Setup'
+                  )}
+                </IonButton>
               </div>
             </SectionCard>
           )}
@@ -968,7 +1954,7 @@ const SettingsPage: React.FC = () => {
           )}
 
           {hasPermission('branding.manage') && (
-            <SectionCard title="Brand identity" subtitle="Manage your company's visual identifiers for official invoices, quotations, and waybills. Company logo is required before setup can be completed.">
+            <SectionCard title="Brand identity" subtitle="Manage your company's visual identifiers for official invoices, quotations, and waybills. Add a logo for stronger branded documents.">
               <div className="form-grid">
                 <div className="branding-upload-grid">
                   <div className="branding-item branding-asset-card">
@@ -976,7 +1962,7 @@ const SettingsPage: React.FC = () => {
                       <div>
                         <div className="branding-label-row">
                           <IonLabel>Company logo</IonLabel>
-                          <IonBadge color="danger">Required</IonBadge>
+                          <IonBadge color="medium">Recommended</IonBadge>
                         </div>
                         <p className="branding-helper-copy">Used on invoices, quotations, and waybills. Best with a square or landscape logo on a transparent background.</p>
                       </div>
@@ -990,7 +1976,7 @@ const SettingsPage: React.FC = () => {
                             <IonIcon icon={imageOutline} />
                           </div>
                           <strong>Upload your company logo</strong>
-                          <p>PNG, JPG, or WebP. This asset is required before business setup can be completed.</p>
+                          <p>PNG, JPG, or WebP. This helps your invoices, quotations, and waybills look more official.</p>
                         </div>
                       )}
                     </div>
@@ -1002,7 +1988,7 @@ const SettingsPage: React.FC = () => {
                       <span className="branding-file-hint">Recommended for branded PDFs and customer-facing documents.</span>
                     </div>
                     {!state.businessProfile.logoUrl ? (
-                      <p className="form-message" style={{ marginTop: '10px' }}>A company logo is required before you can complete business setup.</p>
+                      <p className="form-message" style={{ marginTop: '10px' }}>You can still launch the business without a logo, but branded documents will look better once you add one.</p>
                     ) : null}
                   </div>
                   <div className="branding-item branding-asset-card">
@@ -1039,24 +2025,11 @@ const SettingsPage: React.FC = () => {
                 </div>
                 {brandingMessage && <p className="form-message">{brandingMessage}</p>}
 
-                <div style={{ marginTop: '24px' }}>
-                  <IonButton 
-                    expand="block" 
-                    onClick={handleSave}
-                    disabled={isSaving || !state.businessProfile.logoUrl}
-                    className="save-settings-btn"
-                  >
-                    {isSaving ? (
-                      <>
-                        <IonSpinner name="crescent" style={{ marginRight: '8px' }} />
-                        Saving Setup...
-                      </>
-                    ) : (
-                      'Complete Business Setup'
-                    )}
-                  </IonButton>
-                  {formMessage ? <p className="form-message" style={{ marginTop: '12px', textAlign: 'center' }}>{formMessage}</p> : null}
-                </div>
+                {!state.businessProfile.logoUrl ? (
+                  <p className="muted-label" style={{ marginTop: '12px' }}>
+                    You can save business details without a logo. Add one here when you want branded PDFs and customer-facing documents.
+                  </p>
+                ) : null}
               </div>
             </SectionCard>
           )}
@@ -1143,19 +2116,12 @@ const SettingsPage: React.FC = () => {
                 </IonItem>
 
                 <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">Temporary password</IonLabel>
-                  <IonInput
-                    type="password"
-                    value={newEmployeePassword}
-                    placeholder="Set an initial password"
-                    onIonInput={(event) => setNewEmployeePassword(event.detail.value ?? '')}
-                  />
-                </IonItem>
-
-                <IonItem lines="none" className="app-item">
                   <IonLabel position="stacked">Base role</IonLabel>
                   <IonSelect value={newEmployeeRole} onIonChange={(event) => handleChangeNewEmployeeRole(event.detail.value as AppRole)}>
                     <IonSelectOption value="SalesManager">Sales Manager</IonSelectOption>
+                    <IonSelectOption value="WarehouseManager">Warehouse Manager</IonSelectOption>
+                    <IonSelectOption value="StoreManager">Store Manager</IonSelectOption>
+                    <IonSelectOption value="PurchaseManager">Purchase Manager</IonSelectOption>
                     <IonSelectOption value="Accountant">Accountant</IonSelectOption>
                     <IonSelectOption value="Admin">Admin</IonSelectOption>
                   </IonSelect>
@@ -1216,9 +2182,28 @@ const SettingsPage: React.FC = () => {
 
                 {newEmployeeMessage ? <p className="form-message">{newEmployeeMessage}</p> : null}
 
-                <IonButton expand="block" onClick={handleAddEmployee}>
-                  Create Employee Account
-                </IonButton>
+                {newEmployeeCredentials ? (
+                  <div className="list-block">
+                    <div className="list-row">
+                      <div>
+                        <strong>Employee sign-in credentials</strong>
+                        <p>Share these with the employee so they can sign in with their authorized role.</p>
+                        <p className="code-label">Username: {newEmployeeCredentials.username}</p>
+                        <p className="code-label">Temporary password: {newEmployeeCredentials.temporaryPassword}</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {newEmployeeCredentials ? (
+                  <IonButton expand="block" fill="outline" onClick={closeAddEmployeeModal}>
+                    Done
+                  </IonButton>
+                ) : (
+                  <IonButton expand="block" onClick={handleAddEmployee}>
+                    Create Employee Account
+                  </IonButton>
+                )}
               </div>
             </SectionCard>
           </div>
@@ -1262,19 +2247,12 @@ const SettingsPage: React.FC = () => {
                 </IonItem>
 
                 <IonItem lines="none" className="app-item">
-                  <IonLabel position="stacked">New password (optional)</IonLabel>
-                  <IonInput
-                    type="password"
-                    value={editEmployeePassword}
-                    placeholder="Leave blank to keep current password"
-                    onIonInput={(event) => setEditEmployeePassword(event.detail.value ?? '')}
-                  />
-                </IonItem>
-
-                <IonItem lines="none" className="app-item">
                   <IonLabel position="stacked">Base role</IonLabel>
                   <IonSelect value={editEmployeeRole} onIonChange={(event) => handleChangeEditEmployeeRole(event.detail.value as AppRole)}>
                     <IonSelectOption value="SalesManager">Sales Manager</IonSelectOption>
+                    <IonSelectOption value="WarehouseManager">Warehouse Manager</IonSelectOption>
+                    <IonSelectOption value="StoreManager">Store Manager</IonSelectOption>
+                    <IonSelectOption value="PurchaseManager">Purchase Manager</IonSelectOption>
                     <IonSelectOption value="Accountant">Accountant</IonSelectOption>
                     <IonSelectOption value="Admin">Admin</IonSelectOption>
                   </IonSelect>
@@ -1319,6 +2297,34 @@ const SettingsPage: React.FC = () => {
                       {editEmployeeStatus === 'deactivated' ? 'Deactivated' : 'Active'}
                     </IonBadge>
                   </div>
+                </div>
+
+                <div className="list-block">
+                  <div className="list-row">
+                    <div>
+                      <strong>Employee sign-in access</strong>
+                      <p>Create a fresh temporary password when this employee is newly assigned, returning, or locked out.</p>
+                      {editEmployeeUsername ? <p className="code-label">Username: {editEmployeeUsername}</p> : null}
+                    </div>
+                    <IonButton
+                      fill="outline"
+                      size="small"
+                      onClick={handleCreateTemporaryPassword}
+                      disabled={!editingEmployeeId || editEmployeeStatus !== 'active'}
+                    >
+                      Create Temporary Password
+                    </IonButton>
+                  </div>
+                  {editEmployeeCredentials ? (
+                    <div className="list-row" style={{ borderTop: '1px solid var(--border-color)' }}>
+                      <div>
+                        <strong>Temporary credentials</strong>
+                        <p>Share these with the employee and ask them to sign in right away.</p>
+                        <p className="code-label">Username: {editEmployeeCredentials.username}</p>
+                        <p className="code-label">Temporary password: {editEmployeeCredentials.temporaryPassword}</p>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="list-block">
@@ -1378,7 +2384,7 @@ const SettingsPage: React.FC = () => {
       </IonModal>
       <IonToast
         isOpen={showSuccessToast}
-        message="Business settings updated and synced."
+        message={successToastMessage}
         duration={2500}
         color="success"
         position="bottom"

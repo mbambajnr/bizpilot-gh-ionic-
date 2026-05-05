@@ -35,13 +35,69 @@ import {
   UpdateBusinessProfileInput,
   addExpenseToState,
   NewExpenseInput,
+  createProductCategoryInState,
+  CreateProductCategoryInput,
+  updateProductCategoryInState,
+  UpdateProductCategoryInput,
+  setProductCategoryActiveInState,
+  SetProductCategoryActiveInput,
+  setInventoryCategoriesEnabledInState,
+  SetInventoryCategoriesEnabledInput,
+  setCustomerClassificationEnabledInState,
+  SetCustomerClassificationEnabledInput,
+  setBusinessTaxSettingsInState,
+  SetBusinessTaxSettingsInput,
+  launchBusinessWorkspaceInState,
+  createBusinessLocationInState,
+  CreateBusinessLocationInput,
+  updateBusinessLocationInState,
+  UpdateBusinessLocationInput,
+  createSupplyRouteInState,
+  CreateSupplyRouteInput,
+  setSupplyRouteActiveInState,
+  SetSupplyRouteActiveInput,
+  createStockTransferInState,
+  approveStockTransferInState,
+  dispatchStockTransferInState,
+  receiveStockTransferInState,
+  cancelStockTransferInState,
+  createVendorInState,
+  updateVendorInState,
+  setVendorStatusInState,
+  createPurchaseDraftInState,
+  submitPurchaseInState,
+  approvePurchaseInState,
+  cancelPurchaseInState,
+  receivePurchaseInWarehouseInState,
+  createPayableFromPurchaseInState,
+  approvePayableInState,
+  recordPayablePaymentInState,
+  CreateStockTransferInput,
+  StockTransferActionInput,
+  transferStockInState,
+  TransferStockInput,
+  CreateVendorInput,
+  UpdateVendorInput,
+  SetVendorStatusInput,
+  CreatePurchaseDraftInput,
+  PurchaseActionInput,
+  ReceivePurchaseInput,
+  CreatePayableInput,
+  ApprovePayableInput,
+  RecordPayablePaymentInput,
+  LaunchBusinessWorkspaceInput,
 } from '../utils/businessLogic';
-import { syncProduct, syncCustomer, syncSale, syncExpense, syncBusinessProfile } from '../data/supabaseSync';
+import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpense, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovement } from '../data/supabaseSync';
 import { selectProductQuantityOnHand, selectSaleBalanceRemaining } from '../selectors/businessSelectors';
 import { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
 import { hasPermission } from '../authz/permissions';
 
 const STORAGE_KEY = 'bizpilot-gh-state-v1';
+const EMPLOYEE_CREDENTIALS_STORAGE_KEY = 'bizpilot-employee-credentials-v1';
+
+function getCloudSaveMessage(fallback: string) {
+  return getLastSupabaseSyncErrorMessage() ?? fallback;
+}
 
 type LowStockAlert = {
   productId: string;
@@ -113,7 +169,8 @@ type BusinessContextValue = {
   addCustomer: (input: NewCustomerInput) => ActionResult;
   updateCustomer: (input: UpdateCustomerInput) => ActionResult;
   updateCustomerStatus: (input: UpdateCustomerStatusInput) => ActionResult;
-  updateBusinessProfile: (input: UpdateBusinessProfileInput) => ActionResult;
+  updateBusinessProfile: (input: UpdateBusinessProfileInput) => Promise<ActionResult>;
+  launchBusinessWorkspace: (input?: LaunchBusinessWorkspaceInput) => Promise<ActionResult>;
   addQuotation: (input: NewQuotationInput) => ActionResult;
   convertQuotationToSale: (input: ConvertQuotationInput) => ConvertQuotationToSaleResult;
   reverseSale: (input: ReverseSaleInput) => ReverseSaleContextResult;
@@ -121,13 +178,13 @@ type BusinessContextValue = {
   currentUser: UserAccessProfile;
   switchUser: (userId: string) => void;
   updateUserPermissions: (userId: string, granted: AppPermission[], revoked: AppPermission[]) => ActionResult;
-  updateUserProfile: (userId: string, profile: Partial<Pick<UserAccessProfile, 'email' | 'password' | 'name' | 'customerEmailSenderName' | 'customerEmailSenderEmail'>>) => ActionResult;
-  addUserAccount: (input: { name: string; email: string; password: string; role: AppRole; roleLabel?: string; grantedPermissions?: AppPermission[]; revokedPermissions?: AppPermission[] }) => ActionResult;
+  updateUserProfile: (userId: string, profile: Partial<Pick<UserAccessProfile, 'email' | 'name' | 'customerEmailSenderName' | 'customerEmailSenderEmail'>>) => ActionResult;
+  addUserAccount: (input: { name: string; email: string; role: AppRole; roleLabel?: string; grantedPermissions?: AppPermission[]; revokedPermissions?: AppPermission[] }) => ActionResult<{ username: string; temporaryPassword: string }>;
+  resetEmployeeTemporaryPassword: (userId: string) => ActionResult<{ username: string; temporaryPassword: string }>;
   updateEmployeeAccount: (input: {
     userId: string;
     name: string;
     email: string;
-    password?: string;
     role: AppRole;
     roleLabel?: string;
     grantedPermissions: AppPermission[];
@@ -136,10 +193,37 @@ type BusinessContextValue = {
   }) => ActionResult;
   addRestockRequest: (input: NewRestockRequestInput) => ActionResult;
   reviewRestockRequest: (input: ReviewRestockRequestInput) => ActionResult;
-  updateBranding: (input: { logoUrl?: string; signatureUrl?: string }) => ActionResult;
+  updateBranding: (input: { logoUrl?: string; signatureUrl?: string }) => Promise<ActionResult>;
   hasPermission: (permission: AppPermission) => boolean;
   addExpense: (input: NewExpenseInput) => ActionResult;
   updateThemePreference: (theme: 'system' | 'light' | 'dark') => void;
+  createProductCategory: (input: CreateProductCategoryInput) => Promise<ActionResult>;
+  updateProductCategory: (input: UpdateProductCategoryInput) => Promise<ActionResult>;
+  setProductCategoryActive: (input: SetProductCategoryActiveInput) => Promise<ActionResult>;
+  setInventoryCategoriesEnabled: (input: SetInventoryCategoriesEnabledInput) => Promise<ActionResult>;
+  createBusinessLocation: (input: CreateBusinessLocationInput) => Promise<ActionResult>;
+  updateBusinessLocation: (input: UpdateBusinessLocationInput) => Promise<ActionResult>;
+  createSupplyRoute: (input: CreateSupplyRouteInput) => Promise<ActionResult>;
+  setSupplyRouteActive: (input: SetSupplyRouteActiveInput) => Promise<ActionResult>;
+  createStockTransfer: (input: CreateStockTransferInput) => Promise<ActionResult>;
+  approveStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
+  dispatchStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
+  receiveStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
+  cancelStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
+  transferStock: (input: TransferStockInput) => Promise<ActionResult>;
+  createVendor: (input: CreateVendorInput) => Promise<ActionResult>;
+  updateVendor: (input: UpdateVendorInput) => Promise<ActionResult>;
+  setVendorStatus: (input: SetVendorStatusInput) => Promise<ActionResult>;
+  createPurchaseDraft: (input: CreatePurchaseDraftInput) => Promise<ActionResult>;
+  submitPurchase: (input: PurchaseActionInput) => Promise<ActionResult>;
+  approvePurchase: (input: PurchaseActionInput) => Promise<ActionResult>;
+  cancelPurchase: (input: PurchaseActionInput) => Promise<ActionResult>;
+  receivePurchaseInWarehouse: (input: ReceivePurchaseInput) => Promise<ActionResult>;
+  createPayableFromPurchase: (input: CreatePayableInput) => Promise<ActionResult>;
+  approvePayable: (input: ApprovePayableInput) => Promise<ActionResult>;
+  recordPayablePayment: (input: RecordPayablePaymentInput) => Promise<ActionResult>;
+  setCustomerClassificationEnabled: (input: SetCustomerClassificationEnabledInput) => Promise<ActionResult>;
+  setBusinessTaxSettings: (input: SetBusinessTaxSettingsInput) => Promise<ActionResult>;
 };
 
 const BusinessContext = createContext<BusinessContextValue | null>(null);
@@ -168,25 +252,26 @@ function readInitialState(): BusinessState {
     }
   }
 
-  // If no stored state, check if we're authenticated. 
-  // If we have a session, we should stay 'clean' and wait for cloud load.
-  const hasSession = !!window.localStorage.getItem('bizpilot-local-session');
-  if (hasSession) {
-    return {
-      ...seedState,
-      businessProfile: { ...seedState.businessProfile, businessName: '', phone: '' },
-      products: [],
-      customers: [],
-      sales: [],
-      expenses: [],
-      stockMovements: [],
-      customerLedgerEntries: [],
-      activityLogEntries: [],
-      restockRequests: [],
-    };
+  return seedState;
+}
+
+function buildLocalSaveWarning(fallback: string) {
+  return `${getCloudSaveMessage(fallback)} Changes were saved locally.`;
+}
+
+function buildEmployeeUsername(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function generateTemporaryPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  let password = 'BP-';
+
+  for (let index = 0; index < 10; index += 1) {
+    password += alphabet[Math.floor(Math.random() * alphabet.length)];
   }
 
-  return seedState;
+  return password;
 }
 
 function createBlankBusinessState(owner?: { id?: string; email?: string; name?: string }, themePreference: BusinessState['themePreference'] = seedState.themePreference): BusinessState {
@@ -201,9 +286,15 @@ function createBlankBusinessState(owner?: { id?: string; email?: string; name?: 
       email: owner?.email ?? '',
       address: '',
       website: '',
+      launchedAt: undefined,
     },
     products: [],
     customers: [],
+    vendors: [],
+    purchases: [],
+    accountsPayable: [],
+    stockTransfers: [],
+    payments: [],
     sales: [],
     quotations: [],
     expenses: [],
@@ -250,7 +341,16 @@ export function BusinessProvider({ children }: PropsWithChildren) {
   }, [state]);
 
   useEffect(() => {
-    if (!user?.id || user.id.startsWith('u-')) {
+    const employeeUsers = state.users.filter((user) => user.temporaryPassword);
+    window.localStorage.setItem(
+      EMPLOYEE_CREDENTIALS_STORAGE_KEY,
+      JSON.stringify({ users: employeeUsers })
+    );
+  }, [state.users]);
+
+  useEffect(() => {
+    const isLocalEmployeeSession = user?.user_metadata?.auth_mode === 'employee-local';
+    if (!user?.id || isLocalEmployeeSession) {
       return;
     }
 
@@ -271,9 +371,20 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         current.themePreference
       );
     });
-  }, [user?.id, user?.email, user?.user_metadata?.full_name]);
+  }, [user?.id, user?.email, user?.user_metadata?.auth_mode, user?.user_metadata?.full_name]);
 
   useEffect(() => {
+    const isLocalEmployeeSession = user?.user_metadata?.auth_mode === 'employee-local';
+    if (isLocalEmployeeSession) {
+      setBackendStatus({
+        source: 'local',
+        loading: false,
+        label: 'Employee workspace ready',
+        detail: 'Signed in with employee credentials for this workspace.',
+      });
+      return;
+    }
+
     let cancelled = false;
 
     async function loadBackendProfile() {
@@ -322,10 +433,14 @@ export function BusinessProvider({ children }: PropsWithChildren) {
             users: updatedUsers,
             currentUserId: authenticatedId,
             businessProfile: mergedProfile,
-            products: fullCloudData.products?.length ? fullCloudData.products : current.products,
-            customers: fullCloudData.customers?.length ? fullCloudData.customers : current.customers,
-            sales: fullCloudData.sales?.length ? fullCloudData.sales : current.sales,
-            expenses: fullCloudData.expenses?.length ? fullCloudData.expenses : current.expenses,
+            locations: fullCloudData.locations ?? current.locations,
+            locationSupplyRoutes: fullCloudData.locationSupplyRoutes ?? current.locationSupplyRoutes,
+            products: fullCloudData.products ?? current.products,
+            productCategories: fullCloudData.productCategories ?? current.productCategories,
+            customers: fullCloudData.customers ?? current.customers,
+            sales: fullCloudData.sales ?? current.sales,
+            stockMovements: fullCloudData.stockMovements ?? current.stockMovements,
+            expenses: fullCloudData.expenses ?? current.expenses,
           };
         });
 
@@ -351,15 +466,23 @@ export function BusinessProvider({ children }: PropsWithChildren) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, user?.email, user?.user_metadata?.auth_mode, user?.user_metadata?.full_name]);
   
   const currentUser = useMemo(() => {
+    if (user?.id) {
+      return (
+        state.users.find((u) => u.userId === user.id && (u.accountStatus ?? 'active') !== 'deactivated') ||
+        state.users.find((u) => (u.accountStatus ?? 'active') !== 'deactivated') ||
+        state.users[0]
+      );
+    }
+
     return (
       state.users.find((u) => u.userId === state.currentUserId && (u.accountStatus ?? 'active') !== 'deactivated') ||
       state.users.find((u) => (u.accountStatus ?? 'active') !== 'deactivated') ||
       state.users[0]
     );
-  }, [state.currentUserId, state.users]);
+  }, [state.currentUserId, state.users, user?.id]);
 
   const value = useMemo<BusinessContextValue>(
     () => ({
@@ -387,6 +510,11 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         if (newProduct) {
           void syncProduct(currentState.businessProfile.id, newProduct);
         }
+        result.data.stockMovements
+          .filter((movement) => !currentState.stockMovements.some((existing) => existing.id === movement.id))
+          .forEach((movement) => {
+            void syncStockMovement(currentState.businessProfile.id, movement);
+          });
 
         return { ok: true };
       },
@@ -454,12 +582,12 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         return { ok: true };
       },
-      updateBusinessProfile(input) {
+      async updateBusinessProfile(input) {
         if (!hasPermission(currentUser, 'business.edit')) {
           return { ok: false, message: 'You are not authorized to update business settings.' };
         }
-        console.log('[DEBUG-CONTEXT-ACTION] updateBusinessProfile called with:', input.businessName);
-        const result = updateBusinessProfileInState(state, input);
+        const currentState = stateRef.current;
+        const result = updateBusinessProfileInState(currentState, input);
         if (!result.ok) {
           return result;
         }
@@ -467,9 +595,36 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           return { ok: false, message: 'Could not update business settings right now.' };
         }
 
-        console.log('[DEBUG-CONTEXT-ACTION] State result OK. Updating state...');
+        stateRef.current = result.data;
         setState(result.data);
-        void syncBusinessProfile(result.data.businessProfile);
+        const syncOk = await syncBusinessProfile(result.data.businessProfile);
+        if (!syncOk) {
+          return { ok: true, message: buildLocalSaveWarning('Business settings could not be saved to the cloud right now.') };
+        }
+
+        return { ok: true };
+      },
+      async launchBusinessWorkspace(input = {}) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to launch this business.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = launchBusinessWorkspaceInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not launch the business right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        const syncOk = await syncBusinessProfile(result.data.businessProfile);
+        if (!syncOk) {
+          return { ok: true, message: buildLocalSaveWarning('Business launch could not be saved to the cloud right now.') };
+        }
+
         return { ok: true };
       },
       addQuotation(input) {
@@ -485,6 +640,12 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         }
 
         setState(result.data);
+
+        const savedQuotation = result.data.quotations[0];
+        if (savedQuotation) {
+          void syncQuotation(state.businessProfile.id, savedQuotation);
+        }
+
         return { ok: true };
       },
       convertQuotationToSale(input) {
@@ -501,6 +662,23 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         const { data, receipts, quotationNumber } = result.data as ConvertQuotationResult;
         setState(data);
+
+        const convertedQuotation = data.quotations.find((quotation) => quotation.id === input.quotationId);
+        if (convertedQuotation) {
+          void syncQuotation(state.businessProfile.id, convertedQuotation);
+        }
+        receipts.forEach((receipt) => {
+          const convertedSale = data.sales.find((sale) => sale.id === receipt.id);
+          if (convertedSale) {
+            void syncSale(state.businessProfile.id, convertedSale);
+          }
+        });
+        data.stockMovements
+          .filter((movement) => !state.stockMovements.some((existing) => existing.id === movement.id))
+          .forEach((movement) => {
+            void syncStockMovement(state.businessProfile.id, movement);
+          });
+
         return { ok: true, receipts: receipts.map(mapConvertedReceipt), quotationNumber };
       },
       reverseSale(input) {
@@ -520,6 +698,11 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         // Background Sync: Sync the updated (reversed) sale
         void syncSale(state.businessProfile.id, reversedSale);
+        result.data.data.stockMovements
+          .filter((movement) => !state.stockMovements.some((existing) => existing.id === movement.id))
+          .forEach((movement) => {
+            void syncStockMovement(state.businessProfile.id, movement);
+          });
 
         return { ok: true, reversedSaleId: reversedSale.id };
       },
@@ -591,11 +774,20 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         if (savedSale) {
           void syncSale(state.businessProfile.id, savedSale);
         }
+        result.data.stockMovements
+          .filter((movement) => !state.stockMovements.some((existing) => existing.id === movement.id))
+          .forEach((movement) => {
+            void syncStockMovement(state.businessProfile.id, movement);
+          });
 
         return lowStockAlert ? { ok: true, receipt, lowStockAlert } : { ok: true, receipt };
       },
       currentUser,
       switchUser(userId) {
+        if (user?.id) {
+          return;
+        }
+
         const targetUser = state.users.find((user) => user.userId === userId);
         if (!targetUser || (targetUser.accountStatus ?? 'active') === 'deactivated') {
           return;
@@ -655,8 +847,6 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         const name = input.name.trim();
         const email = input.email.trim().toLowerCase();
-        const password = input.password.trim();
-
         if (!name) {
           return { ok: false, message: 'Employee name is required.' };
         }
@@ -669,15 +859,14 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           return { ok: false, message: 'Employee email is invalid.' };
         }
 
-        if (!password) {
-          return { ok: false, message: 'Employee password is required.' };
-        }
-
         if (state.users.some((user) => user.email.trim().toLowerCase() === email)) {
           return { ok: false, message: 'Another user already uses that email address.' };
         }
 
         const nextUserId = `u-${input.role.toLowerCase()}-${Date.now().toString(36)}`;
+        const username = buildEmployeeUsername(email);
+        const temporaryPassword = generateTemporaryPassword();
+        const credentialsGeneratedAt = new Date().toISOString();
 
         setState((current) => ({
           ...current,
@@ -687,7 +876,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
               userId: nextUserId,
               name,
               email,
-              password,
+              username,
+              temporaryPassword,
+              credentialsGeneratedAt,
               accountStatus: 'active',
               roleLabel: input.roleLabel?.trim() || undefined,
               role: input.role,
@@ -697,7 +888,41 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           ],
         }));
 
-        return { ok: true };
+        return { ok: true, data: { username, temporaryPassword } };
+      },
+      resetEmployeeTemporaryPassword(userId) {
+        if (!hasPermission(currentUser, 'permissions.manage')) {
+          return { ok: false, message: 'Only admins can create temporary passwords for employees.' };
+        }
+
+        const targetUser = state.users.find((user) => user.userId === userId);
+        if (!targetUser) {
+          return { ok: false, message: 'Employee account not found.' };
+        }
+
+        if ((targetUser.accountStatus ?? 'active') !== 'active') {
+          return { ok: false, message: 'Reactivate this employee account before creating a temporary password.' };
+        }
+
+        const username = buildEmployeeUsername(targetUser.email);
+        const temporaryPassword = generateTemporaryPassword();
+        const credentialsGeneratedAt = new Date().toISOString();
+
+        setState((current) => ({
+          ...current,
+          users: current.users.map((user) =>
+            user.userId === userId
+              ? {
+                  ...user,
+                  username,
+                  temporaryPassword,
+                  credentialsGeneratedAt,
+                }
+              : user
+          ),
+        }));
+
+        return { ok: true, data: { username, temporaryPassword } };
       },
       updateEmployeeAccount(input) {
         if (!hasPermission(currentUser, 'permissions.manage')) {
@@ -751,14 +976,12 @@ export function BusinessProvider({ children }: PropsWithChildren) {
               return user;
             }
 
-            const nextPassword = input.password?.trim();
-
             return {
               ...user,
               name,
               email,
-              password: nextPassword ? nextPassword : user.password,
               role: input.role,
+              username: buildEmployeeUsername(email),
               roleLabel,
               grantedPermissions: input.grantedPermissions,
               revokedPermissions: input.revokedPermissions,
@@ -806,18 +1029,22 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         setState(result.data);
         return { ok: true };
       },
-      updateBranding(input) {
+      async updateBranding(input) {
         if (!hasPermission(currentUser, 'branding.manage')) {
           return { ok: false, message: 'You are not authorized to manage branding.' };
         }
-        const result = updateBrandingInState(state, input);
+        const currentState = stateRef.current;
+        const result = updateBrandingInState(currentState, input);
         if (!result.ok) return result;
         if (!result.data) return { ok: false, message: 'Update failed to update state.' };
+
+        stateRef.current = result.data;
         setState(result.data);
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data));
+        const syncOk = await syncBusinessProfile(result.data.businessProfile);
+        if (!syncOk) {
+          return { ok: true, message: buildLocalSaveWarning('Branding could not be saved to the cloud right now.') };
         }
-        void syncBusinessProfile(result.data.businessProfile);
+
         return { ok: true };
       },
       hasPermission(permission) {
@@ -843,8 +1070,618 @@ export function BusinessProvider({ children }: PropsWithChildren) {
       updateThemePreference(theme) {
         setState((prev) => ({ ...prev, themePreference: theme }));
       },
+      async createProductCategory(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to manage product categories.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = createProductCategoryInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not create the category right now.' };
+        }
+
+        const createdCategory = result.data.productCategories[result.data.productCategories.length - 1];
+        if (!createdCategory) {
+          return { ok: false, message: 'Could not create the category right now.' };
+        }
+
+        const syncOk = await syncProductCategory(currentState.businessProfile.id, createdCategory);
+        if (!syncOk) {
+          return { ok: false, message: getCloudSaveMessage('Category could not be saved to the cloud right now.') };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async updateProductCategory(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to manage product categories.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = updateProductCategoryInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not update the category right now.' };
+        }
+
+        const updatedCategory = result.data.productCategories.find((category) => category.id === input.categoryId);
+        if (!updatedCategory) {
+          return { ok: false, message: 'Could not update the category right now.' };
+        }
+
+        const syncOk = await syncProductCategory(currentState.businessProfile.id, updatedCategory);
+        if (!syncOk) {
+          return { ok: false, message: getCloudSaveMessage('Category changes could not be saved to the cloud right now.') };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async setProductCategoryActive(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to manage product categories.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = setProductCategoryActiveInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not update the category status right now.' };
+        }
+
+        const updatedCategory = result.data.productCategories.find((category) => category.id === input.categoryId);
+        if (!updatedCategory) {
+          return { ok: false, message: 'Could not update the category status right now.' };
+        }
+
+        const syncOk = await syncProductCategory(currentState.businessProfile.id, updatedCategory);
+        if (!syncOk) {
+          return { ok: false, message: getCloudSaveMessage('Category status could not be saved to the cloud right now.') };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async setInventoryCategoriesEnabled(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to manage product categories.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = setInventoryCategoriesEnabledInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not update the inventory category setting right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        const syncOk = await syncBusinessProfile(result.data.businessProfile);
+        if (!syncOk) {
+          return { ok: true, message: buildLocalSaveWarning('Inventory category setting could not be saved to the cloud right now.') };
+        }
+
+        return { ok: true };
+      },
+      async createBusinessLocation(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to manage locations.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = createBusinessLocationInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not create the location right now.' };
+        }
+
+        const createdLocation = result.data.locations.find((location) =>
+          !currentState.locations.some((existing) => existing.id === location.id)
+        );
+        if (!createdLocation) {
+          return { ok: false, message: 'Could not create the location right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        const syncOk = await syncBusinessLocation(currentState.businessProfile.id, createdLocation);
+        if (!syncOk) {
+          return { ok: true, message: buildLocalSaveWarning('Location could not be saved to the cloud right now.') };
+        }
+
+        return { ok: true };
+      },
+      async updateBusinessLocation(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to manage locations.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = updateBusinessLocationInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not update the location right now.' };
+        }
+
+        const changedLocations = result.data.locations.filter((location) => {
+          const existing = currentState.locations.find((item) => item.id === location.id);
+          return !existing ||
+            existing.name !== location.name ||
+            existing.type !== location.type ||
+            existing.isDefault !== location.isDefault ||
+            existing.isActive !== location.isActive;
+        });
+        stateRef.current = result.data;
+        setState(result.data);
+        const syncResults = await Promise.all(changedLocations.map((location) =>
+          syncBusinessLocation(currentState.businessProfile.id, location)
+        ));
+        if (syncResults.some((ok) => !ok)) {
+          return { ok: true, message: buildLocalSaveWarning('Location changes could not be saved to the cloud right now.') };
+        }
+
+        return { ok: true };
+      },
+      async createSupplyRoute(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to manage supply routes.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = createSupplyRouteInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not create the supply route right now.' };
+        }
+
+        const createdRoute = result.data.locationSupplyRoutes.find((route) =>
+          !currentState.locationSupplyRoutes.some((existing) => existing.id === route.id)
+        );
+        if (!createdRoute) {
+          return { ok: false, message: 'Could not create the supply route right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        const syncOk = await syncSupplyRoute(currentState.businessProfile.id, createdRoute);
+        if (!syncOk) {
+          return { ok: true, message: buildLocalSaveWarning('Supply route could not be saved to the cloud right now.') };
+        }
+
+        return { ok: true };
+      },
+      async setSupplyRouteActive(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to manage supply routes.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = setSupplyRouteActiveInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not update the supply route right now.' };
+        }
+
+        const changedRoute = result.data.locationSupplyRoutes.find((route) => route.id === input.routeId);
+        if (!changedRoute) {
+          return { ok: false, message: 'Could not update the supply route right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        const syncOk = await syncSupplyRoute(currentState.businessProfile.id, changedRoute);
+        if (!syncOk) {
+          return { ok: true, message: buildLocalSaveWarning('Supply route change could not be saved to the cloud right now.') };
+        }
+
+        return { ok: true };
+      },
+      async createVendor(input) {
+        if (!hasPermission(currentUser, 'vendors.manage')) {
+          return { ok: false, message: 'You are not authorized to manage vendors.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = createVendorInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not create the vendor right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async updateVendor(input) {
+        if (!hasPermission(currentUser, 'vendors.manage')) {
+          return { ok: false, message: 'You are not authorized to manage vendors.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = updateVendorInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not update the vendor right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async setVendorStatus(input) {
+        if (!hasPermission(currentUser, 'vendors.manage')) {
+          return { ok: false, message: 'You are not authorized to manage vendors.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = setVendorStatusInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not update vendor status right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async createPurchaseDraft(input) {
+        if (!hasPermission(currentUser, 'purchases.create')) {
+          return { ok: false, message: 'You are not authorized to create purchases.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = createPurchaseDraftInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not create the purchase draft right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async submitPurchase(input) {
+        if (!hasPermission(currentUser, 'purchases.create')) {
+          return { ok: false, message: 'You are not authorized to submit purchases.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = submitPurchaseInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not submit the purchase right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async approvePurchase(input) {
+        if (!hasPermission(currentUser, 'purchases.approve')) {
+          return { ok: false, message: 'You are not authorized to approve purchases.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = approvePurchaseInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not approve the purchase right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async cancelPurchase(input) {
+        if (!hasPermission(currentUser, 'purchases.approve')) {
+          return { ok: false, message: 'You are not authorized to cancel purchases.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = cancelPurchaseInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not cancel the purchase right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async receivePurchaseInWarehouse(input) {
+        if (!hasPermission(currentUser, 'purchases.receive')) {
+          return { ok: false, message: 'You are not authorized to receive purchases into warehouse.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = receivePurchaseInWarehouseInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not receive the purchase right now.' };
+        }
+
+        const newMovements = result.data.stockMovements.filter((movement) =>
+          !currentState.stockMovements.some((existing) => existing.id === movement.id)
+        );
+        const syncResults = await Promise.all(newMovements.map((movement) =>
+          syncStockMovement(currentState.businessProfile.id, movement)
+        ));
+        if (syncResults.some((ok) => !ok)) {
+          return { ok: false, message: getCloudSaveMessage('Purchase receipt could not be saved to the cloud right now.') };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async createPayableFromPurchase(input) {
+        if (!hasPermission(currentUser, 'payables.manage')) {
+          return { ok: false, message: 'You are not authorized to create payables.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = createPayableFromPurchaseInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not create the payable right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async approvePayable(input) {
+        if (!hasPermission(currentUser, 'payables.manage') && !hasPermission(currentUser, 'payables.approve')) {
+          return { ok: false, message: 'You are not authorized to approve payables.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = approvePayableInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not approve the payable right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async recordPayablePayment(input) {
+        if (!hasPermission(currentUser, 'payables.pay')) {
+          return { ok: false, message: 'You are not authorized to record payable payments.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = recordPayablePaymentInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not record the payable payment right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async transferStock(input) {
+        if (!hasPermission(currentUser, 'transfers.create')) {
+          return { ok: false, message: 'You are not authorized to transfer stock.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = transferStockInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not transfer stock right now.' };
+        }
+
+        const newMovements = result.data.stockMovements.filter((movement) =>
+          !currentState.stockMovements.some((existing) => existing.id === movement.id)
+        );
+        const syncResults = await Promise.all(newMovements.map((movement) =>
+          syncStockMovement(currentState.businessProfile.id, movement)
+        ));
+        if (syncResults.some((ok) => !ok)) {
+          return { ok: false, message: getCloudSaveMessage('Transfer could not be saved to the cloud right now.') };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async createStockTransfer(input) {
+        if (!hasPermission(currentUser, 'transfers.create')) {
+          return { ok: false, message: 'You are not authorized to create stock transfers.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = createStockTransferInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not create the stock transfer right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async approveStockTransfer(input) {
+        if (!hasPermission(currentUser, 'transfers.approve')) {
+          return { ok: false, message: 'You are not authorized to approve stock transfers.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = approveStockTransferInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not approve the stock transfer right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async dispatchStockTransfer(input) {
+        if (!hasPermission(currentUser, 'transfers.dispatch')) {
+          return { ok: false, message: 'You are not authorized to dispatch stock transfers.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = dispatchStockTransferInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not dispatch the stock transfer right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async receiveStockTransfer(input) {
+        if (!hasPermission(currentUser, 'transfers.receive')) {
+          return { ok: false, message: 'You are not authorized to receive stock transfers.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = receiveStockTransferInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not receive the stock transfer right now.' };
+        }
+
+        const newMovements = result.data.stockMovements.filter((movement) =>
+          !currentState.stockMovements.some((existing) => existing.id === movement.id)
+        );
+        const syncResults = await Promise.all(newMovements.map((movement) =>
+          syncStockMovement(currentState.businessProfile.id, movement)
+        ));
+        if (syncResults.some((ok) => !ok)) {
+          return { ok: false, message: getCloudSaveMessage('Transfer receipt could not be saved to the cloud right now.') };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async cancelStockTransfer(input) {
+        if (!hasPermission(currentUser, 'transfers.approve')) {
+          return { ok: false, message: 'You are not authorized to cancel stock transfers.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = cancelStockTransferInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not cancel the stock transfer right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      async setCustomerClassificationEnabled(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to manage customer classification.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = setCustomerClassificationEnabledInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not update the customer classification setting right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        const syncOk = await syncBusinessProfile(result.data.businessProfile);
+        if (!syncOk) {
+          return { ok: true, message: buildLocalSaveWarning('Customer classification setting could not be saved to the cloud right now.') };
+        }
+
+        return { ok: true };
+      },
+      async setBusinessTaxSettings(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to manage tax settings.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = setBusinessTaxSettingsInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not update tax settings right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        const syncOk = await syncBusinessProfile(result.data.businessProfile);
+        if (!syncOk) {
+          return { ok: true, message: buildLocalSaveWarning('Tax settings could not be saved to the cloud right now.') };
+        }
+
+        return { ok: true };
+      },
     }),
-    [backendStatus, state, currentUser]
+    [backendStatus, state, currentUser, user?.id]
   );
 
   return <BusinessContext.Provider value={value}>{children}</BusinessContext.Provider>;

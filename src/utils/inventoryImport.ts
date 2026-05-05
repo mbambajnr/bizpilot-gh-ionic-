@@ -1,7 +1,7 @@
 import type { NewProductInput } from './businessLogic';
-import type { Product } from '../data/seedBusiness';
+import type { Product, ProductCategory } from '../data/seedBusiness';
 
-export const INVENTORY_IMPORT_COLUMNS = [
+const INVENTORY_IMPORT_BASE_COLUMNS = [
   'Item Name',
   'Inventory ID',
   'Unit',
@@ -12,9 +12,21 @@ export const INVENTORY_IMPORT_COLUMNS = [
   'Image URL',
 ] as const;
 
+const INVENTORY_IMPORT_OPTIONAL_COLUMNS = ['Category'] as const;
+
+export const INVENTORY_IMPORT_COLUMNS = [
+  ...INVENTORY_IMPORT_BASE_COLUMNS,
+  ...INVENTORY_IMPORT_OPTIONAL_COLUMNS,
+] as const;
+
 type InventoryImportColumn = (typeof INVENTORY_IMPORT_COLUMNS)[number];
 
 type InventoryImportRawRecord = Record<InventoryImportColumn, string>;
+
+type InventoryImportOptions = {
+  inventoryCategoriesEnabled?: boolean;
+  productCategories?: ProductCategory[];
+};
 
 export type InventoryImportPreviewRow = {
   rowNumber: number;
@@ -76,10 +88,16 @@ function parseCsv(text: string): string[][] {
 }
 
 function toRecord(headers: InventoryImportColumn[], row: string[]): InventoryImportRawRecord {
-  return headers.reduce((record, header, index) => {
-    record[header] = row[index]?.trim() ?? '';
-    return record;
+  const record = INVENTORY_IMPORT_COLUMNS.reduce((current, header) => {
+    current[header] = '';
+    return current;
   }, {} as InventoryImportRawRecord);
+
+  headers.forEach((header, index) => {
+    record[header] = row[index]?.trim() ?? '';
+  });
+
+  return record;
 }
 
 function parseRequiredNumber(value: string, label: string, rowErrors: string[]) {
@@ -136,12 +154,34 @@ export function buildInventoryTemplateCsv() {
     '40',
     '10',
     '',
+    '',
   ];
 
   return `${INVENTORY_IMPORT_COLUMNS.join(',')}\n${sampleRow.join(',')}\n`;
 }
 
-export function validateInventoryImportCsv(text: string, existingProducts: Product[]): InventoryImportPreview {
+function normalizeComparableValue(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function findProductCategoryMatch(productCategories: ProductCategory[], value: string) {
+  const normalizedValue = normalizeComparableValue(value);
+  if (!normalizedValue) {
+    return null;
+  }
+
+  return (
+    productCategories.find((category) => normalizeComparableValue(category.name) === normalizedValue) ??
+    productCategories.find((category) => normalizeComparableValue(category.slug) === normalizedValue) ??
+    null
+  );
+}
+
+export function validateInventoryImportCsv(
+  text: string,
+  existingProducts: Product[],
+  options: InventoryImportOptions = {}
+): InventoryImportPreview {
   const parsed = parseCsv(text);
   const headerErrors: string[] = [];
 
@@ -156,19 +196,32 @@ export function validateInventoryImportCsv(text: string, existingProducts: Produ
 
   const providedHeaders = parsed[0];
   const normalizedHeaders = providedHeaders.map(normalizeHeader);
-  const expectedHeaders = INVENTORY_IMPORT_COLUMNS.map(normalizeHeader);
+  const baseHeaders = INVENTORY_IMPORT_BASE_COLUMNS.slice() as unknown as InventoryImportColumn[];
+  const extendedHeaders = INVENTORY_IMPORT_COLUMNS.slice() as unknown as InventoryImportColumn[];
+  const normalizedBaseHeaders = baseHeaders.map(normalizeHeader);
+  const normalizedExtendedHeaders = extendedHeaders.map(normalizeHeader);
 
-  const missingHeaders = INVENTORY_IMPORT_COLUMNS.filter(
-    (_, index) => normalizedHeaders[index] !== expectedHeaders[index]
-  );
+  const matchesHeaders = (expected: string[]) =>
+    normalizedHeaders.length === expected.length && normalizedHeaders.every((header, index) => header === expected[index]);
 
-  if (providedHeaders.length !== INVENTORY_IMPORT_COLUMNS.length || missingHeaders.length > 0) {
-    headerErrors.push(`Template columns must match exactly: ${INVENTORY_IMPORT_COLUMNS.join(', ')}.`);
+  const matchedHeaders = matchesHeaders(normalizedExtendedHeaders)
+    ? extendedHeaders
+    : matchesHeaders(normalizedBaseHeaders)
+      ? baseHeaders
+      : null;
+
+  if (!matchedHeaders) {
+    headerErrors.push(
+      `Template columns must match either: ${INVENTORY_IMPORT_BASE_COLUMNS.join(', ')} or ${INVENTORY_IMPORT_COLUMNS.join(', ')}.`
+    );
   }
+
+  const inventoryCategoriesEnabled = options.inventoryCategoriesEnabled ?? false;
+  const productCategories = options.productCategories ?? [];
 
   const rows = parsed.slice(1).map((row, rowIndex) => {
     const rowNumber = rowIndex + 2;
-    const values = toRecord(INVENTORY_IMPORT_COLUMNS.slice() as InventoryImportColumn[], row);
+    const values = toRecord(matchedHeaders ?? extendedHeaders, row);
     const errors: string[] = [];
     const itemName = values['Item Name'].trim();
     const inventoryId = values['Inventory ID'].trim();
@@ -177,6 +230,8 @@ export function validateInventoryImportCsv(text: string, existingProducts: Produ
     const price = parseNonNegativeNumber(values['Selling Price'], 'Selling Price', errors);
     const quantity = parseNonNegativeInteger(values['Quantity In Stock'], 'Quantity In Stock', errors);
     const reorderLevel = parseNonNegativeInteger(values['Reorder Level'], 'Reorder Level', errors);
+    const categoryValue = values['Category'].trim();
+    let categoryId: string | undefined;
 
     if (!itemName) {
       errors.push('Item Name is required.');
@@ -194,6 +249,17 @@ export function validateInventoryImportCsv(text: string, existingProducts: Produ
       errors.push('Item Name already exists in current inventory.');
     }
 
+    if (categoryValue && inventoryCategoriesEnabled) {
+      const matchedCategory = findProductCategoryMatch(productCategories, categoryValue);
+      if (!matchedCategory) {
+        errors.push('Category could not be found.');
+      } else if (!matchedCategory.isActive) {
+        errors.push('Category is inactive and cannot be assigned.');
+      } else {
+        categoryId = matchedCategory.id;
+      }
+    }
+
     return {
       rowNumber,
       values,
@@ -208,6 +274,7 @@ export function validateInventoryImportCsv(text: string, existingProducts: Produ
               quantity,
               reorderLevel,
               image: values['Image URL'].trim() || undefined,
+              categoryId,
             }
           : undefined,
       errors,
