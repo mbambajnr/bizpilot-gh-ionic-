@@ -31,6 +31,8 @@ interface SearchablePickerProps {
   items: PickerItem[];
   title: string;
   placeholder?: string;
+  emptyActionLabel?: string;
+  onEmptyAction?: (query: string) => void;
 }
 
 const SearchablePicker: React.FC<SearchablePickerProps> = ({
@@ -40,8 +42,11 @@ const SearchablePicker: React.FC<SearchablePickerProps> = ({
   items,
   title,
   placeholder = 'Search...',
+  emptyActionLabel,
+  onEmptyAction,
 }) => {
   const [query, setQuery] = useState('');
+  const trimmedQuery = query.trim();
 
   const filteredItems = useMemo(() => {
     if (!query.trim()) return items;
@@ -78,6 +83,17 @@ const SearchablePicker: React.FC<SearchablePickerProps> = ({
           <div style={{ padding: '40px', textAlign: 'center' }}>
             <IonIcon icon={searchOutline} style={{ fontSize: '48px', color: 'var(--ion-color-medium)' }} />
             <p style={{ color: 'var(--ion-color-medium)' }}>No matching records found.</p>
+            {emptyActionLabel && onEmptyAction ? (
+              <IonButton
+                fill="outline"
+                onClick={() => {
+                  onEmptyAction(trimmedQuery);
+                  onDismiss();
+                }}
+              >
+                {emptyActionLabel}
+              </IonButton>
+            ) : null}
           </div>
         ) : (
           <IonList>

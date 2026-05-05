@@ -67,6 +67,7 @@ const InventoryPage: React.FC = () => {
     receiveStockTransfer,
     cancelStockTransfer,
     createPurchaseDraft,
+    createVendor,
     submitPurchase,
     approvePurchase,
     cancelPurchase,
@@ -127,6 +128,19 @@ const InventoryPage: React.FC = () => {
   const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
   const [showPurchaseVendorPicker, setShowPurchaseVendorPicker] = useState(false);
   const [showPurchaseProductPicker, setShowPurchaseProductPicker] = useState(false);
+  const [showQuickVendorForm, setShowQuickVendorForm] = useState(false);
+  const [quickVendorName, setQuickVendorName] = useState('');
+  const [quickVendorEmail, setQuickVendorEmail] = useState('');
+  const [quickVendorLocation, setQuickVendorLocation] = useState('');
+  const [pendingPurchaseVendorName, setPendingPurchaseVendorName] = useState('');
+  const [showQuickProductForm, setShowQuickProductForm] = useState(false);
+  const [quickProductName, setQuickProductName] = useState('');
+  const [quickProductInventoryId, setQuickProductInventoryId] = useState('');
+  const [quickProductUnit, setQuickProductUnit] = useState('');
+  const [quickProductCost, setQuickProductCost] = useState<number | ''>('');
+  const [quickProductPrice, setQuickProductPrice] = useState<number | ''>('');
+  const [quickProductReorderLevel, setQuickProductReorderLevel] = useState<number | ''>(0);
+  const [pendingPurchaseProductKey, setPendingPurchaseProductKey] = useState('');
   const [selectedReceiptPurchaseId, setSelectedReceiptPurchaseId] = useState('');
   const [selectedReceiptWarehouseId, setSelectedReceiptWarehouseId] = useState('');
   const [purchaseReceiptQuantities, setPurchaseReceiptQuantities] = useState<Record<string, number | ''>>({});
@@ -325,10 +339,39 @@ const InventoryPage: React.FC = () => {
   }, [activeVendors, purchaseVendorId]);
 
   useEffect(() => {
+    if (!pendingPurchaseVendorName) {
+      return;
+    }
+
+    const createdVendor = activeVendors.find(
+      (vendor) => vendor.name.toLowerCase() === pendingPurchaseVendorName.toLowerCase()
+    );
+    if (createdVendor) {
+      setPurchaseVendorId(createdVendor.id);
+      setPendingPurchaseVendorName('');
+    }
+  }, [activeVendors, pendingPurchaseVendorName]);
+
+  useEffect(() => {
     if (!purchaseProductId && state.products.length > 0) {
       setPurchaseProductId(state.products[0].id);
     }
   }, [purchaseProductId, state.products]);
+
+  useEffect(() => {
+    if (!pendingPurchaseProductKey) {
+      return;
+    }
+
+    const createdProduct = state.products.find((product) =>
+      product.inventoryId.toLowerCase() === pendingPurchaseProductKey.toLowerCase() ||
+      product.name.toLowerCase() === pendingPurchaseProductKey.toLowerCase()
+    );
+    if (createdProduct) {
+      setPurchaseProductId(createdProduct.id);
+      setPendingPurchaseProductKey('');
+    }
+  }, [pendingPurchaseProductKey, state.products]);
 
   useEffect(() => {
     if (!selectedReceiptPurchaseId && approvedPurchases.length > 0) {
@@ -428,6 +471,66 @@ const InventoryPage: React.FC = () => {
     setSavedItemName(itemName);
     setFormMessage('');
     setShowSuccessToast(true);
+  };
+
+  const handleCreatePurchaseVendor = async () => {
+    const vendorName = quickVendorName.trim();
+    const result = await createVendor({
+      name: vendorName,
+      contactEmail: quickVendorEmail,
+      location: quickVendorLocation,
+    });
+
+    if (!result.ok) {
+      setPurchaseMessage(result.message);
+      return;
+    }
+
+    setPendingPurchaseVendorName(vendorName);
+    setQuickVendorName('');
+    setQuickVendorEmail('');
+    setQuickVendorLocation('');
+    setShowQuickVendorForm(false);
+    setPurchaseMessage('');
+    setShowPurchaseSuccess(true);
+  };
+
+  const handleCreatePurchaseProduct = () => {
+    const itemName = quickProductName.trim();
+    const itemCost = quickProductCost === '' ? 0 : Number(quickProductCost);
+    const itemPrice = quickProductPrice === '' ? itemCost : Number(quickProductPrice);
+    const itemUnit = quickProductUnit.trim() || 'units';
+    const itemReorderLevel = quickProductReorderLevel === '' ? 0 : Number(quickProductReorderLevel);
+    const itemInventoryId = quickProductInventoryId.trim();
+
+    const result = addProduct({
+      name: itemName,
+      inventoryId: itemInventoryId,
+      unit: itemUnit,
+      price: itemPrice,
+      cost: itemCost,
+      reorderLevel: itemReorderLevel,
+      quantity: 0,
+      categoryId: inventoryCategoriesEnabled ? categoryId || undefined : undefined,
+      locationId: selectedLocationId,
+    });
+
+    if (!result.ok) {
+      setPurchaseMessage(result.message);
+      return;
+    }
+
+    setPendingPurchaseProductKey(itemInventoryId || itemName);
+    setPurchaseUnitCost(itemCost);
+    setQuickProductName('');
+    setQuickProductInventoryId('');
+    setQuickProductUnit('');
+    setQuickProductCost('');
+    setQuickProductPrice('');
+    setQuickProductReorderLevel(0);
+    setShowQuickProductForm(false);
+    setPurchaseMessage('');
+    setShowPurchaseSuccess(true);
   };
 
   const handleDownloadTemplate = () => {
@@ -1423,16 +1526,6 @@ const InventoryPage: React.FC = () => {
                   <div className="form-grid">
                     {hasPermission('purchases.create') ? (
                       <>
-                        {activeVendors.length === 0 ? (
-                          <EmptyState
-                            eyebrow="No active vendor"
-                            title="Create an active vendor first."
-                            message="Procurement stays locked to active suppliers so purchase and payable records remain clean."
-                            actionLabel="Go to Vendors"
-                            onAction={() => history.push('/vendors')}
-                          />
-                        ) : (
-                          <>
                             <div className="dual-stat">
                               <div className="picker-container">
                                 <p className="muted-label">Supplier</p>
@@ -1440,14 +1533,22 @@ const InventoryPage: React.FC = () => {
                                   expand="block"
                                   fill="outline"
                                   onClick={() => setShowPurchaseVendorPicker(true)}
+                                  disabled={activeVendors.length === 0}
                                 >
-                                  {selectedPurchaseVendor ? selectedPurchaseVendor.name : 'Select Vendor'}
+                                  {selectedPurchaseVendor ? selectedPurchaseVendor.name : activeVendors.length === 0 ? 'No Vendors Yet' : 'Select Vendor'}
                                 </IonButton>
                                 {selectedPurchaseVendor ? (
                                   <p className="muted-label">
                                     {selectedPurchaseVendor.vendorCode} · {selectedPurchaseVendor.location}
                                   </p>
                                 ) : null}
+                                <IonButton
+                                  expand="block"
+                                  fill="clear"
+                                  onClick={() => setShowQuickVendorForm((visible) => !visible)}
+                                >
+                                  {showQuickVendorForm ? 'Hide New Supplier' : 'Add New Supplier'}
+                                </IonButton>
                               </div>
                               <div className="picker-container">
                                 <p className="muted-label">Stock item</p>
@@ -1463,8 +1564,124 @@ const InventoryPage: React.FC = () => {
                                     {selectedPurchaseProduct.inventoryId} · {selectProductCategoryDisplayLabel(state, selectedPurchaseProduct.categoryId)}
                                   </p>
                                 ) : null}
+                                {hasPermission('inventory.create') ? (
+                                  <IonButton
+                                    expand="block"
+                                    fill="clear"
+                                    onClick={() => setShowQuickProductForm((visible) => !visible)}
+                                  >
+                                    {showQuickProductForm ? 'Hide New Stock Item' : 'Add New Stock Item'}
+                                  </IonButton>
+                                ) : null}
                               </div>
                             </div>
+                            {showQuickVendorForm ? (
+                              <div className="list-block">
+                                <div className="list-row">
+                                  <div>
+                                    <strong>New supplier</strong>
+                                    <p>Create the vendor here, then continue the purchase order.</p>
+                                  </div>
+                                </div>
+                                <div className="dual-stat">
+                                  <IonItem lines="none" className="app-item">
+                                    <IonLabel position="stacked">Vendor name</IonLabel>
+                                    <IonInput
+                                      value={quickVendorName}
+                                      placeholder="e.g. Asante Wholesale"
+                                      onIonInput={(event) => setQuickVendorName(event.detail.value ?? '')}
+                                    />
+                                  </IonItem>
+                                  <IonItem lines="none" className="app-item">
+                                    <IonLabel position="stacked">Contact email</IonLabel>
+                                    <IonInput
+                                      value={quickVendorEmail}
+                                      placeholder="accounts@vendor.com"
+                                      onIonInput={(event) => setQuickVendorEmail(event.detail.value ?? '')}
+                                    />
+                                  </IonItem>
+                                </div>
+                                <IonItem lines="none" className="app-item">
+                                  <IonLabel position="stacked">Location</IonLabel>
+                                  <IonInput
+                                    value={quickVendorLocation}
+                                    placeholder="Accra, Ghana"
+                                    onIonInput={(event) => setQuickVendorLocation(event.detail.value ?? '')}
+                                  />
+                                </IonItem>
+                                <IonButton expand="block" onClick={handleCreatePurchaseVendor}>
+                                  Create Supplier
+                                </IonButton>
+                              </div>
+                            ) : null}
+                            {showQuickProductForm && hasPermission('inventory.create') ? (
+                              <div className="list-block">
+                                <div className="list-row">
+                                  <div>
+                                    <strong>New stock item</strong>
+                                    <p>Add the item with zero opening stock; warehouse receipt will add quantity after approval.</p>
+                                  </div>
+                                </div>
+                                <div className="dual-stat">
+                                  <IonItem lines="none" className="app-item">
+                                    <IonLabel position="stacked">Item name</IonLabel>
+                                    <IonInput
+                                      value={quickProductName}
+                                      placeholder="e.g. Jasmine rice"
+                                      onIonInput={(event) => setQuickProductName(event.detail.value ?? '')}
+                                    />
+                                  </IonItem>
+                                  <IonItem lines="none" className="app-item">
+                                    <IonLabel position="stacked">Inventory ID</IonLabel>
+                                    <IonInput
+                                      value={quickProductInventoryId}
+                                      placeholder="Auto-generated if blank"
+                                      onIonInput={(event) => setQuickProductInventoryId(event.detail.value ?? '')}
+                                    />
+                                  </IonItem>
+                                </div>
+                                <div className="dual-stat">
+                                  <IonItem lines="none" className="app-item">
+                                    <IonLabel position="stacked">Unit</IonLabel>
+                                    <IonInput
+                                      value={quickProductUnit}
+                                      placeholder="units"
+                                      onIonInput={(event) => setQuickProductUnit(event.detail.value ?? '')}
+                                    />
+                                  </IonItem>
+                                  <IonItem lines="none" className="app-item">
+                                    <IonLabel position="stacked">Unit cost</IonLabel>
+                                    <IonInput
+                                      type="number"
+                                      value={quickProductCost}
+                                      onIonInput={(event) => setQuickProductCost(event.detail.value === '' ? '' : Number(event.detail.value))}
+                                    />
+                                  </IonItem>
+                                </div>
+                                <div className="dual-stat">
+                                  <IonItem lines="none" className="app-item">
+                                    <IonLabel position="stacked">Selling price</IonLabel>
+                                    <IonInput
+                                      type="number"
+                                      value={quickProductPrice}
+                                      placeholder="Defaults to cost"
+                                      onIonInput={(event) => setQuickProductPrice(event.detail.value === '' ? '' : Number(event.detail.value))}
+                                    />
+                                  </IonItem>
+                                  <IonItem lines="none" className="app-item">
+                                    <IonLabel position="stacked">Reorder level</IonLabel>
+                                    <IonInput
+                                      type="number"
+                                      value={quickProductReorderLevel}
+                                      onIonInput={(event) => setQuickProductReorderLevel(event.detail.value === '' ? '' : Number(event.detail.value))}
+                                    />
+                                  </IonItem>
+                                </div>
+                                <IonButton expand="block" onClick={handleCreatePurchaseProduct}>
+                                  Create Stock Item
+                                </IonButton>
+                              </div>
+                            ) : null}
                             <div className="dual-stat">
                               <IonItem lines="none" className="app-item">
                                 <IonLabel position="stacked">Quantity</IonLabel>
@@ -1537,6 +1754,11 @@ const InventoryPage: React.FC = () => {
                               title="Select Vendor"
                               placeholder="Search vendor name, code, or location..."
                               items={purchaseVendorPickerItems}
+                              emptyActionLabel="Create Supplier"
+                              onEmptyAction={(query) => {
+                                setQuickVendorName(query);
+                                setShowQuickVendorForm(true);
+                              }}
                               onDismiss={() => setShowPurchaseVendorPicker(false)}
                               onSelect={(item) => {
                                 setPurchaseVendorId(item.id);
@@ -1548,14 +1770,17 @@ const InventoryPage: React.FC = () => {
                               title="Select Stock Item"
                               placeholder="Search name or inventory ID..."
                               items={purchaseProductPickerItems}
+                              emptyActionLabel={hasPermission('inventory.create') ? 'Create Stock Item' : undefined}
+                              onEmptyAction={hasPermission('inventory.create') ? (query) => {
+                                setQuickProductName(query);
+                                setShowQuickProductForm(true);
+                              } : undefined}
                               onDismiss={() => setShowPurchaseProductPicker(false)}
                               onSelect={(item) => {
                                 setPurchaseProductId(item.id);
                                 setShowPurchaseProductPicker(false);
                               }}
                             />
-                          </>
-                        )}
                       </>
                     ) : null}
 

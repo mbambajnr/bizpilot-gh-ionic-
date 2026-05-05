@@ -165,6 +165,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AppRole, AppPermission[]> = {
   PurchaseManager: [
     'business.view',
     'inventory.view',
+    'inventory.create',
     'vendors.view',
     'vendors.manage',
     'vendors.create',

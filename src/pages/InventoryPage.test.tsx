@@ -57,6 +57,7 @@ function buildContext(permissionMap: Record<string, boolean>, overrides: Record<
     },
     addProduct: vi.fn(() => ({ ok: true })),
     addRestockRequest: vi.fn(() => ({ ok: true })),
+    createVendor: vi.fn(async () => ({ ok: true })),
     reviewRestockRequest: vi.fn(() => ({ ok: true })),
     createStockTransfer: vi.fn(async () => ({ ok: true })),
     approveStockTransfer: vi.fn(async () => ({ ok: true })),
@@ -161,6 +162,7 @@ describe('InventoryPage ERP discoverability', () => {
     mockLocationSearch = '?section=procurement';
     mockUseBusiness.mockReturnValue(buildContext({
       'inventory.view': true,
+      'inventory.create': true,
       'purchases.view': true,
       'purchases.create': true,
       'restockRequests.view': true,
@@ -171,6 +173,8 @@ describe('InventoryPage ERP discoverability', () => {
     expect(await screen.findByText('Items Ordered')).toBeInTheDocument();
     expect(screen.getByText('Savannah Supplies')).toBeInTheDocument();
     expect(screen.getByText('Rice')).toBeInTheDocument();
+    expect(screen.getByText('Add New Supplier')).toBeInTheDocument();
+    expect(screen.getByText('Add New Stock Item')).toBeInTheDocument();
     expect(screen.getByText('Purchase order total')).toBeInTheDocument();
     expect(screen.getByText('Create Purchase Order')).toBeInTheDocument();
   });
