@@ -2189,6 +2189,19 @@ export function submitPurchaseInState(current: BusinessState, input: PurchaseAct
     data: {
       ...current,
       purchases: current.purchases.map((item) => (item.id === purchase.id ? updatedPurchase : item)),
+      notifications: [
+        createAppNotification({
+          title: 'Purchase order submitted',
+          message: `${purchase.purchaseCode} has been submitted and is awaiting Admin approval.`,
+          createdAt: submittedAt,
+          recipientUserIds: [purchase.createdBy],
+          entityType: 'purchase',
+          entityId: purchase.id,
+          referenceNumber: purchase.purchaseCode,
+          actionUrl: '/inventory?section=procurement',
+        }),
+        ...current.notifications,
+      ],
       activityLogEntries: [
         createActivityLogEntry(current, {
           entityType: 'business',

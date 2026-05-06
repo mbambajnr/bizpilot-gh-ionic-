@@ -2096,6 +2096,13 @@ describe('businessLogic', () => {
     if (!submitted.ok || !submitted.data) {
       return;
     }
+    expect(submitted.data.notifications[0]).toMatchObject({
+      title: 'Purchase order submitted',
+      recipientUserIds: ['u-purchase'],
+      referenceNumber: draft.purchaseCode,
+      actionUrl: '/inventory?section=procurement',
+    });
+    expect(submitted.data.notifications[0].message).toContain('awaiting Admin approval');
 
     const approved = approvePurchaseInState(submitted.data, {
       purchaseId: draft.id,
