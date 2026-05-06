@@ -215,9 +215,10 @@ function findLocalEmployee(identifier: string) {
 }
 
 function signInWithLocalEmployee(identifier: string, password: string): AuthActionResult & { session?: Session } {
+  const normalizedPassword = password.trim();
   const matchingUser = findLocalEmployee(identifier);
 
-  if (!matchingUser || !matchingUser.temporaryPassword || matchingUser.temporaryPassword !== password) {
+  if (!matchingUser || !matchingUser.temporaryPassword || matchingUser.temporaryPassword !== normalizedPassword) {
     return { ok: false, message: 'Incorrect username, email, or password.' };
   }
 
@@ -256,7 +257,7 @@ async function signInWithCloudEmployee(identifier: string, password: string): Pr
   try {
     const { data, error } = await getSupabaseClient().rpc('authenticate_employee_credential', {
       credential_identifier: identifier.trim(),
-      credential_password: password,
+      credential_password: password.trim(),
     });
 
     if (error) {

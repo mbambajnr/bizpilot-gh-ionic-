@@ -124,6 +124,100 @@ describe('AuthContext employee sign-in', () => {
     expect(signInWithPassword).not.toHaveBeenCalled();
   });
 
+  it('ignores accidental spaces around local employee temporary passwords', async () => {
+    signInWithPassword.mockResolvedValue({
+      error: { message: 'Invalid login credentials' },
+    });
+
+    window.localStorage.setItem(
+      'bizpilot-gh-state-v1',
+      JSON.stringify({
+        users: [
+          {
+            userId: 'u-store-trim',
+            name: 'Store Trim',
+            email: 'trim@example.com',
+            username: 'trim@example.com',
+            temporaryPassword: 'BP-TrimPass1',
+            accountStatus: 'active',
+            role: 'StoreManager',
+            grantedPermissions: [],
+            revokedPermissions: [],
+          },
+        ],
+      })
+    );
+
+    const onDone = vi.fn();
+
+    render(
+      <AuthProvider>
+        <SignInHarness identifier="trim@example.com" password=" BP-TrimPass1 " onDone={onDone} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ok: true,
+          authMode: 'employee-local',
+        })
+      );
+    });
+
+    expect(signInWithPassword).not.toHaveBeenCalled();
+  });
+
+  it('trims accidental spaces before checking Supabase employee credentials', async () => {
+    signInWithPassword.mockResolvedValue({
+      error: { message: 'Invalid login credentials' },
+    });
+    rpc.mockResolvedValue({
+      data: [
+        {
+          id: 'u-cloud-trim',
+          business_id: '4a9d35da-0000-4000-9000-000000000000',
+          name: 'Cloud Trim',
+          email: 'cloudtrim@example.com',
+          username: 'cloudtrim@example.com',
+          temporary_password: 'BP-CloudTrim1',
+          credentials_generated_at: '2026-05-06T10:30:00.000Z',
+          account_status: 'active',
+          deactivated_at: null,
+          role: 'PurchaseManager',
+          role_label: null,
+          granted_permissions: [],
+          revoked_permissions: [],
+          customer_email_sender_name: null,
+          customer_email_sender_email: null,
+        },
+      ],
+      error: null,
+    });
+
+    const onDone = vi.fn();
+
+    render(
+      <AuthProvider>
+        <SignInHarness identifier="cloudtrim@example.com" password=" BP-CloudTrim1 " onDone={onDone} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ok: true,
+          authMode: 'employee-local',
+        })
+      );
+    });
+
+    expect(rpc).toHaveBeenCalledWith('authenticate_employee_credential', {
+      credential_identifier: 'cloudtrim@example.com',
+      credential_password: 'BP-CloudTrim1',
+    });
+  });
+
   it('uses cached employee credentials when the cloud workspace state no longer contains the employee', async () => {
     signInWithPassword.mockResolvedValue({
       error: { message: 'Invalid login credentials' },
