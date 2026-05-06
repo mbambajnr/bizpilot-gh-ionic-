@@ -136,8 +136,8 @@ describe('RBAC Logic', () => {
 
     expect(hasPermission(purchaseManager, 'vendors.manage')).toBe(true);
     expect(hasPermission(purchaseManager, 'inventory.create')).toBe(true);
-    expect(hasPermission(purchaseManager, 'purchases.approve')).toBe(true);
-    expect(hasPermission(purchaseManager, 'procurement.approve')).toBe(true);
+    expect(hasPermission(purchaseManager, 'purchases.approve')).toBe(false);
+    expect(hasPermission(purchaseManager, 'procurement.approve')).toBe(false);
     expect(hasPermission(purchaseManager, 'transfers.view')).toBe(false);
     expect(hasPermission(purchaseManager, 'payables.pay')).toBe(false);
   });

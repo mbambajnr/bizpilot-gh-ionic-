@@ -1390,7 +1390,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async approvePurchase(input) {
-        if (!hasPermission(currentUser, 'purchases.approve')) {
+        if (currentUser.role !== 'Admin' || !hasPermission(currentUser, 'purchases.approve')) {
           return { ok: false, message: 'You are not authorized to approve purchases.' };
         }
 
@@ -1408,8 +1408,8 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async cancelPurchase(input) {
-        if (!hasPermission(currentUser, 'purchases.approve')) {
-          return { ok: false, message: 'You are not authorized to cancel purchases.' };
+        if (currentUser.role !== 'Admin' || !hasPermission(currentUser, 'purchases.approve')) {
+          return { ok: false, message: 'You are not authorized to decline purchases.' };
         }
 
         const currentState = stateRef.current;

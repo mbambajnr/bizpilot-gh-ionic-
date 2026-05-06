@@ -199,6 +199,41 @@ describe('InventoryPage ERP discoverability', () => {
     expect(screen.getByText('Stock control')).toBeInTheDocument();
   });
 
+  it('does not show approval controls to purchase officers on submitted purchases', async () => {
+    mockLocationSearch = '?section=procurement';
+    const context = buildContext({
+      'inventory.view': true,
+      'purchases.view': true,
+      'purchases.create': true,
+      'purchases.approve': true,
+      'restockRequests.view': true,
+    }, {
+      purchases: [
+        {
+          id: 'purchase-1',
+          purchaseCode: 'PO-0001',
+          vendorId: 'vendor-1',
+          vendorCode: 'VEN-0001',
+          items: [{ productId: 'p1', productName: 'Rice', quantity: 5, unitCost: 11, totalCost: 55, vendorCode: 'VEN-0001' }],
+          totalAmount: 55,
+          status: 'submitted',
+          createdBy: 'u1',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    });
+    context.currentUser.role = 'PurchaseManager';
+    mockUseBusiness.mockReturnValue(context);
+
+    render(<InventoryPage />);
+
+    expect(await screen.findByText('PO-0001')).toBeInTheDocument();
+    expect(screen.queryByText('Approve')).not.toBeInTheDocument();
+    expect(screen.queryByText('Decline')).not.toBeInTheDocument();
+    expect(screen.queryByText('Decline note')).not.toBeInTheDocument();
+  });
+
   it('blocks inline stock item creation until a purchase unit cost is provided', async () => {
     const context = buildContext({
       'inventory.view': true,

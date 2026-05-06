@@ -199,6 +199,7 @@ const InventoryPage: React.FC = () => {
     hasPermission('inventory.create') &&
     currentUser.role !== 'PurchaseManager' &&
     (hasPermission('inventory.edit') || hasPermission('inventory.adjust') || hasPermission('business.edit'));
+  const canApprovePurchases = currentUser.role === 'Admin' && hasPermission('purchases.approve');
   const activeWarehouses = useMemo(() => activeLocations.filter((location) => location.type === 'warehouse'), [activeLocations]);
   const activeStores = useMemo(() => activeLocations.filter((location) => location.type === 'store'), [activeLocations]);
   const visibleInventoryLocations = useMemo(
@@ -1813,7 +1814,7 @@ const InventoryPage: React.FC = () => {
                                   {purchase.status === 'draft' && hasPermission('purchases.create') ? (
                                     <IonButton size="small" onClick={() => handlePurchaseAction(purchase.id, 'submit')}>Submit</IonButton>
                                   ) : null}
-                                  {(purchase.status === 'submitted' || purchase.status === 'adminReviewed') && hasPermission('purchases.approve') ? (
+                                  {(purchase.status === 'submitted' || purchase.status === 'adminReviewed') && canApprovePurchases ? (
                                     <>
                                       <IonItem lines="none" className="app-item">
                                         <IonLabel position="stacked">Decline note</IonLabel>
