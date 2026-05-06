@@ -2969,3 +2969,52 @@ ion-button {
     border-radius: 20px;
   }
 }
+
+.notification-bell {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 10px);
+  right: 14px;
+  z-index: 1000;
+  width: 44px;
+  height: 44px;
+  --padding-start: 0;
+  --padding-end: 0;
+  --border-radius: 999px;
+  --background: rgba(255, 255, 255, 0.94);
+  --color: var(--ion-color-primary);
+  border: 1px solid rgba(17, 47, 58, 0.12);
+  box-shadow: 0 10px 28px rgba(17, 47, 58, 0.14);
+}
+
+.notification-bell ion-icon {
+  font-size: 23px;
+}
+
+.notification-bell-badge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 14px;
+}
+
+.notification-tray {
+  padding: calc(env(safe-area-inset-top) + 20px) 18px 24px;
+}
+
+.notification-tray-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.notification-tray-head h2 {
+  margin: 4px 0 0;
+}

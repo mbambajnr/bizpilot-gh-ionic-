@@ -1,11 +1,13 @@
-import { type ReactNode, Suspense, lazy, useEffect } from 'react';
-import { Redirect, Route } from 'react-router-dom';
+import { type ReactNode, Suspense, lazy, useEffect, useState } from 'react';
+import { Redirect, Route, useHistory } from 'react-router-dom';
 import {
   IonApp,
+  IonBadge,
   IonButton,
   IonContent,
   IonIcon,
   IonLabel,
+  IonModal,
   IonPage,
   IonRouterOutlet,
   IonSpinner,
@@ -15,7 +17,7 @@ import {
   setupIonicReact,
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import { cart, cubeOutline, documentText, grid, home, people, settings, wallet } from 'ionicons/icons';
+import { cart, cubeOutline, documentText, grid, home, notificationsOutline, people, settings, wallet } from 'ionicons/icons';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BusinessProvider, useBusiness } from './context/BusinessContext';
@@ -181,7 +183,9 @@ function PublicShell() {
 }
 
 function AppShell() {
-  const { state, hasPermission } = useBusiness();
+  const history = useHistory();
+  const [showNotifications, setShowNotifications] = useState(false);
+  const { state, currentUser, hasPermission } = useBusiness();
   const businessLaunchState = getBusinessLaunchState(state.businessProfile);
   const businessSetupComplete = isBusinessWorkspaceLive(state.businessProfile);
   const canViewDashboard = hasPermission('reports.dashboard.view');
@@ -213,9 +217,84 @@ function AppShell() {
                         : canViewSettings
                           ? '/settings'
                           : '/dashboard';
+  const userNotifications = state.notifications
+    .filter((notification) =>
+      notification.recipientUserIds?.includes(currentUser.userId) ||
+      notification.recipientRoles?.includes(currentUser.role)
+    )
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+  const unreadNotificationCount = userNotifications.filter((notification) => !notification.readByUserIds.includes(currentUser.userId)).length;
 
   return (
     <IonTabs>
+      {businessSetupComplete ? (
+        <>
+          <IonButton
+            className="notification-bell"
+            fill="clear"
+            aria-label={`Notifications${unreadNotificationCount > 0 ? `, ${unreadNotificationCount} unread` : ''}`}
+            onClick={() => setShowNotifications(true)}
+          >
+            <IonIcon icon={notificationsOutline} />
+            {unreadNotificationCount > 0 ? (
+              <IonBadge className="notification-bell-badge" color="danger">
+                {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+              </IonBadge>
+            ) : null}
+          </IonButton>
+          <IonModal isOpen={showNotifications} onDidDismiss={() => setShowNotifications(false)}>
+            <IonPage>
+              <IonContent fullscreen={true}>
+                <div className="notification-tray">
+                  <div className="notification-tray-head">
+                    <div>
+                      <p className="eyebrow">Notifications</p>
+                      <h2>Updates</h2>
+                    </div>
+                    <IonButton fill="clear" onClick={() => setShowNotifications(false)}>
+                      Close
+                    </IonButton>
+                  </div>
+                  <div className="list-block">
+                    {userNotifications.length === 0 ? (
+                      <div className="list-row">
+                        <div>
+                          <strong>No notifications yet</strong>
+                          <p>Purchase approvals and role alerts will appear here.</p>
+                        </div>
+                      </div>
+                    ) : (
+                      userNotifications.map((notification) => (
+                        <button
+                          type="button"
+                          className="list-row dashboard-worklist-row"
+                          key={notification.id}
+                          onClick={() => {
+                            setShowNotifications(false);
+                            if (notification.actionUrl) {
+                              history.push(notification.actionUrl);
+                            }
+                          }}
+                        >
+                          <div className="dashboard-worklist-copy">
+                            <strong>{notification.title}</strong>
+                            <p>{notification.message}</p>
+                          </div>
+                          {notification.referenceNumber ? (
+                            <div className="right-meta">
+                              <IonBadge color="primary">{notification.referenceNumber}</IonBadge>
+                            </div>
+                          ) : null}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </IonContent>
+            </IonPage>
+          </IonModal>
+        </>
+      ) : null}
       <IonRouterOutlet>
         <Route exact path="/dashboard">
           {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : canViewDashboard ? <LazyRoute><DashboardPage /></LazyRoute> : <UnauthorizedPage />}

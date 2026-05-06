@@ -83,7 +83,7 @@ const WorklistItem: React.FC<WorklistItemProps> = ({ title, count, helper, onCli
 const DashboardPage: React.FC = () => {
   const history = useHistory();
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('weekly');
-  const { state, priorityQuestions, backendStatus, currentUser, hasPermission } = useBusiness();
+  const { state, priorityQuestions, backendStatus, hasPermission } = useBusiness();
   const metrics = selectDashboardMetrics(state);
   const customerClassificationBreakdown = selectCustomerClassificationBreakdown(state);
   const trendPoints: RevenueTrendPoint[] =
@@ -122,12 +122,6 @@ const DashboardPage: React.FC = () => {
   const openPayablesBalance = accountsPayableWorklist.totalOutstandingBalance;
   const pendingTransfers = state.stockTransfers.filter((transfer) => !['received', 'cancelled'].includes(transfer.status)).length;
   const pendingIncomingTransfers = state.stockTransfers.filter((transfer) => transfer.status === 'approved' || transfer.status === 'dispatched').length;
-  const userNotifications = state.notifications
-    .filter((notification) =>
-      notification.recipientUserIds?.includes(currentUser.userId) ||
-      notification.recipientRoles?.includes(currentUser.role)
-    )
-    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
   const draftQuotations = state.quotations.filter((quotation) => ['Draft', 'draft', 'open'].includes(quotation.status)).length;
   const storeReadyQuantity = storeStockBalances.reduce((sum, entry) => sum + entry.quantityAvailable, 0);
   const warehouseQuantity = warehouseStockBalances.reduce((sum, entry) => sum + entry.quantityAvailable, 0);
@@ -306,35 +300,6 @@ const DashboardPage: React.FC = () => {
                     onClick={() => history.push('/settings')}
                   />
                 ) : null}
-              </div>
-            </SectionCard>
-          ) : null}
-
-          {userNotifications.length > 0 ? (
-            <SectionCard
-              title="Notifications"
-              subtitle="Approval updates and role-specific work alerts for your current user."
-            >
-              <div className="list-block">
-                {userNotifications.slice(0, 5).map((notification) => (
-                  <button
-                    type="button"
-                    className="list-row dashboard-worklist-row"
-                    key={notification.id}
-                    onClick={() => notification.actionUrl ? history.push(notification.actionUrl) : undefined}
-                  >
-                    <div className="dashboard-worklist-copy">
-                      <strong>{notification.title}</strong>
-                      <p>{notification.message}</p>
-                      <p className="muted-label">{formatRelativeDate(notification.createdAt)}</p>
-                    </div>
-                    {notification.referenceNumber ? (
-                      <div className="right-meta">
-                        <IonBadge color="primary">{notification.referenceNumber}</IonBadge>
-                      </div>
-                    ) : null}
-                  </button>
-                ))}
               </div>
             </SectionCard>
           ) : null}
