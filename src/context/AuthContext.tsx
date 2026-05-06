@@ -465,12 +465,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
           return result;
         };
 
-        if (findLocalEmployee(email)) {
-          return localFallback();
+        const localEmployeeResult = localFallback();
+        if (localEmployeeResult.ok) {
+          return localEmployeeResult;
         }
 
         if (!hasSupabaseConfig) {
-          return localFallback();
+          return localEmployeeResult;
         }
 
         const cloudEmployeeResult = await signInWithCloudEmployee(email, password);

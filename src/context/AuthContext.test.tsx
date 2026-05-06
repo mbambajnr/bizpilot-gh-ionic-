@@ -174,6 +174,59 @@ describe('AuthContext employee sign-in', () => {
     expect(signInWithPassword).not.toHaveBeenCalled();
   });
 
+  it('falls through to Supabase owner auth when a cached employee email has a different password', async () => {
+    signInWithPassword.mockResolvedValue({
+      data: {
+        user: {
+          id: 'owner-1',
+          email: 'jaysino14@gmail.com',
+        },
+        session: null,
+      },
+      error: null,
+    });
+
+    window.localStorage.setItem(
+      'bizpilot-employee-credentials-v1',
+      JSON.stringify({
+        users: [
+          {
+            userId: 'u-old-employee',
+            name: 'Old Employee',
+            email: 'jaysino14@gmail.com',
+            username: 'jaysino14@gmail.com',
+            temporaryPassword: 'BP-OldEmployeePass',
+            accountStatus: 'active',
+            role: 'PurchaseManager',
+            grantedPermissions: [],
+            revokedPermissions: [],
+          },
+        ],
+      })
+    );
+
+    const onDone = vi.fn();
+
+    render(
+      <AuthProvider>
+        <SignInHarness identifier="jaysino14@gmail.com" password="admin-password" onDone={onDone} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ok: true,
+        })
+      );
+    });
+
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: 'jaysino14@gmail.com',
+      password: 'admin-password',
+    });
+  });
+
   it('uses Supabase employee credentials when the local cache is empty', async () => {
     signInWithPassword.mockResolvedValue({
       error: { message: 'Invalid login credentials' },
