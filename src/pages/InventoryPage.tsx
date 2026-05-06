@@ -125,6 +125,8 @@ const InventoryPage: React.FC = () => {
   const [purchaseUnitCost, setPurchaseUnitCost] = useState<number | ''>('');
   const [purchaseDraftItems, setPurchaseDraftItems] = useState<PurchaseItem[]>([]);
   const [purchaseMessage, setPurchaseMessage] = useState('');
+  const [quickProductMessage, setQuickProductMessage] = useState('');
+  const [purchaseToastMessage, setPurchaseToastMessage] = useState('Purchase draft created.');
   const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
   const [purchaseDeclineNotes, setPurchaseDeclineNotes] = useState<Record<string, string>>({});
   const [showPurchaseVendorPicker, setShowPurchaseVendorPicker] = useState(false);
@@ -503,7 +505,9 @@ const InventoryPage: React.FC = () => {
   const handleCreatePurchaseProduct = () => {
     const itemName = quickProductName.trim();
     if (purchaseUnitCost === '') {
-      setPurchaseMessage('Enter the purchase unit cost before creating the stock item.');
+      const message = 'Enter the purchase unit cost below before creating the stock item.';
+      setQuickProductMessage(message);
+      setPurchaseMessage(message);
       return;
     }
     const itemCost = Number(purchaseUnitCost);
@@ -525,6 +529,7 @@ const InventoryPage: React.FC = () => {
     });
 
     if (!result.ok) {
+      setQuickProductMessage(result.message);
       setPurchaseMessage(result.message);
       return;
     }
@@ -537,7 +542,9 @@ const InventoryPage: React.FC = () => {
     setQuickProductPrice('');
     setQuickProductReorderLevel(0);
     setShowQuickProductForm(false);
-    setPurchaseMessage('');
+    setQuickProductMessage('');
+    setPurchaseMessage(`Stock item "${itemName}" created. Add quantity, then add the purchase line.`);
+    setPurchaseToastMessage('Stock item created.');
     setShowPurchaseSuccess(true);
   };
 
@@ -770,6 +777,7 @@ const InventoryPage: React.FC = () => {
 
     setPurchaseDraftItems([]);
     setPurchaseMessage('');
+    setPurchaseToastMessage('Purchase draft created.');
     setShowPurchaseSuccess(true);
   };
 
@@ -1682,16 +1690,17 @@ const InventoryPage: React.FC = () => {
                                 <IonButton expand="block" onClick={handleCreatePurchaseProduct}>
                                   Create Stock Item
                                 </IonButton>
+                                {quickProductMessage ? <p className="form-message">{quickProductMessage}</p> : null}
                               </div>
                             ) : null}
                             <div className="dual-stat">
                               <IonItem lines="none" className="app-item">
                                 <IonLabel position="stacked">Quantity</IonLabel>
-                                <IonInput type="number" value={purchaseQuantity} onIonInput={(event) => setPurchaseQuantity(event.detail.value === '' ? '' : Number(event.detail.value))} />
+                                <IonInput aria-label="Purchase quantity" type="number" value={purchaseQuantity} onIonInput={(event) => setPurchaseQuantity(event.detail.value === '' ? '' : Number(event.detail.value))} />
                               </IonItem>
                               <IonItem lines="none" className="app-item">
                                 <IonLabel position="stacked">Unit cost</IonLabel>
-                                <IonInput type="number" value={purchaseUnitCost} onIonInput={(event) => setPurchaseUnitCost(event.detail.value === '' ? '' : Number(event.detail.value))} />
+                                <IonInput aria-label="Purchase unit cost" type="number" value={purchaseUnitCost} onIonInput={(event) => setPurchaseUnitCost(event.detail.value === '' ? '' : Number(event.detail.value))} />
                               </IonItem>
                             </div>
                             <IonButton fill="outline" expand="block" onClick={handleAddPurchaseItem}>
@@ -2400,7 +2409,7 @@ const InventoryPage: React.FC = () => {
       />
       <IonToast
         isOpen={showPurchaseSuccess}
-        message="Purchase draft created."
+        message={purchaseToastMessage}
         duration={1800}
         color="success"
         position="top"

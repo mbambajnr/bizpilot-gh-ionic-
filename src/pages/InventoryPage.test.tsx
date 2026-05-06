@@ -251,7 +251,39 @@ describe('InventoryPage ERP discoverability', () => {
     fireEvent.click(screen.getByText('Create Stock Item'));
 
     expect(context.addProduct).not.toHaveBeenCalled();
-    expect(screen.getByText('Enter the purchase unit cost before creating the stock item.')).toBeInTheDocument();
+    expect(screen.getAllByText('Enter the purchase unit cost below before creating the stock item.').length).toBeGreaterThan(0);
+  });
+
+  it('shows immediate feedback after inline stock item creation succeeds', async () => {
+    const context = buildContext({
+      'inventory.view': true,
+      'inventory.create': true,
+      'purchases.view': true,
+      'purchases.create': true,
+      'restockRequests.view': true,
+    });
+    mockLocationSearch = '?section=procurement';
+    mockUseBusiness.mockReturnValue(context);
+
+    render(<InventoryPage />);
+
+    fireEvent.click(await screen.findByText('Add New Stock Item'));
+    const quickProductNameInput = screen.getByPlaceholderText('e.g. Jasmine rice');
+    fireEvent(quickProductNameInput.closest('ion-input') ?? quickProductNameInput, new CustomEvent('ionInput', { detail: { value: 'Brake Pads' } }));
+    const purchaseUnitCostInput = screen
+      .getAllByLabelText('Purchase unit cost')
+      .find((element) => element.tagName === 'ION-INPUT');
+    expect(purchaseUnitCostInput).toBeDefined();
+    fireEvent(purchaseUnitCostInput as HTMLElement, new CustomEvent('ionInput', { detail: { value: '25' } }));
+    fireEvent.click(screen.getByText('Create Stock Item'));
+
+    expect(context.addProduct).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Brake Pads',
+      cost: 25,
+      price: 25,
+      quantity: 0,
+    }));
+    expect(screen.getByText('Stock item "Brake Pads" created. Add quantity, then add the purchase line.')).toBeInTheDocument();
   });
 
   it('keeps store balances hidden from purchase officers without transfer access', async () => {
