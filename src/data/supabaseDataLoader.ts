@@ -1,4 +1,5 @@
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
+import type { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
 import type { BusinessLocation, BusinessState, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, StockMovement, TaxSnapshot, WithholdingTaxSnapshot } from './seedBusiness';
 
 type BusinessLocationRow = {
@@ -111,6 +112,23 @@ type StockMovementRow = {
   created_at: string;
 };
 
+type EmployeeCredentialRow = {
+  id: string;
+  name: string;
+  email: string;
+  username: string;
+  temporary_password: string | null;
+  credentials_generated_at: string | null;
+  account_status: 'active' | 'deactivated';
+  deactivated_at: string | null;
+  role: AppRole;
+  role_label: string | null;
+  granted_permissions: AppPermission[] | null;
+  revoked_permissions: AppPermission[] | null;
+  customer_email_sender_name: string | null;
+  customer_email_sender_email: string | null;
+};
+
 function mapPaymentMethod(value: string | null | undefined): Sale['paymentMethod'] {
   if (value === 'mobile_money') {
     return 'Mobile Money';
@@ -138,7 +156,8 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       { data: quotations },
       { data: invoices },
       { data: stockMovements },
-      { data: expenses }
+      { data: expenses },
+      { data: employeeCredentials }
     ] = await Promise.all([
       supabase.from('business_locations').select('*').eq('business_id', businessId).order('is_default', { ascending: false }).order('name', { ascending: true }),
       supabase.from('products').select('*').eq('business_id', businessId),
@@ -152,7 +171,8 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
         .order('created_at', { ascending: false }),
       supabase.from('invoices').select('*').eq('business_id', businessId),
       supabase.from('stock_movements').select('*').eq('business_id', businessId).order('created_at', { ascending: false }),
-      supabase.from('expenses').select('*').eq('business_id', businessId)
+      supabase.from('expenses').select('*').eq('business_id', businessId),
+      supabase.from('employee_credentials').select('*').eq('business_id', businessId)
     ]);
 
     const mappedLocations: BusinessLocation[] = ((locations || []) as BusinessLocationRow[]).map((location) => ({
@@ -312,6 +332,23 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       recordedByName: e.recorded_by_name || 'Unknown user'
     }));
 
+    const mappedUsers: UserAccessProfile[] = ((employeeCredentials || []) as EmployeeCredentialRow[]).map((employee) => ({
+      userId: employee.id,
+      name: employee.name,
+      email: employee.email,
+      username: employee.username,
+      temporaryPassword: employee.temporary_password ?? undefined,
+      credentialsGeneratedAt: employee.credentials_generated_at ?? undefined,
+      accountStatus: employee.account_status ?? 'active',
+      deactivatedAt: employee.deactivated_at ?? undefined,
+      role: employee.role,
+      roleLabel: employee.role_label ?? undefined,
+      grantedPermissions: employee.granted_permissions ?? [],
+      revokedPermissions: employee.revoked_permissions ?? [],
+      customerEmailSenderName: employee.customer_email_sender_name ?? undefined,
+      customerEmailSenderEmail: employee.customer_email_sender_email ?? undefined,
+    }));
+
     return {
       products: mappedProducts,
       locations: mappedLocations,
@@ -321,7 +358,8 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       quotations: mappedQuotations,
       sales: mappedSales,
       stockMovements: mappedStockMovements,
-      expenses: mappedExpenses
+      expenses: mappedExpenses,
+      users: mappedUsers
     };
   } catch (err) {
     console.error('[SupabaseLoader] Failed to load business data:', err);

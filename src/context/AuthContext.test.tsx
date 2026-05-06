@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from './AuthContext';
 const signInWithPassword = vi.fn();
 const getSession = vi.fn();
 const onAuthStateChange = vi.fn();
+const rpc = vi.fn();
 
 vi.mock('../lib/supabase', () => ({
   hasSupabaseConfig: true,
@@ -17,6 +18,7 @@ vi.mock('../lib/supabase', () => ({
       onAuthStateChange,
       signOut: vi.fn(() => Promise.resolve({ error: null })),
     },
+    rpc,
   }),
 }));
 
@@ -72,6 +74,7 @@ describe('AuthContext employee sign-in', () => {
     vi.clearAllMocks();
     window.localStorage.clear();
     getSession.mockResolvedValue({ data: { session: null }, error: null });
+    rpc.mockResolvedValue({ data: [], error: null });
     onAuthStateChange.mockReturnValue({
       data: { subscription: { unsubscribe: vi.fn() } },
     });
@@ -169,5 +172,65 @@ describe('AuthContext employee sign-in', () => {
     });
 
     expect(signInWithPassword).not.toHaveBeenCalled();
+  });
+
+  it('uses Supabase employee credentials when the local cache is empty', async () => {
+    signInWithPassword.mockResolvedValue({
+      error: { message: 'Invalid login credentials' },
+    });
+    rpc.mockResolvedValue({
+      data: [
+        {
+          id: 'u-purchase-1',
+          business_id: '4a9d35da-0000-4000-9000-000000000000',
+          name: 'Purchase Officer',
+          email: 'jaysino14@gmail.com',
+          username: 'jaysino14@gmail.com',
+          temporary_password: 'BP-CloudPass1',
+          credentials_generated_at: '2026-05-06T10:30:00.000Z',
+          account_status: 'active',
+          deactivated_at: null,
+          role: 'PurchaseManager',
+          role_label: null,
+          granted_permissions: [],
+          revoked_permissions: [],
+          customer_email_sender_name: null,
+          customer_email_sender_email: null,
+        },
+      ],
+      error: null,
+    });
+
+    const onDone = vi.fn();
+
+    render(
+      <AuthProvider>
+        <SignInHarness identifier="jaysino14@gmail.com" password="BP-CloudPass1" onDone={onDone} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ok: true,
+          authMode: 'employee-local',
+        })
+      );
+    });
+
+    expect(rpc).toHaveBeenCalledWith('authenticate_employee_credential', {
+      credential_identifier: 'jaysino14@gmail.com',
+      credential_password: 'BP-CloudPass1',
+    });
+    expect(signInWithPassword).not.toHaveBeenCalled();
+
+    const cachedCredentials = JSON.parse(window.localStorage.getItem('bizpilot-employee-credentials-v1') ?? '{}');
+    expect(cachedCredentials.users?.[0]).toEqual(
+      expect.objectContaining({
+        userId: 'u-purchase-1',
+        email: 'jaysino14@gmail.com',
+        username: 'jaysino14@gmail.com',
+      })
+    );
   });
 });

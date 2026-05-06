@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { seedState } from '../data/seedBusiness';
 import { addQuotationToState } from '../utils/businessLogic';
 import { BusinessProvider, useBusiness } from './BusinessContext';
-import { syncBusinessProfile, syncQuotation, syncSale } from '../data/supabaseSync';
+import { syncBusinessProfile, syncEmployeeCredential, syncQuotation, syncSale } from '../data/supabaseSync';
 
 vi.mock('./AuthContext', () => ({
   useAuth: () => ({ user: null }),
@@ -36,6 +36,7 @@ vi.mock('../data/supabaseSync', () => ({
   syncBusinessLocation: vi.fn(() => Promise.resolve(true)),
   syncSupplyRoute: vi.fn(() => Promise.resolve(true)),
   syncStockMovement: vi.fn(() => Promise.resolve(true)),
+  syncEmployeeCredential: vi.fn(() => Promise.resolve(true)),
 }));
 
 const STORAGE_KEY = 'bizpilot-gh-state-v1';
@@ -365,6 +366,14 @@ describe('BusinessContext quotation conversion sync', () => {
     const createdUser = savedState.users?.find((user: { email?: string }) => user.email === 'kwame@example.com');
     expect(createdUser?.username).toBe('kwame@example.com');
     expect(createdUser?.temporaryPassword).toMatch(/^BP-/);
+    expect(syncEmployeeCredential).toHaveBeenCalledWith(
+      seedState.businessProfile.id,
+      expect.objectContaining({
+        email: 'kwame@example.com',
+        username: 'kwame@example.com',
+        temporaryPassword: expect.stringMatching(/^BP-/),
+      })
+    );
   });
 
   it('lets admins create a fresh temporary password for an existing employee', async () => {
@@ -407,5 +416,14 @@ describe('BusinessContext quotation conversion sync', () => {
     const updatedUser = savedState.users?.find((user: { userId?: string }) => user.userId === 'u-store-operator');
     expect(updatedUser?.username).toBe('store@example.com');
     expect(updatedUser?.temporaryPassword).toMatch(/^BP-/);
+    expect(syncEmployeeCredential).toHaveBeenCalledWith(
+      seedState.businessProfile.id,
+      expect.objectContaining({
+        userId: 'u-store-operator',
+        email: 'store@example.com',
+        username: 'store@example.com',
+        temporaryPassword: expect.stringMatching(/^BP-/),
+      })
+    );
   });
 });

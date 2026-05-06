@@ -87,7 +87,7 @@ import {
   RecordPayablePaymentInput,
   LaunchBusinessWorkspaceInput,
 } from '../utils/businessLogic';
-import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpense, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovement } from '../data/supabaseSync';
+import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpense, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovement, syncEmployeeCredential } from '../data/supabaseSync';
 import { selectProductQuantityOnHand, selectSaleBalanceRemaining } from '../selectors/businessSelectors';
 import { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
 import { hasPermission } from '../authz/permissions';
@@ -274,6 +274,10 @@ function generateTemporaryPassword() {
   return password;
 }
 
+function shouldSyncEmployeeCredential(user: UserAccessProfile) {
+  return Boolean(user.username || user.temporaryPassword || user.credentialsGeneratedAt);
+}
+
 function createBlankBusinessState(owner?: { id?: string; email?: string; name?: string }, themePreference: BusinessState['themePreference'] = seedState.themePreference): BusinessState {
   const ownerId = owner?.id;
 
@@ -429,9 +433,12 @@ export function BusinessProvider({ children }: PropsWithChildren) {
             signatureUrl: current.businessProfile.signatureUrl || result.profile.signatureUrl,
           };
 
+          const cloudUsersById = new Map((fullCloudData.users ?? []).map((cloudUser) => [cloudUser.userId, cloudUser]));
+          updatedUsers.forEach((localUser) => cloudUsersById.set(localUser.userId, localUser));
+
           return {
             ...current,
-            users: updatedUsers,
+            users: Array.from(cloudUsersById.values()),
             currentUserId: authenticatedId,
             businessProfile: mergedProfile,
             locations: fullCloudData.locations ?? current.locations,
@@ -802,15 +809,26 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         if (!hasPermission(currentUser, 'permissions.manage')) {
           return { ok: false, message: 'Only admins can manage permissions.' };
         }
-        
+
+        const targetUser = state.users.find((user) => user.userId === userId);
+        if (!targetUser) {
+          return { ok: false, message: 'Employee account not found.' };
+        }
+
+        const updatedUser = {
+          ...targetUser,
+          grantedPermissions: granted,
+          revokedPermissions: revoked,
+        };
+
         setState(current => ({
           ...current,
-          users: current.users.map(u => u.userId === userId ? {
-            ...u,
-            grantedPermissions: granted,
-            revokedPermissions: revoked,
-          } : u)
+          users: current.users.map(u => u.userId === userId ? updatedUser : u)
         }));
+
+        if (shouldSyncEmployeeCredential(updatedUser)) {
+          void syncEmployeeCredential(state.businessProfile.id, updatedUser);
+        }
         
         return { ok: true };
       },
@@ -831,13 +849,27 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           return { ok: false, message: 'Only admins can assign customer email sender identities.' };
         }
 
+        const targetUser = state.users.find((user) => user.userId === userId);
+        const updatedUser = targetUser
+          ? {
+              ...targetUser,
+              ...profile,
+              username: profile.email ? buildEmployeeUsername(profile.email) : targetUser.username,
+            }
+          : undefined;
+
         setState(current => ({
           ...current,
           users: current.users.map(u => u.userId === userId ? {
             ...u,
             ...profile,
+            username: profile.email ? buildEmployeeUsername(profile.email) : u.username,
           } : u)
         }));
+
+        if (updatedUser && shouldSyncEmployeeCredential(updatedUser)) {
+          void syncEmployeeCredential(state.businessProfile.id, updatedUser);
+        }
 
         return { ok: true };
       },
@@ -868,26 +900,29 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         const username = buildEmployeeUsername(email);
         const temporaryPassword = generateTemporaryPassword();
         const credentialsGeneratedAt = new Date().toISOString();
+        const createdUser: UserAccessProfile = {
+          userId: nextUserId,
+          name,
+          email,
+          username,
+          temporaryPassword,
+          credentialsGeneratedAt,
+          accountStatus: 'active',
+          roleLabel: input.roleLabel?.trim() || undefined,
+          role: input.role,
+          grantedPermissions: input.grantedPermissions ?? [],
+          revokedPermissions: input.revokedPermissions ?? [],
+        };
 
         setState((current) => ({
           ...current,
           users: [
             ...current.users,
-            {
-              userId: nextUserId,
-              name,
-              email,
-              username,
-              temporaryPassword,
-              credentialsGeneratedAt,
-              accountStatus: 'active',
-              roleLabel: input.roleLabel?.trim() || undefined,
-              role: input.role,
-              grantedPermissions: input.grantedPermissions ?? [],
-              revokedPermissions: input.revokedPermissions ?? [],
-            },
+            createdUser,
           ],
         }));
+
+        void syncEmployeeCredential(state.businessProfile.id, createdUser);
 
         return { ok: true, data: { username, temporaryPassword } };
       },
@@ -908,20 +943,23 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         const username = buildEmployeeUsername(targetUser.email);
         const temporaryPassword = generateTemporaryPassword();
         const credentialsGeneratedAt = new Date().toISOString();
+        const updatedUser: UserAccessProfile = {
+          ...targetUser,
+          username,
+          temporaryPassword,
+          credentialsGeneratedAt,
+        };
 
         setState((current) => ({
           ...current,
           users: current.users.map((user) =>
             user.userId === userId
-              ? {
-                  ...user,
-                  username,
-                  temporaryPassword,
-                  credentialsGeneratedAt,
-                }
+              ? updatedUser
               : user
           ),
         }));
+
+        void syncEmployeeCredential(state.businessProfile.id, updatedUser);
 
         return { ok: true, data: { username, temporaryPassword } };
       },
@@ -971,27 +1009,29 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           return { ok: false, message: 'At least one active admin account must remain in the workspace.' };
         }
 
+        const updatedUser: UserAccessProfile = {
+          ...targetUser,
+          name,
+          email,
+          role: input.role,
+          username: buildEmployeeUsername(email),
+          roleLabel,
+          grantedPermissions: input.grantedPermissions,
+          revokedPermissions: input.revokedPermissions,
+          accountStatus: input.accountStatus,
+          deactivatedAt:
+            input.accountStatus === 'deactivated'
+              ? targetUser.deactivatedAt ?? new Date().toISOString()
+              : undefined,
+        };
+
         setState((current) => {
           const nextUsers = current.users.map((user) => {
             if (user.userId !== input.userId) {
               return user;
             }
 
-            return {
-              ...user,
-              name,
-              email,
-              role: input.role,
-              username: buildEmployeeUsername(email),
-              roleLabel,
-              grantedPermissions: input.grantedPermissions,
-              revokedPermissions: input.revokedPermissions,
-              accountStatus: input.accountStatus,
-              deactivatedAt:
-                input.accountStatus === 'deactivated'
-                  ? user.deactivatedAt ?? new Date().toISOString()
-                  : undefined,
-            };
+            return updatedUser;
           });
 
           const fallbackActiveUserId =
@@ -1007,6 +1047,8 @@ export function BusinessProvider({ children }: PropsWithChildren) {
                 : current.currentUserId,
           };
         });
+
+        void syncEmployeeCredential(state.businessProfile.id, updatedUser);
 
         return { ok: true };
       },

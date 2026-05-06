@@ -1,4 +1,5 @@
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
+import type { UserAccessProfile } from '../authz/types';
 import type { BusinessLocation, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, BusinessProfile, Quotation, StockMovement } from './seedBusiness';
 
 let lastSupabaseSyncErrorMessage: string | null = null;
@@ -66,7 +67,7 @@ function mapPaymentMethodForSync(paymentMethod: Sale['paymentMethod']) {
  * Follows an 'upsert' pattern (ID-based insert or update).
  * Returns true if sync successful or skipped (no config), false on error.
  */
-async function upsertEntity(table: string, payload: any): Promise<boolean> {
+async function upsertEntity(table: string, payload: Record<string, unknown>): Promise<boolean> {
   if (!hasSupabaseConfig) return true;
 
   try {
@@ -140,6 +141,26 @@ export async function syncBusinessLocation(businessId: string, location: Busines
     linked_warehouse_id: location.linkedWarehouseId ?? null,
     is_default: location.isDefault,
     is_active: location.isActive,
+  });
+}
+
+export async function syncEmployeeCredential(businessId: string, user: UserAccessProfile) {
+  return upsertEntity('employee_credentials', {
+    id: user.userId,
+    business_id: businessId,
+    name: user.name,
+    email: user.email,
+    username: user.username ?? user.email,
+    temporary_password: user.temporaryPassword ?? null,
+    credentials_generated_at: user.credentialsGeneratedAt ?? null,
+    account_status: user.accountStatus ?? 'active',
+    deactivated_at: user.deactivatedAt ?? null,
+    role: user.role,
+    role_label: user.roleLabel ?? null,
+    granted_permissions: user.grantedPermissions ?? [],
+    revoked_permissions: user.revokedPermissions ?? [],
+    customer_email_sender_name: user.customerEmailSenderName ?? null,
+    customer_email_sender_email: user.customerEmailSenderEmail ?? null,
   });
 }
 

@@ -44,6 +44,24 @@ type LocalEmployeeSession = {
   issuedAt: string;
 };
 
+type CloudEmployeeCredentialRow = {
+  id: string;
+  business_id: string;
+  name: string;
+  email: string;
+  username: string;
+  temporary_password: string | null;
+  credentials_generated_at: string | null;
+  account_status: UserAccessProfile['accountStatus'];
+  deactivated_at: string | null;
+  role: UserAccessProfile['role'];
+  role_label: string | null;
+  granted_permissions: UserAccessProfile['grantedPermissions'] | null;
+  revoked_permissions: UserAccessProfile['revokedPermissions'] | null;
+  customer_email_sender_name: string | null;
+  customer_email_sender_email: string | null;
+};
+
 function useAuth() {
   const context = useContext(AuthContext);
 
@@ -103,6 +121,48 @@ function readStoredUsers(): UserAccessProfile[] {
   }
 
   return Array.from(usersById.values());
+}
+
+function cacheEmployeeCredential(user: UserAccessProfile) {
+  const credentialsById = new Map<string, UserAccessProfile>();
+  const rawCredentials = window.localStorage.getItem(LOCAL_EMPLOYEE_CREDENTIALS_KEY);
+
+  if (rawCredentials) {
+    try {
+      const parsed = JSON.parse(rawCredentials) as { users?: UserAccessProfile[] };
+      (parsed.users ?? []).forEach((storedUser) => credentialsById.set(storedUser.userId, storedUser));
+    } catch {
+      // Replace invalid credential cache with a clean copy below.
+    }
+  }
+
+  credentialsById.set(user.userId, user);
+  window.localStorage.setItem(LOCAL_EMPLOYEE_CREDENTIALS_KEY, JSON.stringify({ users: Array.from(credentialsById.values()) }));
+
+  try {
+    const rawState = window.localStorage.getItem(LOCAL_STATE_KEY);
+    const parsedState = rawState ? JSON.parse(rawState) as { users?: UserAccessProfile[]; currentUserId?: string } : {};
+    const stateUsersById = new Map<string, UserAccessProfile>();
+    (parsedState.users ?? []).forEach((storedUser) => stateUsersById.set(storedUser.userId, storedUser));
+    stateUsersById.set(user.userId, user);
+
+    window.localStorage.setItem(
+      LOCAL_STATE_KEY,
+      JSON.stringify({
+        ...parsedState,
+        users: Array.from(stateUsersById.values()),
+        currentUserId: user.userId,
+      })
+    );
+  } catch {
+    window.localStorage.setItem(
+      LOCAL_STATE_KEY,
+      JSON.stringify({
+        users: [user],
+        currentUserId: user.userId,
+      })
+    );
+  }
 }
 
 function readValidLocalEmployeeSession(): Session | null {
@@ -167,6 +227,59 @@ function signInWithLocalEmployee(identifier: string, password: string): AuthActi
     message: 'Signed in successfully.',
     session: buildLocalEmployeeSession(matchingUser),
   };
+}
+
+function mapCloudEmployeeCredential(row: CloudEmployeeCredentialRow): UserAccessProfile {
+  return {
+    userId: row.id,
+    name: row.name,
+    email: row.email,
+    username: row.username,
+    temporaryPassword: row.temporary_password ?? undefined,
+    credentialsGeneratedAt: row.credentials_generated_at ?? undefined,
+    accountStatus: row.account_status ?? 'active',
+    deactivatedAt: row.deactivated_at ?? undefined,
+    role: row.role,
+    roleLabel: row.role_label ?? undefined,
+    grantedPermissions: row.granted_permissions ?? [],
+    revokedPermissions: row.revoked_permissions ?? [],
+    customerEmailSenderName: row.customer_email_sender_name ?? undefined,
+    customerEmailSenderEmail: row.customer_email_sender_email ?? undefined,
+  };
+}
+
+async function signInWithCloudEmployee(identifier: string, password: string): Promise<AuthActionResult & { session?: Session }> {
+  if (!hasSupabaseConfig) {
+    return { ok: false, message: 'Supabase is not configured.' };
+  }
+
+  try {
+    const { data, error } = await getSupabaseClient().rpc('authenticate_employee_credential', {
+      credential_identifier: identifier.trim(),
+      credential_password: password,
+    });
+
+    if (error) {
+      return { ok: false, message: error.message };
+    }
+
+    const [row] = (data ?? []) as CloudEmployeeCredentialRow[];
+    if (!row) {
+      return { ok: false, message: 'Incorrect username, email, or password.' };
+    }
+
+    const employee = mapCloudEmployeeCredential(row);
+    cacheEmployeeCredential(employee);
+    saveLocalEmployeeSession(employee);
+
+    return {
+      ok: true,
+      message: 'Signed in successfully.',
+      session: buildLocalEmployeeSession(employee),
+    };
+  } catch {
+    return { ok: false, message: 'Could not check employee credentials right now.' };
+  }
 }
 
 export function AuthProvider({ children }: PropsWithChildren) {
@@ -358,6 +471,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
         if (!hasSupabaseConfig) {
           return localFallback();
+        }
+
+        const cloudEmployeeResult = await signInWithCloudEmployee(email, password);
+        if (cloudEmployeeResult.ok && cloudEmployeeResult.session) {
+          setSession(cloudEmployeeResult.session);
+          return cloudEmployeeResult;
         }
 
         const { error } = await getAuthClient().signInWithPassword({
