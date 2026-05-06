@@ -278,6 +278,22 @@ function shouldSyncEmployeeCredential(user: UserAccessProfile) {
   return Boolean(user.username || user.temporaryPassword || user.credentialsGeneratedAt);
 }
 
+function getEmployeeCredentialSyncKey(user: UserAccessProfile) {
+  return [
+    user.userId,
+    user.email,
+    user.username ?? '',
+    user.temporaryPassword ?? '',
+    user.credentialsGeneratedAt ?? '',
+    user.accountStatus ?? 'active',
+    user.deactivatedAt ?? '',
+    user.role,
+    user.roleLabel ?? '',
+    (user.grantedPermissions ?? []).join(','),
+    (user.revokedPermissions ?? []).join(','),
+  ].join('|');
+}
+
 function createBlankBusinessState(owner?: { id?: string; email?: string; name?: string }, themePreference: BusinessState['themePreference'] = seedState.themePreference): BusinessState {
   const ownerId = owner?.id;
 
@@ -329,6 +345,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
   const { user } = useAuth();
   const [state, setState] = useState<BusinessState>(readInitialState);
   const stateRef = useRef(state);
+  const employeeCredentialSyncKeysRef = useRef(new Set<string>());
   const [backendStatus, setBackendStatus] = useState<BusinessBackendStatus>({
     source: 'local',
     loading: true,
@@ -352,6 +369,25 @@ export function BusinessProvider({ children }: PropsWithChildren) {
       JSON.stringify({ users: employeeUsers })
     );
   }, [state.users]);
+
+  useEffect(() => {
+    const isLocalEmployeeSession = user?.user_metadata?.auth_mode === 'employee-local';
+    if (backendStatus.source !== 'supabase' || backendStatus.loading || isLocalEmployeeSession) {
+      return;
+    }
+
+    state.users
+      .filter(shouldSyncEmployeeCredential)
+      .forEach((employee) => {
+        const syncKey = getEmployeeCredentialSyncKey(employee);
+        if (employeeCredentialSyncKeysRef.current.has(syncKey)) {
+          return;
+        }
+
+        employeeCredentialSyncKeysRef.current.add(syncKey);
+        void syncEmployeeCredential(state.businessProfile.id, employee);
+      });
+  }, [backendStatus.loading, backendStatus.source, state.businessProfile.id, state.users, user?.user_metadata?.auth_mode]);
 
   useEffect(() => {
     const isLocalEmployeeSession = user?.user_metadata?.auth_mode === 'employee-local';
