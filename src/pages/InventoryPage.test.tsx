@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { seedState } from '../data/seedBusiness';
@@ -177,6 +177,46 @@ describe('InventoryPage ERP discoverability', () => {
     expect(screen.getByText('Add New Stock Item')).toBeInTheDocument();
     expect(screen.getByText('Purchase order total')).toBeInTheDocument();
     expect(screen.getByText('Create Purchase Order')).toBeInTheDocument();
+  });
+
+  it('keeps the Status add stock item form hidden for purchase officers', async () => {
+    const context = buildContext({
+      'inventory.view': true,
+      'inventory.create': true,
+      'vendors.view': true,
+      'vendors.manage': true,
+      'purchases.view': true,
+      'purchases.create': true,
+      'restockRequests.view': true,
+    });
+    context.currentUser.role = 'PurchaseManager';
+    mockUseBusiness.mockReturnValue(context);
+
+    render(<InventoryPage />);
+
+    expect(await screen.findByText('ERP operations')).toBeInTheDocument();
+    expect(screen.queryByText('Add stock item')).not.toBeInTheDocument();
+    expect(screen.getByText('Stock control')).toBeInTheDocument();
+  });
+
+  it('blocks inline stock item creation until a purchase unit cost is provided', async () => {
+    const context = buildContext({
+      'inventory.view': true,
+      'inventory.create': true,
+      'purchases.view': true,
+      'purchases.create': true,
+      'restockRequests.view': true,
+    });
+    mockLocationSearch = '?section=procurement';
+    mockUseBusiness.mockReturnValue(context);
+
+    render(<InventoryPage />);
+
+    fireEvent.click(await screen.findByText('Add New Stock Item'));
+    fireEvent.click(screen.getByText('Create Stock Item'));
+
+    expect(context.addProduct).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter the purchase unit cost before creating the stock item.')).toBeInTheDocument();
   });
 
   it('keeps store balances hidden from purchase officers without transfer access', async () => {

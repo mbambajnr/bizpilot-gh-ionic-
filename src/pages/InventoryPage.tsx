@@ -195,6 +195,10 @@ const InventoryPage: React.FC = () => {
     hasPermission('inventory.adjust') ||
     hasPermission('inventory.create') ||
     hasPermission('inventory.edit');
+  const canManageInventoryCatalog =
+    hasPermission('inventory.create') &&
+    currentUser.role !== 'PurchaseManager' &&
+    (hasPermission('inventory.edit') || hasPermission('inventory.adjust') || hasPermission('business.edit'));
   const activeWarehouses = useMemo(() => activeLocations.filter((location) => location.type === 'warehouse'), [activeLocations]);
   const activeStores = useMemo(() => activeLocations.filter((location) => location.type === 'store'), [activeLocations]);
   const visibleInventoryLocations = useMemo(
@@ -497,7 +501,11 @@ const InventoryPage: React.FC = () => {
 
   const handleCreatePurchaseProduct = () => {
     const itemName = quickProductName.trim();
-    const itemCost = purchaseUnitCost === '' ? 0 : Number(purchaseUnitCost);
+    if (purchaseUnitCost === '') {
+      setPurchaseMessage('Enter the purchase unit cost before creating the stock item.');
+      return;
+    }
+    const itemCost = Number(purchaseUnitCost);
     const itemPrice = quickProductPrice === '' ? itemCost : Number(quickProductPrice);
     const itemUnit = quickProductUnit.trim() || 'units';
     const itemReorderLevel = quickProductReorderLevel === '' ? 0 : Number(quickProductReorderLevel);
@@ -875,7 +883,7 @@ const InventoryPage: React.FC = () => {
         <div className="page-shell">
           {activeSegment === 'status' && (
             <>
-              {hasPermission('inventory.create') && (
+              {canManageInventoryCatalog && (
                 <SectionCard title="Add stock item" subtitle="Create a sellable item with its details. Adding a photo is optional but helps with quick identification.">
                   <div className="form-grid">
                     <div className="button-group">
