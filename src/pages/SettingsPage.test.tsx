@@ -193,7 +193,7 @@ describe('SettingsPage', () => {
 
     render(<SettingsPage />);
 
-    fireEvent.click(await screen.findByLabelText('Expand Team accounts (Admin only)'));
+    fireEvent.click(await screen.findByLabelText('Expand Team accounts'));
     fireEvent.click(await screen.findByText('Add Employee'));
 
     expect(await screen.findByText('Add Employee Account')).toBeInTheDocument();
@@ -223,7 +223,7 @@ describe('SettingsPage', () => {
 
     render(<SettingsPage />);
 
-    fireEvent.click(await screen.findByLabelText('Expand Team accounts (Admin only)'));
+    fireEvent.click(await screen.findByLabelText('Expand Team accounts'));
 
     expect(await screen.findByText('Add a new employee')).toBeInTheDocument();
     expect(screen.getByText('Create a fresh BisaPilot login and assign the employee a role in one step.')).toBeInTheDocument();

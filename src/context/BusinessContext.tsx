@@ -1144,7 +1144,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       reviewRestockRequest(input) {
-        if (!hasPermission(currentUser, 'restockRequests.manage')) {
+        if (currentUser.role !== 'GeneralManager' || !hasPermission(currentUser, 'restockRequests.manage')) {
           return { ok: false, message: 'You are not authorized to manage restock requests.' };
         }
         const result = reviewRestockRequestInState(state, input);
@@ -1523,7 +1523,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async approvePurchase(input) {
-        if (currentUser.role !== 'Admin' || !hasPermission(currentUser, 'purchases.approve')) {
+        if (currentUser.role !== 'GeneralManager' || !hasPermission(currentUser, 'purchases.approve')) {
           return { ok: false, message: 'You are not authorized to approve purchases.' };
         }
 
@@ -1545,7 +1545,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async cancelPurchase(input) {
-        if (currentUser.role !== 'Admin' || !hasPermission(currentUser, 'purchases.approve')) {
+        if (currentUser.role !== 'GeneralManager' || !hasPermission(currentUser, 'purchases.approve')) {
           return { ok: false, message: 'You are not authorized to decline purchases.' };
         }
 
@@ -1617,7 +1617,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async approvePayable(input) {
-        if (!hasPermission(currentUser, 'payables.manage') && !hasPermission(currentUser, 'payables.approve')) {
+        if (currentUser.role !== 'GeneralManager' || (!hasPermission(currentUser, 'payables.manage') && !hasPermission(currentUser, 'payables.approve'))) {
           return { ok: false, message: 'You are not authorized to approve payables.' };
         }
 
@@ -1699,7 +1699,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async approveStockTransfer(input) {
-        if (!hasPermission(currentUser, 'transfers.approve')) {
+        if (currentUser.role !== 'GeneralManager' || !hasPermission(currentUser, 'transfers.approve')) {
           return { ok: false, message: 'You are not authorized to approve stock transfers.' };
         }
 
@@ -1763,7 +1763,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async cancelStockTransfer(input) {
-        if (!hasPermission(currentUser, 'transfers.approve')) {
+        if (currentUser.role !== 'GeneralManager' || !hasPermission(currentUser, 'transfers.approve')) {
           return { ok: false, message: 'You are not authorized to cancel stock transfers.' };
         }
 

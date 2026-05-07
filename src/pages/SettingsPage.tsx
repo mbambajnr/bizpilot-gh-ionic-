@@ -1002,7 +1002,7 @@ const SettingsPage: React.FC = () => {
                <div className="list-row" style={{ border: 'none' }}>
                 <div>
                   <strong>Stuck in restricted mode?</strong>
-                  <p>If you cannot see Sales or Accounting, tap below to force Admin access.</p>
+                  <p>If you cannot see Sales or Accounting, tap below to force system administrator access.</p>
                 </div>
                 <IonButton fill="solid" color="danger" size="small" onClick={() => {
                   switchUser('u-admin');
@@ -1038,7 +1038,7 @@ const SettingsPage: React.FC = () => {
 
            {hasPermission('permissions.manage') && (
              <SectionCard
-               title="Team accounts (Admin only)"
+               title="Team accounts"
                subtitle="Create, edit, and control employee access from one coherent team-management flow."
                collapsible={true}
                defaultExpanded={false}
@@ -2119,11 +2119,12 @@ const SettingsPage: React.FC = () => {
                   <IonLabel position="stacked">Base role</IonLabel>
                   <IonSelect value={newEmployeeRole} onIonChange={(event) => handleChangeNewEmployeeRole(event.detail.value as AppRole)}>
                     <IonSelectOption value="SalesManager">Sales Manager</IonSelectOption>
+                    <IonSelectOption value="GeneralManager">General Manager</IonSelectOption>
                     <IonSelectOption value="WarehouseManager">Warehouse Manager</IonSelectOption>
                     <IonSelectOption value="StoreManager">Store Manager</IonSelectOption>
                     <IonSelectOption value="PurchaseManager">Purchase Manager</IonSelectOption>
                     <IonSelectOption value="Accountant">Accountant</IonSelectOption>
-                    <IonSelectOption value="Admin">Admin</IonSelectOption>
+                    <IonSelectOption value="Admin">System Administrator</IonSelectOption>
                   </IonSelect>
                 </IonItem>
 
@@ -2250,11 +2251,12 @@ const SettingsPage: React.FC = () => {
                   <IonLabel position="stacked">Base role</IonLabel>
                   <IonSelect value={editEmployeeRole} onIonChange={(event) => handleChangeEditEmployeeRole(event.detail.value as AppRole)}>
                     <IonSelectOption value="SalesManager">Sales Manager</IonSelectOption>
+                    <IonSelectOption value="GeneralManager">General Manager</IonSelectOption>
                     <IonSelectOption value="WarehouseManager">Warehouse Manager</IonSelectOption>
                     <IonSelectOption value="StoreManager">Store Manager</IonSelectOption>
                     <IonSelectOption value="PurchaseManager">Purchase Manager</IonSelectOption>
                     <IonSelectOption value="Accountant">Accountant</IonSelectOption>
-                    <IonSelectOption value="Admin">Admin</IonSelectOption>
+                    <IonSelectOption value="Admin">System Administrator</IonSelectOption>
                   </IonSelect>
                 </IonItem>
 

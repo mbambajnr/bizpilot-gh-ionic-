@@ -232,7 +232,7 @@ describe('DashboardPage role-aware widgets', () => {
       'accounting.access': true,
     });
 
-    expect(screen.getByText('Owner / Admin Overview')).toBeInTheDocument();
+    expect(screen.getByText('Management Overview')).toBeInTheDocument();
     expect(screen.getByText('Procurement Desk')).toBeInTheDocument();
     expect(screen.getByText('Warehouse Desk')).toBeInTheDocument();
     expect(screen.getByText('Accounting Desk')).toBeInTheDocument();
@@ -358,7 +358,7 @@ describe('DashboardPage role-aware widgets', () => {
       'inventory.view': true,
     });
 
-    expect(screen.queryByText('Owner / Admin Overview')).not.toBeInTheDocument();
+    expect(screen.queryByText('Management Overview')).not.toBeInTheDocument();
     expect(screen.queryByText('Procurement Desk')).not.toBeInTheDocument();
     expect(screen.queryByText('Accounting Desk')).not.toBeInTheDocument();
     expect(screen.queryByText('Users & Permissions')).not.toBeInTheDocument();

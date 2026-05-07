@@ -201,7 +201,8 @@ const InventoryPage: React.FC = () => {
     hasPermission('inventory.create') &&
     currentUser.role !== 'PurchaseManager' &&
     (hasPermission('inventory.edit') || hasPermission('inventory.adjust') || hasPermission('business.edit'));
-  const canApprovePurchases = currentUser.role === 'Admin' && hasPermission('purchases.approve');
+  const canApprovePurchases = currentUser.role === 'GeneralManager' && hasPermission('purchases.approve');
+  const canManageRestockRequests = currentUser.role === 'GeneralManager' && hasPermission('restockRequests.manage');
   const activeWarehouses = useMemo(() => activeLocations.filter((location) => location.type === 'warehouse'), [activeLocations]);
   const activeStores = useMemo(() => activeLocations.filter((location) => location.type === 'store'), [activeLocations]);
   const visibleInventoryLocations = useMemo(
@@ -2061,7 +2062,7 @@ const InventoryPage: React.FC = () => {
                               {entry.transfer.items.map((item) => `${item.productName} (${item.quantity})`).join(', ')}
                             </p>
                             <div className="button-group" style={{ marginTop: '8px' }}>
-                              {entry.transfer.status === 'pending' && hasPermission('transfers.approve') ? (
+                              {entry.transfer.status === 'pending' && currentUser.role === 'GeneralManager' && hasPermission('transfers.approve') ? (
                                 <IonButton size="small" onClick={() => handleTransferAction(entry.transfer.id, 'approve')}>Approve</IonButton>
                               ) : null}
                               {entry.transfer.status === 'approved' && hasPermission('transfers.dispatch') ? (
@@ -2070,7 +2071,7 @@ const InventoryPage: React.FC = () => {
                               {(entry.transfer.status === 'approved' || entry.transfer.status === 'dispatched') && hasPermission('transfers.receive') ? (
                                 <IonButton size="small" color="success" onClick={() => handleTransferAction(entry.transfer.id, 'receive')}>Receive</IonButton>
                               ) : null}
-                              {entry.transfer.status !== 'received' && entry.transfer.status !== 'cancelled' && hasPermission('transfers.approve') ? (
+                              {entry.transfer.status !== 'received' && entry.transfer.status !== 'cancelled' && currentUser.role === 'GeneralManager' && hasPermission('transfers.approve') ? (
                                 <IonButton size="small" fill="clear" color="danger" onClick={() => handleTransferAction(entry.transfer.id, 'cancel')}>Cancel</IonButton>
                               ) : null}
                             </div>
@@ -2175,7 +2176,7 @@ const InventoryPage: React.FC = () => {
               )}
 
               {/* ADMIN TASK LIST - Approved items needing physical restock */}
-              {hasPermission('restockRequests.manage') && (state.restockRequests ?? []).filter(r => r.status === 'Approved').length > 0 && (
+              {canManageRestockRequests && (state.restockRequests ?? []).filter(r => r.status === 'Approved').length > 0 && (
                 <SectionCard 
                   title="To-Restock List" 
                   subtitle="These requests are approved. Once the physical stock arrives at the shop, mark them as fulfilled to update inventory."
@@ -2212,19 +2213,19 @@ const InventoryPage: React.FC = () => {
 
               {/* GENERAL LIST / PENDING APPROVALS */}
               <SectionCard 
-                title={hasPermission('restockRequests.manage') ? "Review Requests" : "Request History"} 
-                subtitle={hasPermission('restockRequests.manage') ? "Manage pending restock requests from the shop floor." : "Track the status of your submitted replenishment requests."}
+                title={canManageRestockRequests ? "Review Requests" : "Request History"} 
+                subtitle={canManageRestockRequests ? "Manage pending restock requests from the shop floor." : "Track the status of your submitted replenishment requests."}
               >
-                {(state.restockRequests ?? []).filter(r => r.status !== 'Approved' || !hasPermission('restockRequests.manage')).length === 0 ? (
+                {(state.restockRequests ?? []).filter(r => r.status !== 'Approved' || !canManageRestockRequests).length === 0 ? (
                   <EmptyState 
                     eyebrow="Clean queue"
-                    title={hasPermission('restockRequests.manage') ? "No pending decisions" : "No requests yet"}
-                    message={hasPermission('restockRequests.manage') ? "All restock requests have been approved, rejected, or are currently in the To-Restock list." : "When items run low, submit a request above."}
+                    title={canManageRestockRequests ? "No pending decisions" : "No requests yet"}
+                    message={canManageRestockRequests ? "All restock requests have been approved, rejected, or are currently in the To-Restock list." : "When items run low, submit a request above."}
                   />
                 ) : (
                   <div className="list-block">
                     {(state.restockRequests ?? [])
-                      .filter(r => r.status !== 'Approved' || !hasPermission('restockRequests.manage'))
+                      .filter(r => r.status !== 'Approved' || !canManageRestockRequests)
                       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                       .map(req => {
                         const product = state.products.find(p => p.id === req.productId);
@@ -2251,7 +2252,7 @@ const InventoryPage: React.FC = () => {
                                 </div>
                               )}
 
-                              {isPending && hasPermission('restockRequests.manage') && (
+                              {isPending && canManageRestockRequests && (
                                 <div className="form-grid" style={{ marginTop: '14px' }}>
                                   <IonItem lines="none" className="app-item">
                                     <IonLabel position="stacked">Decision Note (optional)</IonLabel>

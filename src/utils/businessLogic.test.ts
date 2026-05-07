@@ -2097,7 +2097,7 @@ describe('businessLogic', () => {
       return;
     }
     expect(submitted.data.notifications.some((notification) =>
-      notification.recipientRoles?.includes('Admin') &&
+      notification.recipientRoles?.includes('GeneralManager') &&
       notification.title === 'Purchase awaiting approval' &&
       notification.referenceNumber === draft.purchaseCode &&
       notification.actionUrl === '/inventory?section=procurement'
@@ -2108,7 +2108,7 @@ describe('businessLogic', () => {
       referenceNumber: draft.purchaseCode,
       actionUrl: '/inventory?section=procurement',
     });
-    expect(submitted.data.notifications[1].message).toContain('awaiting Admin approval');
+    expect(submitted.data.notifications[1].message).toContain('awaiting General Manager approval');
 
     const approved = approvePurchaseInState(submitted.data, {
       purchaseId: draft.id,

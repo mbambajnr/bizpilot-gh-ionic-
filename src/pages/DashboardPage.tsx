@@ -232,7 +232,7 @@ const DashboardPage: React.FC = () => {
 
           {canSeeAdminOverview ? (
             <SectionCard
-              title="Owner / Admin Overview"
+              title="Management Overview"
               subtitle="A connected command view of approvals, supplier flow, warehouse work, finance, and platform administration."
             >
               <div className="list-block">

@@ -66,7 +66,7 @@ const AccountingPage: React.FC = () => {
   const canCreateExpenses = hasPermission('expenses.create');
   const canUseExpensesSegment = canViewExpenses || canCreateExpenses;
   const canViewPayables = hasPermission('payables.view') || hasPermission('payables.manage') || hasPermission('payables.pay');
-  const canManagePayables = hasPermission('payables.manage') || hasPermission('payables.approve');
+  const canManagePayables = currentUser.role === 'GeneralManager' && (hasPermission('payables.manage') || hasPermission('payables.approve'));
   const canPayPayables = hasPermission('payables.pay');
   const canUsePayablesSegment = canViewPayables || canManagePayables || canPayPayables;
 

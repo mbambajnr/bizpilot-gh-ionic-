@@ -19,6 +19,23 @@ describe('RBAC Logic', () => {
     expect(hasPermission(admin, 'users.manage')).toBe(true);
   });
 
+  it('should resolve full operational permissions for General Manager by default', () => {
+    const generalManager: UserAccessProfile = {
+      userId: 'gm',
+      name: 'General Manager',
+      email: 'gm@test.com',
+      role: 'GeneralManager',
+      grantedPermissions: [],
+      revokedPermissions: [],
+    };
+
+    expect(hasPermission(generalManager, 'reports.financial.view')).toBe(true);
+    expect(hasPermission(generalManager, 'purchases.approve')).toBe(true);
+    expect(hasPermission(generalManager, 'payables.approve')).toBe(true);
+    expect(hasPermission(generalManager, 'transfers.approve')).toBe(true);
+    expect(hasPermission(generalManager, 'users.manage')).toBe(true);
+  });
+
   it('should resolve partial permissions for SalesManager by default', () => {
     const sales: UserAccessProfile = {
       userId: '2',
@@ -146,6 +163,7 @@ describe('RBAC Logic', () => {
     expect(Object.keys(ROLE_DEFAULT_PERMISSIONS).sort()).toEqual([
       'Accountant',
       'Admin',
+      'GeneralManager',
       'PurchaseManager',
       'SalesManager',
       'StoreManager',

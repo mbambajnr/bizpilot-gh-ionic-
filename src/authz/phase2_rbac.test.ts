@@ -22,6 +22,15 @@ describe('Phase 2 RBAC Enforcement', () => {
     revokedPermissions: [],
   };
 
+  const generalManager: UserAccessProfile = {
+    userId: 'gm',
+    name: 'General Manager',
+    email: 'gm@test.com',
+    role: 'GeneralManager',
+    grantedPermissions: ROLE_DEFAULT_PERMISSIONS.GeneralManager,
+    revokedPermissions: [],
+  };
+
   const accountant: UserAccessProfile = {
     userId: 'accountant',
     name: 'Accountant',
@@ -47,6 +56,18 @@ describe('Phase 2 RBAC Enforcement', () => {
     expect(hasPermission(admin, 'branding.manage')).toBe(true);
     expect(hasPermission(admin, 'invoices.print')).toBe(true);
     expect(hasPermission(admin, 'quotations.export_pdf')).toBe(true);
+  });
+
+  it('General Manager should have all approval and reporting permissions', () => {
+    expect(hasPermission(generalManager, 'purchases.approve')).toBe(true);
+    expect(hasPermission(generalManager, 'procurement.approve')).toBe(true);
+    expect(hasPermission(generalManager, 'payables.approve')).toBe(true);
+    expect(hasPermission(generalManager, 'transfers.approve')).toBe(true);
+    expect(hasPermission(generalManager, 'restockRequests.manage')).toBe(true);
+    expect(hasPermission(generalManager, 'reports.dashboard.view')).toBe(true);
+    expect(hasPermission(generalManager, 'reports.financial.view')).toBe(true);
+    expect(hasPermission(generalManager, 'reports.sales.view')).toBe(true);
+    expect(hasPermission(generalManager, 'reports.inventory.view')).toBe(true);
   });
 
   it('Sales Manager should have restricted Phase 2 permissions', () => {

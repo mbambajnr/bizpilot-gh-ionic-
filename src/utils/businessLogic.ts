@@ -2192,9 +2192,9 @@ export function submitPurchaseInState(current: BusinessState, input: PurchaseAct
       notifications: [
         createAppNotification({
           title: 'Purchase awaiting approval',
-          message: `${purchase.purchaseCode} is in the purchase queue and needs Admin review.`,
+          message: `${purchase.purchaseCode} is in the purchase queue and needs General Manager review.`,
           createdAt: submittedAt,
-          recipientRoles: ['Admin'],
+          recipientRoles: ['GeneralManager'],
           entityType: 'purchase',
           entityId: purchase.id,
           referenceNumber: purchase.purchaseCode,
@@ -2202,7 +2202,7 @@ export function submitPurchaseInState(current: BusinessState, input: PurchaseAct
         }),
         createAppNotification({
           title: 'Purchase order submitted',
-          message: `${purchase.purchaseCode} has been submitted and is awaiting Admin approval.`,
+          message: `${purchase.purchaseCode} has been submitted and is awaiting General Manager approval.`,
           createdAt: submittedAt,
           recipientUserIds: [purchase.createdBy],
           entityType: 'purchase',
