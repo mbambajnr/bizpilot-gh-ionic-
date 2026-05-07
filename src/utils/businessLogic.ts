@@ -2191,6 +2191,16 @@ export function submitPurchaseInState(current: BusinessState, input: PurchaseAct
       purchases: current.purchases.map((item) => (item.id === purchase.id ? updatedPurchase : item)),
       notifications: [
         createAppNotification({
+          title: 'Purchase awaiting approval',
+          message: `${purchase.purchaseCode} is in the purchase queue and needs Admin review.`,
+          createdAt: submittedAt,
+          recipientRoles: ['Admin'],
+          entityType: 'purchase',
+          entityId: purchase.id,
+          referenceNumber: purchase.purchaseCode,
+          actionUrl: '/inventory?section=procurement',
+        }),
+        createAppNotification({
           title: 'Purchase order submitted',
           message: `${purchase.purchaseCode} has been submitted and is awaiting Admin approval.`,
           createdAt: submittedAt,

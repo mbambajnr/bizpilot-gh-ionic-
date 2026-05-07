@@ -21,6 +21,7 @@ import { cart, cubeOutline, documentText, grid, home, notificationsOutline, peop
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BusinessProvider, useBusiness } from './context/BusinessContext';
+import type { AppNotification } from './data/seedBusiness';
 import { getBusinessLaunchState, isBusinessWorkspaceLive } from './utils/businessLogic';
 import LandingPage from './pages/LandingPage';
 
@@ -217,7 +218,31 @@ function AppShell() {
                         : canViewSettings
                           ? '/settings'
                           : '/dashboard';
-  const userNotifications = state.notifications
+  const purchaseQueueNotifications: AppNotification[] =
+    currentUser.role === 'Admin'
+      ? state.purchases
+          .filter((purchase) => purchase.status === 'submitted' || purchase.status === 'adminReviewed')
+          .filter((purchase) =>
+            !state.notifications.some((notification) =>
+              notification.entityType === 'purchase' &&
+              notification.entityId === purchase.id &&
+              notification.recipientRoles?.includes('Admin')
+            )
+          )
+          .map((purchase) => ({
+            id: `purchase-queue-${purchase.id}-${purchase.updatedAt}`,
+            title: 'Purchase awaiting approval',
+            message: `${purchase.purchaseCode} is in the purchase queue and needs Admin review.`,
+            createdAt: purchase.submittedAt ?? purchase.updatedAt,
+            recipientRoles: ['Admin'],
+            readByUserIds: [],
+            entityType: 'purchase',
+            entityId: purchase.id,
+            referenceNumber: purchase.purchaseCode,
+            actionUrl: '/inventory?section=procurement',
+          }))
+      : [];
+  const userNotifications = [...state.notifications, ...purchaseQueueNotifications]
     .filter((notification) =>
       notification.recipientUserIds?.includes(currentUser.userId) ||
       notification.recipientRoles?.includes(currentUser.role)
