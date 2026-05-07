@@ -1,6 +1,6 @@
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
 import type { UserAccessProfile } from '../authz/types';
-import type { BusinessLocation, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, BusinessProfile, Quotation, StockMovement } from './seedBusiness';
+import type { BusinessLocation, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, BusinessProfile, Quotation, StockMovement, Purchase } from './seedBusiness';
 
 let lastSupabaseSyncErrorMessage: string | null = null;
 
@@ -172,6 +172,123 @@ export async function syncSupplyRoute(businessId: string, route: LocationSupplyR
     to_location_id: route.toLocationId,
     is_active: route.isActive,
   });
+}
+
+export async function syncPurchase(businessId: string, purchase: Purchase) {
+  if (!hasSupabaseConfig) return true;
+
+  const purchaseOk = await upsertEntity('purchases', {
+    id: purchase.id,
+    business_id: businessId,
+    purchase_code: purchase.purchaseCode,
+    vendor_id: purchase.vendorId,
+    vendor_code: purchase.vendorCode,
+    total_amount: purchase.totalAmount,
+    status: purchase.status,
+    created_by: purchase.createdBy,
+    submitted_at: purchase.submittedAt ?? null,
+    approved_by: purchase.approvedBy ?? null,
+    approved_at: purchase.approvedAt ?? null,
+    declined_by: purchase.declinedBy ?? null,
+    declined_at: purchase.declinedAt ?? null,
+    decline_note: purchase.declineNote ?? null,
+    received_warehouse_id: purchase.receivedWarehouseId ?? null,
+    created_at: purchase.createdAt,
+    updated_at: purchase.updatedAt,
+  });
+
+  if (!purchaseOk) {
+    return false;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { error: deleteError } = await supabase.from('purchase_items').delete().eq('purchase_id', purchase.id);
+
+    if (deleteError) {
+      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(deleteError.message));
+      console.error('[SupabaseSync] Error replacing purchase items:', deleteError.message);
+      return false;
+    }
+
+    if (purchase.items.length === 0) {
+      setLastSupabaseSyncErrorMessage(null);
+      return true;
+    }
+
+    const { error: insertError } = await supabase.from('purchase_items').insert(
+      purchase.items.map((item) => ({
+        purchase_id: purchase.id,
+        product_id: item.productId,
+        product_name: item.productName,
+        quantity: item.quantity,
+        unit_cost: item.unitCost,
+        total_cost: item.totalCost,
+        vendor_code: item.vendorCode,
+      }))
+    );
+
+    if (insertError) {
+      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(insertError.message));
+      console.error('[SupabaseSync] Error inserting purchase items:', insertError.message);
+      return false;
+    }
+
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Supabase sync failed before the request could complete.');
+    console.error('[SupabaseSync] Fatal error in purchase item sync:', err);
+    return false;
+  }
+}
+
+export async function syncEmployeePurchase(user: UserAccessProfile, purchase: Purchase) {
+  if (!hasSupabaseConfig) return true;
+  if (!user.businessId || !user.temporaryPassword) {
+    setLastSupabaseSyncErrorMessage('Employee purchase sync is missing cloud workspace credentials.');
+    return false;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.rpc('sync_employee_purchase', {
+      credential_identifier: user.username ?? user.email,
+      credential_password: user.temporaryPassword,
+      purchase_payload: {
+        id: purchase.id,
+        purchaseCode: purchase.purchaseCode,
+        vendorId: purchase.vendorId,
+        vendorCode: purchase.vendorCode,
+        items: purchase.items,
+        totalAmount: purchase.totalAmount,
+        status: purchase.status,
+        createdBy: purchase.createdBy,
+        submittedAt: purchase.submittedAt ?? null,
+        approvedBy: purchase.approvedBy ?? null,
+        approvedAt: purchase.approvedAt ?? null,
+        declinedBy: purchase.declinedBy ?? null,
+        declinedAt: purchase.declinedAt ?? null,
+        declineNote: purchase.declineNote ?? null,
+        receivedWarehouseId: purchase.receivedWarehouseId ?? null,
+        createdAt: purchase.createdAt,
+        updatedAt: purchase.updatedAt,
+      },
+    });
+
+    if (error) {
+      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(error.message));
+      console.error('[SupabaseSync] Error syncing employee purchase:', error.message);
+      return false;
+    }
+
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Supabase sync failed before the request could complete.');
+    console.error('[SupabaseSync] Fatal error in employee purchase sync:', err);
+    return false;
+  }
 }
 
 export async function syncStockMovement(businessId: string, movement: StockMovement) {

@@ -39,6 +39,7 @@ const LOCAL_EMPLOYEE_CREDENTIALS_KEY = 'bizpilot-employee-credentials-v1';
 type LocalEmployeeSession = {
   kind: 'employee-local';
   userId: string;
+  businessId?: string;
   email: string;
   username?: string;
   issuedAt: string;
@@ -76,7 +77,7 @@ function getAuthClient() {
   return getSupabaseClient().auth;
 }
 
-function buildLocalEmployeeSession(user: Pick<UserAccessProfile, 'userId' | 'email' | 'username'>): Session {
+function buildLocalEmployeeSession(user: Pick<UserAccessProfile, 'userId' | 'businessId' | 'email' | 'username'>): Session {
   return {
     access_token: `local-${user.userId}`,
     refresh_token: '',
@@ -87,6 +88,7 @@ function buildLocalEmployeeSession(user: Pick<UserAccessProfile, 'userId' | 'ema
       email: user.email,
       user_metadata: {
         auth_mode: 'employee-local',
+        business_id: user.businessId,
         username: user.username,
       },
       app_metadata: {},
@@ -141,7 +143,7 @@ function cacheEmployeeCredential(user: UserAccessProfile) {
 
   try {
     const rawState = window.localStorage.getItem(LOCAL_STATE_KEY);
-    const parsedState = rawState ? JSON.parse(rawState) as { users?: UserAccessProfile[]; currentUserId?: string } : {};
+    const parsedState = rawState ? JSON.parse(rawState) as { businessProfile?: { id?: string }; users?: UserAccessProfile[]; currentUserId?: string } : {};
     const stateUsersById = new Map<string, UserAccessProfile>();
     (parsedState.users ?? []).forEach((storedUser) => stateUsersById.set(storedUser.userId, storedUser));
     stateUsersById.set(user.userId, user);
@@ -150,6 +152,12 @@ function cacheEmployeeCredential(user: UserAccessProfile) {
       LOCAL_STATE_KEY,
       JSON.stringify({
         ...parsedState,
+        businessProfile: user.businessId
+          ? {
+              ...(parsedState.businessProfile ?? {}),
+              id: user.businessId,
+            }
+          : parsedState.businessProfile,
         users: Array.from(stateUsersById.values()),
         currentUserId: user.userId,
       })
@@ -158,6 +166,7 @@ function cacheEmployeeCredential(user: UserAccessProfile) {
     window.localStorage.setItem(
       LOCAL_STATE_KEY,
       JSON.stringify({
+        businessProfile: user.businessId ? { id: user.businessId } : undefined,
         users: [user],
         currentUserId: user.userId,
       })
@@ -193,10 +202,11 @@ function readValidLocalEmployeeSession(): Session | null {
   }
 }
 
-function saveLocalEmployeeSession(user: Pick<UserAccessProfile, 'userId' | 'email' | 'username'>) {
+function saveLocalEmployeeSession(user: Pick<UserAccessProfile, 'userId' | 'businessId' | 'email' | 'username'>) {
   const localSession: LocalEmployeeSession = {
     kind: 'employee-local',
     userId: user.userId,
+    businessId: user.businessId,
     email: user.email,
     username: user.username,
     issuedAt: new Date().toISOString(),
@@ -233,6 +243,7 @@ function signInWithLocalEmployee(identifier: string, password: string): AuthActi
 function mapCloudEmployeeCredential(row: CloudEmployeeCredentialRow): UserAccessProfile {
   return {
     userId: row.id,
+    businessId: row.business_id,
     name: row.name,
     email: row.email,
     username: row.username,

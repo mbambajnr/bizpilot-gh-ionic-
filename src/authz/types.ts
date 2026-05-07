@@ -71,6 +71,7 @@ export type AppPermission =
 
 export interface UserAccessProfile {
   userId: string;
+  businessId?: string;
   name: string;
   email: string;
   username?: string;

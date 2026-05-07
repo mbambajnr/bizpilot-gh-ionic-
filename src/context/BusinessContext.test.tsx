@@ -37,6 +37,8 @@ vi.mock('../data/supabaseSync', () => ({
   syncSupplyRoute: vi.fn(() => Promise.resolve(true)),
   syncStockMovement: vi.fn(() => Promise.resolve(true)),
   syncEmployeeCredential: vi.fn(() => Promise.resolve(true)),
+  syncPurchase: vi.fn(() => Promise.resolve(true)),
+  syncEmployeePurchase: vi.fn(() => Promise.resolve(true)),
 }));
 
 const STORAGE_KEY = 'bizpilot-gh-state-v1';

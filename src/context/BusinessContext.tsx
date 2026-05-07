@@ -87,7 +87,7 @@ import {
   RecordPayablePaymentInput,
   LaunchBusinessWorkspaceInput,
 } from '../utils/businessLogic';
-import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpense, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovement, syncEmployeeCredential } from '../data/supabaseSync';
+import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpense, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovement, syncEmployeeCredential, syncPurchase, syncEmployeePurchase } from '../data/supabaseSync';
 import { selectProductQuantityOnHand, selectSaleBalanceRemaining } from '../selectors/businessSelectors';
 import { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
 import { hasPermission } from '../authz/permissions';
@@ -294,6 +294,27 @@ function getEmployeeCredentialSyncKey(user: UserAccessProfile) {
   ].join('|');
 }
 
+function getPurchaseSyncKey(purchase: BusinessState['purchases'][number]) {
+  return [
+    purchase.id,
+    purchase.status,
+    purchase.updatedAt,
+    purchase.submittedAt ?? '',
+    purchase.approvedAt ?? '',
+    purchase.declinedAt ?? '',
+    purchase.receivedWarehouseId ?? '',
+    purchase.items.map((item) => `${item.productId}:${item.quantity}:${item.unitCost}:${item.totalCost}`).join(','),
+  ].join('|');
+}
+
+function syncPurchaseForUser(businessId: string, user: UserAccessProfile, purchase: BusinessState['purchases'][number]) {
+  if (user.temporaryPassword && user.businessId) {
+    return syncEmployeePurchase(user, purchase);
+  }
+
+  return syncPurchase(businessId, purchase);
+}
+
 function createBlankBusinessState(owner?: { id?: string; email?: string; name?: string }, themePreference: BusinessState['themePreference'] = seedState.themePreference): BusinessState {
   const ownerId = owner?.id;
 
@@ -346,6 +367,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
   const [state, setState] = useState<BusinessState>(readInitialState);
   const stateRef = useRef(state);
   const employeeCredentialSyncKeysRef = useRef(new Set<string>());
+  const purchaseSyncKeysRef = useRef(new Set<string>());
   const [backendStatus, setBackendStatus] = useState<BusinessBackendStatus>({
     source: 'local',
     loading: true,
@@ -471,6 +493,8 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
           const cloudUsersById = new Map((fullCloudData.users ?? []).map((cloudUser) => [cloudUser.userId, cloudUser]));
           updatedUsers.forEach((localUser) => cloudUsersById.set(localUser.userId, localUser));
+          const cloudPurchasesById = new Map((fullCloudData.purchases ?? []).map((purchase) => [purchase.id, purchase]));
+          current.purchases.forEach((localPurchase) => cloudPurchasesById.set(localPurchase.id, localPurchase));
 
           return {
             ...current,
@@ -482,6 +506,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
             products: fullCloudData.products ?? current.products,
             productCategories: fullCloudData.productCategories ?? current.productCategories,
             customers: fullCloudData.customers ?? current.customers,
+            purchases: Array.from(cloudPurchasesById.values()).sort((left, right) =>
+              new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+            ),
             sales: fullCloudData.sales ?? current.sales,
             stockMovements: fullCloudData.stockMovements ?? current.stockMovements,
             expenses: fullCloudData.expenses ?? current.expenses,
@@ -527,6 +554,24 @@ export function BusinessProvider({ children }: PropsWithChildren) {
       state.users[0]
     );
   }, [state.currentUserId, state.users, user?.id]);
+
+  useEffect(() => {
+    const isLocalEmployeeSession = user?.user_metadata?.auth_mode === 'employee-local';
+    const canEmployeeSync = isLocalEmployeeSession && Boolean(currentUser.businessId && currentUser.temporaryPassword);
+    if (backendStatus.loading || (backendStatus.source !== 'supabase' && !canEmployeeSync)) {
+      return;
+    }
+
+    state.purchases.forEach((purchase) => {
+      const syncKey = getPurchaseSyncKey(purchase);
+      if (purchaseSyncKeysRef.current.has(syncKey)) {
+        return;
+      }
+
+      purchaseSyncKeysRef.current.add(syncKey);
+      void syncPurchaseForUser(state.businessProfile.id, currentUser, purchase);
+    });
+  }, [backendStatus.loading, backendStatus.source, currentUser, state.businessProfile.id, state.purchases, user?.user_metadata?.auth_mode]);
 
   const value = useMemo<BusinessContextValue>(
     () => ({
@@ -1447,6 +1492,12 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         stateRef.current = result.data;
         setState(result.data);
+        const createdPurchase = result.data.purchases.find((purchase) =>
+          !currentState.purchases.some((existing) => existing.id === purchase.id)
+        );
+        if (createdPurchase) {
+          void syncPurchaseForUser(currentState.businessProfile.id, currentUser, createdPurchase);
+        }
         return { ok: true };
       },
       async submitPurchase(input) {
@@ -1465,6 +1516,10 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         stateRef.current = result.data;
         setState(result.data);
+        const updatedPurchase = result.data.purchases.find((purchase) => purchase.id === input.purchaseId);
+        if (updatedPurchase) {
+          void syncPurchaseForUser(currentState.businessProfile.id, currentUser, updatedPurchase);
+        }
         return { ok: true };
       },
       async approvePurchase(input) {
@@ -1483,6 +1538,10 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         stateRef.current = result.data;
         setState(result.data);
+        const updatedPurchase = result.data.purchases.find((purchase) => purchase.id === input.purchaseId);
+        if (updatedPurchase) {
+          void syncPurchaseForUser(currentState.businessProfile.id, currentUser, updatedPurchase);
+        }
         return { ok: true };
       },
       async cancelPurchase(input) {
@@ -1501,6 +1560,10 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         stateRef.current = result.data;
         setState(result.data);
+        const updatedPurchase = result.data.purchases.find((purchase) => purchase.id === input.purchaseId);
+        if (updatedPurchase) {
+          void syncPurchaseForUser(currentState.businessProfile.id, currentUser, updatedPurchase);
+        }
         return { ok: true };
       },
       async receivePurchaseInWarehouse(input) {
@@ -1529,6 +1592,10 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         stateRef.current = result.data;
         setState(result.data);
+        const updatedPurchase = result.data.purchases.find((purchase) => purchase.id === input.purchaseId);
+        if (updatedPurchase) {
+          void syncPurchaseForUser(currentState.businessProfile.id, currentUser, updatedPurchase);
+        }
         return { ok: true };
       },
       async createPayableFromPurchase(input) {

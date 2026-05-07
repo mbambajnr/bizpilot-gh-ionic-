@@ -1,6 +1,6 @@
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
 import type { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
-import type { BusinessLocation, BusinessState, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, StockMovement, TaxSnapshot, WithholdingTaxSnapshot } from './seedBusiness';
+import type { BusinessLocation, BusinessState, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, StockMovement, TaxSnapshot, WithholdingTaxSnapshot, Purchase } from './seedBusiness';
 
 type BusinessLocationRow = {
   id: string;
@@ -129,6 +129,35 @@ type EmployeeCredentialRow = {
   customer_email_sender_email: string | null;
 };
 
+type PurchaseItemRow = {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  unit_cost: number;
+  total_cost: number;
+  vendor_code: string;
+};
+
+type PurchaseRow = {
+  id: string;
+  purchase_code: string;
+  vendor_id: string;
+  vendor_code: string;
+  total_amount: number;
+  status: Purchase['status'];
+  created_by: string;
+  submitted_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  declined_by: string | null;
+  declined_at: string | null;
+  decline_note: string | null;
+  received_warehouse_id: string | null;
+  created_at: string;
+  updated_at: string;
+  purchase_items: PurchaseItemRow[] | null;
+};
+
 function mapPaymentMethod(value: string | null | undefined): Sale['paymentMethod'] {
   if (value === 'mobile_money') {
     return 'Mobile Money';
@@ -155,6 +184,7 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       { data: customers },
       { data: quotations },
       { data: invoices },
+      { data: purchases },
       { data: stockMovements },
       { data: expenses },
       { data: employeeCredentials }
@@ -170,6 +200,11 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
         .eq('business_id', businessId)
         .order('created_at', { ascending: false }),
       supabase.from('invoices').select('*').eq('business_id', businessId),
+      supabase
+        .from('purchases')
+        .select('id, purchase_code, vendor_id, vendor_code, total_amount, status, created_by, submitted_at, approved_by, approved_at, declined_by, declined_at, decline_note, received_warehouse_id, created_at, updated_at, purchase_items(product_id, product_name, quantity, unit_cost, total_cost, vendor_code)')
+        .eq('business_id', businessId)
+        .order('created_at', { ascending: false }),
       supabase.from('stock_movements').select('*').eq('business_id', businessId).order('created_at', { ascending: false }),
       supabase.from('expenses').select('*').eq('business_id', businessId),
       supabase.from('employee_credentials').select('*').eq('business_id', businessId)
@@ -322,6 +357,33 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       note: movement.note,
     }));
 
+    const mappedPurchases: Purchase[] = ((purchases || []) as PurchaseRow[]).map((purchase) => ({
+      id: purchase.id,
+      purchaseCode: purchase.purchase_code,
+      vendorId: purchase.vendor_id,
+      vendorCode: purchase.vendor_code,
+      items: (purchase.purchase_items ?? []).map((item) => ({
+        productId: item.product_id,
+        productName: item.product_name,
+        quantity: item.quantity,
+        unitCost: item.unit_cost,
+        totalCost: item.total_cost,
+        vendorCode: item.vendor_code,
+      })),
+      totalAmount: purchase.total_amount,
+      status: purchase.status,
+      createdBy: purchase.created_by,
+      submittedAt: purchase.submitted_at ?? undefined,
+      approvedBy: purchase.approved_by ?? undefined,
+      approvedAt: purchase.approved_at ?? undefined,
+      declinedBy: purchase.declined_by ?? undefined,
+      declinedAt: purchase.declined_at ?? undefined,
+      declineNote: purchase.decline_note ?? undefined,
+      receivedWarehouseId: purchase.received_warehouse_id ?? undefined,
+      createdAt: purchase.created_at,
+      updatedAt: purchase.updated_at,
+    }));
+
     const mappedExpenses: Expense[] = (expenses || []).map(e => ({
       id: e.id,
       category: e.category,
@@ -357,6 +419,7 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       customers: mappedCustomers,
       quotations: mappedQuotations,
       sales: mappedSales,
+      purchases: mappedPurchases,
       stockMovements: mappedStockMovements,
       expenses: mappedExpenses,
       users: mappedUsers
