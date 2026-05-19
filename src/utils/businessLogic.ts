@@ -320,6 +320,11 @@ export type RecordPayablePaymentInput = {
   reference?: string;
 };
 
+export type UpdateSalePaymentReferenceInput = {
+  saleId: string;
+  paymentReference?: string;
+};
+
 export type SetCustomerClassificationEnabledInput = {
   enabled: boolean;
 };
@@ -2194,7 +2199,7 @@ export function submitPurchaseInState(current: BusinessState, input: PurchaseAct
           title: 'Purchase awaiting approval',
           message: `${purchase.purchaseCode} is in the purchase queue and needs General Manager review.`,
           createdAt: submittedAt,
-          recipientRoles: ['GeneralManager'],
+          recipientRoles: ['Admin', 'GeneralManager'],
           entityType: 'purchase',
           entityId: purchase.id,
           referenceNumber: purchase.purchaseCode,
@@ -2562,6 +2567,27 @@ export function recordPayablePaymentInState(current: BusinessState, input: Recor
         }),
         ...current.activityLogEntries,
       ],
+    },
+  };
+}
+
+export function updateSalePaymentReferenceInState(current: BusinessState, input: UpdateSalePaymentReferenceInput): ActionResult<BusinessState> {
+  const sale = current.sales.find((entry) => entry.id === input.saleId);
+  if (!sale) {
+    return { ok: false, message: 'Sale not found.' };
+  }
+
+  const paymentReference = input.paymentReference?.trim() || undefined;
+  const updatedSale: Sale = {
+    ...sale,
+    paymentReference,
+  };
+
+  return {
+    ok: true,
+    data: {
+      ...current,
+      sales: current.sales.map((entry) => (entry.id === input.saleId ? updatedSale : entry)),
     },
   };
 }

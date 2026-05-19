@@ -132,7 +132,6 @@ const BatchExportPage: React.FC = () => {
     (canPrintWaybills || canExportWaybillsPdf ? (state?.sales || []).filter(s => selectedWaybills.has(s.id)) : []), 
   [canExportWaybillsPdf, canPrintWaybills, state?.sales, selectedWaybills]);
 
-  const totalSelectedCount = selectedInvoices.size + selectedQuotations.size + selectedWaybills.size;
   const totalPrintableCount =
     (canPrintInvoices ? selectedInvoices.size : 0) +
     (canPrintQuotations ? selectedQuotations.size : 0) +
@@ -456,7 +455,12 @@ const BatchExportPage: React.FC = () => {
           </IonButtons>
         </IonToolbar>
         <IonToolbar>
-           <IonSegment value={activeTab} onIonChange={(e) => setActiveTab(e.detail.value as any)}>
+          <IonSegment
+            value={activeTab}
+            onIonChange={(event) =>
+              setActiveTab((event.detail.value as 'invoices' | 'quotations' | 'waybills') ?? 'invoices')
+            }
+          >
              {availableTabs.includes('invoices') ? <IonSegmentButton value="invoices">Invoices</IonSegmentButton> : null}
              {availableTabs.includes('quotations') ? <IonSegmentButton value="quotations">Quotes</IonSegmentButton> : null}
              {availableTabs.includes('waybills') ? <IonSegmentButton value="waybills">Waybills</IonSegmentButton> : null}

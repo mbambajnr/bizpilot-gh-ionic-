@@ -34,6 +34,7 @@ describe('RBAC Logic', () => {
     expect(hasPermission(generalManager, 'payables.approve')).toBe(true);
     expect(hasPermission(generalManager, 'transfers.approve')).toBe(true);
     expect(hasPermission(generalManager, 'users.manage')).toBe(true);
+    expect(hasPermission(generalManager, 'business.edit')).toBe(false);
   });
 
   it('should resolve partial permissions for SalesManager by default', () => {
@@ -136,6 +137,9 @@ describe('RBAC Logic', () => {
     };
 
     expect(hasPermission(storeManager, 'sales.create')).toBe(true);
+    expect(hasPermission(storeManager, 'quotations.convert')).toBe(true);
+    expect(hasPermission(storeManager, 'accounting.access')).toBe(true);
+    expect(hasPermission(storeManager, 'payments.record')).toBe(true);
     expect(hasPermission(storeManager, 'transfers.receive')).toBe(true);
     expect(hasPermission(storeManager, 'restockRequests.create')).toBe(true);
     expect(hasPermission(storeManager, 'vendors.manage')).toBe(false);

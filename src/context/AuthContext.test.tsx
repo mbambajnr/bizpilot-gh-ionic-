@@ -11,6 +11,7 @@ const rpc = vi.fn();
 
 vi.mock('../lib/supabase', () => ({
   hasSupabaseConfig: true,
+  getSupabaseAuthStorageKeys: () => ['sb-test-auth-token'],
   getSupabaseClient: () => ({
     auth: {
       signInWithPassword,

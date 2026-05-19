@@ -5,6 +5,30 @@ const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabasePublishableKey);
 
+function getSupabaseProjectRef() {
+  if (!supabaseUrl) {
+    return null;
+  }
+
+  try {
+    return new URL(supabaseUrl).hostname.split('.')[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function getSupabaseAuthStorageKeys() {
+  const projectRef = getSupabaseProjectRef();
+  if (!projectRef) {
+    return [];
+  }
+
+  return [
+    `sb-${projectRef}-auth-token`,
+    `sb-${projectRef}-auth-token-code-verifier`,
+  ];
+}
+
 export const supabase = hasSupabaseConfig
   ? createClient(supabaseUrl, supabasePublishableKey)
   : null;

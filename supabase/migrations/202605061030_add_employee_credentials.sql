@@ -1,4 +1,6 @@
 -- Persist generated employee login credentials with the cloud workspace.
+-- TODO(security): temporary_password is currently stored and compared as plaintext.
+-- Migrate this flow to hashed verification or Supabase Auth-backed employee sign-in.
 
 create table if not exists public.employee_credentials (
   id text primary key,

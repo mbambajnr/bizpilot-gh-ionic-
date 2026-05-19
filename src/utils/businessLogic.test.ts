@@ -47,6 +47,7 @@ import {
   updateCustomerStatusInState,
   updateCustomerInState,
   updateProductCategoryInState,
+  updateSalePaymentReferenceInState,
   updateVendorInState,
 } from './businessLogic';
 
@@ -2097,6 +2098,7 @@ describe('businessLogic', () => {
       return;
     }
     expect(submitted.data.notifications.some((notification) =>
+      notification.recipientRoles?.includes('Admin') &&
       notification.recipientRoles?.includes('GeneralManager') &&
       notification.title === 'Purchase awaiting approval' &&
       notification.referenceNumber === draft.purchaseCode &&
@@ -2268,6 +2270,35 @@ describe('businessLogic', () => {
       performedBy: 'u-warehouse',
     });
     expect(secondReceipt.ok).toBe(false);
+  });
+
+  it('updates a sale payment reference without changing the sale balance', () => {
+    const saleResult = addSaleToState(seedState, {
+      customerId: seedState.customers[0].id,
+      items: [{ productId: 'p1', quantity: 1 }],
+      paymentMethod: 'Cash',
+      paidAmount: 20,
+    });
+    expect(saleResult.ok).toBe(true);
+    if (!saleResult.ok || !saleResult.data) {
+      return;
+    }
+
+    const createdSale = saleResult.data.sales[0];
+    const originalBalance = selectSaleBalanceRemaining(createdSale);
+    const updateResult = updateSalePaymentReferenceInState(saleResult.data, {
+      saleId: createdSale.id,
+      paymentReference: 'BANK-DEP-001',
+    });
+
+    expect(updateResult.ok).toBe(true);
+    if (!updateResult.ok || !updateResult.data) {
+      return;
+    }
+
+    const updatedSale = updateResult.data.sales.find((sale) => sale.id === createdSale.id);
+    expect(updatedSale?.paymentReference).toBe('BANK-DEP-001');
+    expect(updatedSale ? selectSaleBalanceRemaining(updatedSale) : undefined).toBe(originalBalance);
   });
 
   it('dashboard derivations are correct', () => {

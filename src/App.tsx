@@ -218,15 +218,17 @@ function AppShell() {
                         : canViewSettings
                           ? '/settings'
                           : '/dashboard';
+  const canReviewPurchaseQueue =
+    currentUser.role === 'Admin' || currentUser.role === 'GeneralManager';
   const purchaseQueueNotifications: AppNotification[] =
-    currentUser.role === 'GeneralManager'
+    canReviewPurchaseQueue
       ? state.purchases
           .filter((purchase) => purchase.status === 'submitted' || purchase.status === 'adminReviewed')
           .filter((purchase) =>
             !state.notifications.some((notification) =>
               notification.entityType === 'purchase' &&
               notification.entityId === purchase.id &&
-              notification.recipientRoles?.includes('GeneralManager')
+              notification.recipientRoles?.includes(currentUser.role)
             )
           )
           .map((purchase) => ({
@@ -234,7 +236,7 @@ function AppShell() {
             title: 'Purchase awaiting approval',
             message: `${purchase.purchaseCode} is in the purchase queue and needs General Manager review.`,
             createdAt: purchase.submittedAt ?? purchase.updatedAt,
-            recipientRoles: ['GeneralManager'],
+            recipientRoles: [currentUser.role],
             readByUserIds: [],
             entityType: 'purchase',
             entityId: purchase.id,

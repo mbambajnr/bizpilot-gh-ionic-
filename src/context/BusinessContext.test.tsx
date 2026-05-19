@@ -37,6 +37,8 @@ vi.mock('../data/supabaseSync', () => ({
   syncSupplyRoute: vi.fn(() => Promise.resolve(true)),
   syncStockMovement: vi.fn(() => Promise.resolve(true)),
   syncEmployeeCredential: vi.fn(() => Promise.resolve(true)),
+  verifyEmployeeCredential: vi.fn(() => Promise.resolve(true)),
+  rotateEmployeePassword: vi.fn(() => Promise.resolve(true)),
   syncPurchase: vi.fn(() => Promise.resolve(true)),
   syncEmployeePurchase: vi.fn(() => Promise.resolve(true)),
 }));
@@ -157,17 +159,17 @@ function AddEmployeeHarness({
     }
 
     didRun.current = true;
-    const result = addUserAccount({
+    void addUserAccount({
       name: 'Kwame Mensah',
       email: 'kwame@example.com',
       role: 'WarehouseManager',
-    });
-
-    onDone({
-      ok: result.ok,
-      username: result.ok ? result.data?.username : undefined,
-      temporaryPassword: result.ok ? result.data?.temporaryPassword : undefined,
-      totalUsers: state.users.length,
+    }).then((result) => {
+      onDone({
+        ok: result.ok,
+        username: result.ok ? result.data?.username : undefined,
+        temporaryPassword: result.ok ? result.data?.temporaryPassword : undefined,
+        totalUsers: state.users.length,
+      });
     });
   }, [addUserAccount, onDone, state.users.length]);
 
@@ -190,13 +192,41 @@ function ResetEmployeePasswordHarness({
     }
 
     didRun.current = true;
-    const result = resetEmployeeTemporaryPassword(userId);
-    onDone({
-      ok: result.ok,
-      username: result.ok ? result.data?.username : undefined,
-      temporaryPassword: result.ok ? result.data?.temporaryPassword : undefined,
+    void resetEmployeeTemporaryPassword(userId).then((result) => {
+      onDone({
+        ok: result.ok,
+        username: result.ok ? result.data?.username : undefined,
+        temporaryPassword: result.ok ? result.data?.temporaryPassword : undefined,
+      });
     });
   }, [onDone, resetEmployeeTemporaryPassword, userId]);
+
+  return null;
+}
+
+function ApprovePurchaseHarness({
+  purchaseId,
+  onDone,
+}: {
+  purchaseId: string;
+  onDone: (payload: { ok: boolean; message?: string }) => void;
+}) {
+  const didRun = useRef(false);
+  const { approvePurchase } = useBusiness();
+
+  useEffect(() => {
+    if (didRun.current) {
+      return;
+    }
+
+    didRun.current = true;
+    void approvePurchase({
+      purchaseId,
+      performedBy: 'u-admin',
+    }).then((result) => {
+      onDone({ ok: result.ok, message: result.message });
+    });
+  }, [approvePurchase, onDone, purchaseId]);
 
   return null;
 }
@@ -427,5 +457,48 @@ describe('BusinessContext quotation conversion sync', () => {
         temporaryPassword: expect.stringMatching(/^BP-/),
       })
     );
+  });
+
+  it('still lets seeded admin users approve submitted purchases', async () => {
+    const onDone = vi.fn();
+    const purchaseId = 'purchase-awaiting-approval';
+    const existingState = {
+      ...seedState,
+      purchases: [
+        {
+          id: purchaseId,
+          purchaseCode: 'PO-9001',
+          vendorId: seedState.vendors[0].id,
+          vendorCode: seedState.vendors[0].vendorCode,
+          items: [
+            {
+              productId: seedState.products[0].id,
+              productName: seedState.products[0].name,
+              quantity: 2,
+              unitCost: 15,
+              totalCost: 30,
+              vendorCode: seedState.vendors[0].vendorCode,
+            },
+          ],
+          totalAmount: 30,
+          status: 'submitted' as const,
+          createdBy: 'u-sales',
+          createdAt: new Date().toISOString(),
+          submittedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
+
+    render(
+      <BusinessProvider>
+        <ApprovePurchaseHarness purchaseId={purchaseId} onDone={onDone} />
+      </BusinessProvider>
+    );
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalledWith({ ok: true, message: undefined });
+    });
   });
 });

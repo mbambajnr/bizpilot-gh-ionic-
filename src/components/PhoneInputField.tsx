@@ -100,18 +100,24 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
   const [isTouched, setIsTouched] = useState(false);
 
   useEffect(() => {
-    if (value) {
-      const matches = COUNTRIES.filter(c => value.startsWith(c.code))
-                               .sort((a,b) => b.code.length - a.code.length);
-      
-      if (matches.length > 0) {
-        setSelectedCountryCode(matches[0].code);
-        setLocalNumber(value.slice(matches[0].code.length));
-      } else {
-        setLocalNumber(value);
-      }
+    if (!value) {
+      setSelectedCountryCode(COUNTRIES[0].code);
+      setLocalNumber('');
+      return;
     }
-  }, []);
+
+    const matches = COUNTRIES.filter((country) => value.startsWith(country.code)).sort(
+      (left, right) => right.code.length - left.code.length
+    );
+
+    if (matches.length > 0) {
+      setSelectedCountryCode(matches[0].code);
+      setLocalNumber(value.slice(matches[0].code.length));
+      return;
+    }
+
+    setLocalNumber(value);
+  }, [value]);
 
   const selectedCountry = COUNTRIES.find(c => c.code === selectedCountryCode) || COUNTRIES[0];
   const isValidLength = localNumber.length === 0 || selectedCountry.len.includes(localNumber.length);

@@ -2,7 +2,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ensureBusinessProfileForOwner } from '../data/supabaseBusinessProfile';
-import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
+import { getSupabaseAuthStorageKeys, getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
 import type { UserAccessProfile } from '../authz/types';
 
 type AuthActionResult = { ok: true; message?: string } | { ok: false; message: string };
@@ -125,6 +125,36 @@ function readStoredUsers(): UserAccessProfile[] {
   return Array.from(usersById.values());
 }
 
+function readStoredEmployeeCredentials(): UserAccessProfile[] {
+  const rawCredentials = window.localStorage.getItem(LOCAL_EMPLOYEE_CREDENTIALS_KEY);
+
+  if (!rawCredentials) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawCredentials) as { users?: UserAccessProfile[] };
+    return parsed.users ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function stripSensitiveCredentialFields(user: UserAccessProfile): UserAccessProfile {
+  return {
+    ...user,
+    temporaryPassword: undefined,
+  };
+}
+
+function isCredentialMismatchMessage(message: string) {
+  return /incorrect username, email, or password/i.test(message);
+}
+
+function isCloudEmployeeConnectivityMessage(message: string) {
+  return /could not check employee credentials right now/i.test(message) || /failed to fetch/i.test(message);
+}
+
 function cacheEmployeeCredential(user: UserAccessProfile) {
   const credentialsById = new Map<string, UserAccessProfile>();
   const rawCredentials = window.localStorage.getItem(LOCAL_EMPLOYEE_CREDENTIALS_KEY);
@@ -146,7 +176,7 @@ function cacheEmployeeCredential(user: UserAccessProfile) {
     const parsedState = rawState ? JSON.parse(rawState) as { businessProfile?: { id?: string }; users?: UserAccessProfile[]; currentUserId?: string } : {};
     const stateUsersById = new Map<string, UserAccessProfile>();
     (parsedState.users ?? []).forEach((storedUser) => stateUsersById.set(storedUser.userId, storedUser));
-    stateUsersById.set(user.userId, user);
+    stateUsersById.set(user.userId, stripSensitiveCredentialFields(user));
 
     window.localStorage.setItem(
       LOCAL_STATE_KEY,
@@ -167,11 +197,21 @@ function cacheEmployeeCredential(user: UserAccessProfile) {
       LOCAL_STATE_KEY,
       JSON.stringify({
         businessProfile: user.businessId ? { id: user.businessId } : undefined,
-        users: [user],
+        users: [stripSensitiveCredentialFields(user)],
         currentUserId: user.userId,
       })
     );
   }
+}
+
+function clearPersistedSupabaseSession() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  getSupabaseAuthStorageKeys().forEach((key) => {
+    window.localStorage.removeItem(key);
+  });
 }
 
 function readValidLocalEmployeeSession(): Session | null {
@@ -202,6 +242,10 @@ function readValidLocalEmployeeSession(): Session | null {
   }
 }
 
+function isLocalEmployeeSession(session: Session | null | undefined) {
+  return session?.user?.user_metadata?.auth_mode === 'employee-local';
+}
+
 function saveLocalEmployeeSession(user: Pick<UserAccessProfile, 'userId' | 'businessId' | 'email' | 'username'>) {
   const localSession: LocalEmployeeSession = {
     kind: 'employee-local',
@@ -217,10 +261,14 @@ function saveLocalEmployeeSession(user: Pick<UserAccessProfile, 'userId' | 'busi
 
 function findLocalEmployee(identifier: string) {
   const normalizedIdentifier = identifier.trim().toLowerCase();
-  return readStoredUsers().find((user) =>
+  const matchesIdentifier = (user: UserAccessProfile) =>
     (user.email.trim().toLowerCase() === normalizedIdentifier ||
       (user.username ?? '').trim().toLowerCase() === normalizedIdentifier) &&
-    (user.accountStatus ?? 'active') === 'active'
+    (user.accountStatus ?? 'active') === 'active';
+
+  return (
+    readStoredEmployeeCredentials().find(matchesIdentifier) ??
+    readStoredUsers().find(matchesIdentifier)
   );
 }
 
@@ -232,6 +280,7 @@ function signInWithLocalEmployee(identifier: string, password: string): AuthActi
     return { ok: false, message: 'Incorrect username, email, or password.' };
   }
 
+  clearPersistedSupabaseSession();
   saveLocalEmployeeSession(matchingUser);
   return {
     ok: true,
@@ -247,6 +296,9 @@ function mapCloudEmployeeCredential(row: CloudEmployeeCredentialRow): UserAccess
     name: row.name,
     email: row.email,
     username: row.username,
+    // TODO(security): The current RPC still returns a plaintext temporary password.
+    // Keep this only as an interim bridge for employee-local purchase sync until the
+    // flow is migrated to hashed verification or Supabase Auth-backed sessions.
     temporaryPassword: row.temporary_password ?? undefined,
     credentialsGeneratedAt: row.credentials_generated_at ?? undefined,
     accountStatus: row.account_status ?? 'active',
@@ -266,8 +318,9 @@ async function signInWithCloudEmployee(identifier: string, password: string): Pr
   }
 
   try {
+    const normalizedIdentifier = identifier.trim().toLowerCase();
     const { data, error } = await getSupabaseClient().rpc('authenticate_employee_credential', {
-      credential_identifier: identifier.trim(),
+      credential_identifier: normalizedIdentifier,
       credential_password: password.trim(),
     });
 
@@ -282,6 +335,7 @@ async function signInWithCloudEmployee(identifier: string, password: string): Pr
 
     const employee = mapCloudEmployeeCredential(row);
     cacheEmployeeCredential(employee);
+    clearPersistedSupabaseSession();
     saveLocalEmployeeSession(employee);
 
     return {
@@ -303,6 +357,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     message: 'Waiting for owner sign-in.',
   });
   const bootstrappedOwnerRef = useRef<string | null>(null);
+  const sessionRef = useRef<Session | null>(null);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   useEffect(() => {
     const testWindow = window as TestWindow;
@@ -364,6 +423,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }, 2000);
 
     const { data: listener } = auth.onAuthStateChange((_event, nextSession) => {
+      if (!nextSession && isLocalEmployeeSession(sessionRef.current) && readValidLocalEmployeeSession()) {
+        setLoading(false);
+        return;
+      }
+
       setSession(nextSession);
       setLoading(false);
 
@@ -502,6 +566,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
           if (localResult.ok) {
             return localResult;
           }
+          if (isCloudEmployeeConnectivityMessage(cloudEmployeeResult.message)) {
+            return {
+              ok: false,
+              message:
+                'We could not reach the cloud employee sign-in service right now. Check the Supabase connection, then try the employee credentials again.',
+            };
+          }
+          if (!isCredentialMismatchMessage(cloudEmployeeResult.message)) {
+            return cloudEmployeeResult;
+          }
           if (/invalid login credentials/i.test(error.message)) {
             return {
               ok: false,
@@ -562,6 +636,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const testWindow = window as TestWindow;
         testWindow.__BIZAPILOT_TEST_SESSION__ = null;
         window.localStorage.removeItem(LOCAL_SESSION_KEY);
+        clearPersistedSupabaseSession();
         setSession(null);
         bootstrappedOwnerRef.current = null;
         setBusinessBootstrapStatus({

@@ -1,4 +1,6 @@
 -- Let custom employee sessions persist purchase drafts without owner Supabase Auth.
+-- TODO(security): This RPC still authenticates with a plaintext temporary password.
+-- Replace with hashed verification or Supabase Auth before production rollout.
 
 create or replace function public.sync_employee_purchase(
   credential_identifier text,

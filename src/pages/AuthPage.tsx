@@ -10,6 +10,7 @@ import {
   IonSegmentButton,
   IonSpinner,
   IonText,
+  IonToast,
 } from '@ionic/react';
 import { eye, eyeOff } from 'ionicons/icons';
 import { FormEvent, useEffect, useState } from 'react';
@@ -27,6 +28,8 @@ const AuthPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [formMessage, setFormMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
@@ -69,6 +72,24 @@ const AuthPage: React.FC = () => {
     setIsSubmitting(false);
 
     if (result.ok) {
+      if (isSignUp) {
+        const message = result.message ?? 'Owner account created successfully.';
+        setSuccessMessage(message);
+        setShowSuccessToast(true);
+        setFormMessage('');
+
+        if (/check your email/i.test(message)) {
+          setMode('sign-in');
+          setPassword('');
+          return;
+        }
+
+        window.setTimeout(() => {
+          history.push('/dashboard');
+        }, 900);
+        return;
+      }
+
       history.push('/dashboard');
     } else {
       setFormMessage(result.message ?? '');
@@ -206,11 +227,23 @@ const AuthPage: React.FC = () => {
                     Connectivity state: Supabase authentication not configured.
                   </p>
                 ) : null}
+                {!isSignUp ? (
+                  <p className="diagnostic-detail" style={{ marginTop: 0 }}>
+                    Recommendation: if an admin gave you a temporary employee password, sign in first and then change it from the Security section inside Settings.
+                  </p>
+                ) : null}
                 {formMessage ? <p className="form-message">{formMessage}</p> : null}
               </form>
             </div>
           </section>
         </main>
+        <IonToast
+          isOpen={showSuccessToast}
+          onDidDismiss={() => setShowSuccessToast(false)}
+          message={successMessage}
+          duration={2200}
+          color="success"
+        />
       </IonContent>
     </IonPage>
   );

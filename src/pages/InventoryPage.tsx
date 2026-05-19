@@ -201,8 +201,13 @@ const InventoryPage: React.FC = () => {
     hasPermission('inventory.create') &&
     currentUser.role !== 'PurchaseManager' &&
     (hasPermission('inventory.edit') || hasPermission('inventory.adjust') || hasPermission('business.edit'));
-  const canApprovePurchases = currentUser.role === 'GeneralManager' && hasPermission('purchases.approve');
-  const canManageRestockRequests = currentUser.role === 'GeneralManager' && hasPermission('restockRequests.manage');
+  const canUseApprovalRole = currentUser.role === 'Admin' || currentUser.role === 'GeneralManager';
+  const canSeeAllSupplyTracking = currentUser.role === 'Admin' || currentUser.role === 'GeneralManager';
+  const canSeeVendorToWarehouseTracking = canSeeAllSupplyTracking || currentUser.role === 'PurchaseManager';
+  const canSeeWarehouseToStoreTracking =
+    canSeeAllSupplyTracking || currentUser.role === 'WarehouseManager' || currentUser.role === 'StoreManager';
+  const canApprovePurchases = canUseApprovalRole && hasPermission('purchases.approve');
+  const canManageRestockRequests = canUseApprovalRole && hasPermission('restockRequests.manage');
   const activeWarehouses = useMemo(() => activeLocations.filter((location) => location.type === 'warehouse'), [activeLocations]);
   const activeStores = useMemo(() => activeLocations.filter((location) => location.type === 'store'), [activeLocations]);
   const visibleInventoryLocations = useMemo(
@@ -322,6 +327,12 @@ const InventoryPage: React.FC = () => {
     () => selectFastMovingProductsByLocation(state).filter((entry) => entry.locationId === selectedLocationId),
     [state, selectedLocationId]
   );
+  const canShowProcurementSections =
+    canSeeVendorToWarehouseTracking &&
+    (hasPermission('purchases.view') || hasPermission('purchases.create') || hasPermission('purchases.receive'));
+  const canShowTransferSections =
+    canSeeWarehouseToStoreTracking &&
+    (hasPermission('transfers.view') || hasPermission('transfers.create') || hasPermission('transfers.receive'));
 
   useEffect(() => {
     if (!transferToLocationId && activeStores.length > 0) {
@@ -1488,7 +1499,7 @@ const InventoryPage: React.FC = () => {
             </SectionCard>
           )}
 
-          {activeSegment === 'supply' && (hasPermission('transfers.view') || hasPermission('restockRequests.view') || hasPermission('purchases.view') || hasPermission('purchases.create')) && (
+          {activeSegment === 'supply' && (canShowProcurementSections || canShowTransferSections || hasPermission('restockRequests.view')) && (
             <>
               <SectionCard
                 title="Supply workflow"
@@ -1498,34 +1509,38 @@ const InventoryPage: React.FC = () => {
                   <div className="list-row">
                     <div>
                       <strong>
-                        {hasPermission('transfers.view')
+                        {canShowProcurementSections && canShowTransferSections
                           ? 'Vendor → Purchase → Approval → Payable → Warehouse Receipt → Store Transfer → Sale'
-                          : 'Vendor → Purchase → Approval → Payable → Warehouse Receipt'}
+                          : canShowProcurementSections
+                            ? 'Vendor → Purchase → Approval → Payable → Warehouse Receipt'
+                            : 'Warehouse → Store Transfer → Sale'}
                       </strong>
                       <p>
-                        {hasPermission('transfers.view')
+                        {canShowProcurementSections && canShowTransferSections
                           ? 'Use procurement for supplier orders, warehouse receipts for stock-in, and transfer stock to move goods into selling locations.'
-                          : 'Use procurement for supplier orders and warehouse receipts without exposing store transfer operations.'}
+                          : canShowProcurementSections
+                            ? 'Track procurement from the vendor through warehouse receipt without exposing store transfer operations.'
+                            : 'Track which warehouse supplies which store and keep transfer movements visible from approval through receipt.'}
                       </p>
                     </div>
                   </div>
                 </div>
                 <div className="stats-grid" style={{ marginTop: '12px' }}>
-                  {(hasPermission('purchases.view') || hasPermission('purchases.create')) ? (
+                  {canShowProcurementSections && (hasPermission('purchases.view') || hasPermission('purchases.create')) ? (
                     <div className="mini-stat">
                       <p className="muted-label">Purchase Queue</p>
                       <h3>{state.purchases.filter((purchase) => purchase.status === 'draft' || purchase.status === 'submitted' || purchase.status === 'adminReviewed').length}</h3>
                       <p>{state.purchases.filter((purchase) => purchase.status === 'approved').length} approved awaiting receipt</p>
                     </div>
                   ) : null}
-                  {hasPermission('purchases.receive') ? (
+                  {canShowProcurementSections && hasPermission('purchases.receive') ? (
                     <div className="mini-stat">
                       <p className="muted-label">Warehouse Receipts</p>
                       <h3>{approvedPurchases.length}</h3>
                       <p>{approvedPurchases.length > 0 ? 'Approved purchases awaiting receipt' : 'No purchases awaiting receipt'}</p>
                     </div>
                   ) : null}
-                  {hasPermission('transfers.view') ? (
+                  {canShowTransferSections && hasPermission('transfers.view') ? (
                     <div className="mini-stat">
                       <p className="muted-label">Pending Stock Transfers</p>
                       <h3>{stockTransfers.filter((entry) => entry.transfer.status !== 'received' && entry.transfer.status !== 'cancelled').length}</h3>
@@ -1535,11 +1550,11 @@ const InventoryPage: React.FC = () => {
                 </div>
               </SectionCard>
 
-              {(hasPermission('purchases.create') || hasPermission('purchases.view')) && (
+              {canShowProcurementSections && (hasPermission('purchases.create') || hasPermission('purchases.view')) && (
                 <section ref={procurementSectionRef}>
                   <SectionCard
-                    title="Procurement"
-                    subtitle="Raise purchase drafts from active vendors, submit them, and track approval through warehouse receipt."
+                    title="Vendor to Warehouse Supply"
+                    subtitle="Raise purchase drafts from active vendors, submit them, and track movement into the warehouse."
                     highlighted={arrivalSection === 'procurement'}
                     highlightLabel={arrivalSection === 'procurement' ? "You're viewing Procurement" : undefined}
                     dataTestId="arrival-procurement"
@@ -1872,11 +1887,11 @@ const InventoryPage: React.FC = () => {
                 </section>
               )}
 
-              {hasPermission('purchases.receive') && (
+              {canShowProcurementSections && hasPermission('purchases.receive') && (
                 <section ref={receiptsSectionRef}>
                   <SectionCard
-                    title="Warehouse Receipts"
-                    subtitle="Receive approved purchases into a warehouse and create traceable stock-in movements."
+                    title="Vendor to Warehouse Receipts"
+                    subtitle="Receive approved purchases into a warehouse and create traceable vendor-to-warehouse stock-in movements."
                     highlighted={arrivalSection === 'receipts'}
                     highlightLabel={arrivalSection === 'receipts' ? "You're viewing Warehouse Receipts" : undefined}
                     dataTestId="arrival-receipts"
@@ -1944,10 +1959,10 @@ const InventoryPage: React.FC = () => {
                 </section>
               )}
 
-              {hasPermission('transfers.create') && activeLocations.length > 1 && (
+              {canShowTransferSections && hasPermission('transfers.create') && activeLocations.length > 1 && (
                 <section ref={transfersSectionRef}>
                   <SectionCard
-                    title="Transfer Stock"
+                    title="Warehouse to Store Route"
                     subtitle="Create a warehouse-to-store transfer request using your saved supply routes."
                     highlighted={arrivalSection === 'transfers'}
                     highlightLabel={arrivalSection === 'transfers' ? "You're viewing Stock Transfers" : undefined}
@@ -2034,11 +2049,11 @@ const InventoryPage: React.FC = () => {
                 </section>
               )}
 
-              {hasPermission('transfers.view') && (
+              {canShowTransferSections && hasPermission('transfers.view') && (
                 <section ref={!hasPermission('transfers.create') ? transfersSectionRef : undefined}>
                   <SectionCard
-                    title="Stock Transfers"
-                    subtitle="Approve, dispatch, receive, or cancel transfers based on your access."
+                    title="Warehouse to Store Tracking"
+                    subtitle="Approve, dispatch, receive, or cancel warehouse-to-store transfers based on your access."
                     highlighted={arrivalSection === 'transfers'}
                     highlightLabel={arrivalSection === 'transfers' ? "You're viewing Stock Transfers" : undefined}
                     dataTestId="arrival-transfers"
@@ -2062,7 +2077,7 @@ const InventoryPage: React.FC = () => {
                               {entry.transfer.items.map((item) => `${item.productName} (${item.quantity})`).join(', ')}
                             </p>
                             <div className="button-group" style={{ marginTop: '8px' }}>
-                              {entry.transfer.status === 'pending' && currentUser.role === 'GeneralManager' && hasPermission('transfers.approve') ? (
+                              {entry.transfer.status === 'pending' && canUseApprovalRole && hasPermission('transfers.approve') ? (
                                 <IonButton size="small" onClick={() => handleTransferAction(entry.transfer.id, 'approve')}>Approve</IonButton>
                               ) : null}
                               {entry.transfer.status === 'approved' && hasPermission('transfers.dispatch') ? (
@@ -2071,7 +2086,7 @@ const InventoryPage: React.FC = () => {
                               {(entry.transfer.status === 'approved' || entry.transfer.status === 'dispatched') && hasPermission('transfers.receive') ? (
                                 <IonButton size="small" color="success" onClick={() => handleTransferAction(entry.transfer.id, 'receive')}>Receive</IonButton>
                               ) : null}
-                              {entry.transfer.status !== 'received' && entry.transfer.status !== 'cancelled' && currentUser.role === 'GeneralManager' && hasPermission('transfers.approve') ? (
+                              {entry.transfer.status !== 'received' && entry.transfer.status !== 'cancelled' && canUseApprovalRole && hasPermission('transfers.approve') ? (
                                 <IonButton size="small" fill="clear" color="danger" onClick={() => handleTransferAction(entry.transfer.id, 'cancel')}>Cancel</IonButton>
                               ) : null}
                             </div>
@@ -2094,41 +2109,43 @@ const InventoryPage: React.FC = () => {
                 </section>
               )}
 
-              <SectionCard
-                title="Transfer History"
-                subtitle="Audit recent movement between warehouses and stores."
-              >
-                {transferHistory.length === 0 ? (
-                  <EmptyState
-                    eyebrow="No transfers yet"
-                    title="Warehouse/store transfers will appear here."
-                    message="Once stock is moved between locations, the source and destination trail stays visible."
-                  />
-                ) : (
-                  <div className="list-block">
-                    {transferHistory.slice(0, 12).map((entry) => {
-                      const product = state.products.find((item) => item.id === entry.productId);
-                      const from = activeLocations.find((location) => location.id === entry.fromLocationId);
-                      const to = activeLocations.find((location) => location.id === entry.toLocationId);
+              {canShowTransferSections ? (
+                <SectionCard
+                  title="Transfer History"
+                  subtitle="Audit recent movement between warehouses and stores."
+                >
+                  {transferHistory.length === 0 ? (
+                    <EmptyState
+                      eyebrow="No transfers yet"
+                      title="Warehouse/store transfers will appear here."
+                      message="Once stock is moved between locations, the source and destination trail stays visible."
+                    />
+                  ) : (
+                    <div className="list-block">
+                      {transferHistory.slice(0, 12).map((entry) => {
+                        const product = state.products.find((item) => item.id === entry.productId);
+                        const from = activeLocations.find((location) => location.id === entry.fromLocationId);
+                        const to = activeLocations.find((location) => location.id === entry.toLocationId);
 
-                      return (
-                        <div className="list-row" key={entry.transferId}>
-                          <div>
-                            <strong>{product?.name ?? 'Unknown product'}</strong>
-                            <p className="code-label">{entry.referenceNumber ?? entry.outboundMovement.movementNumber}</p>
-                            <p>{from?.name ?? 'Unknown source'} → {to?.name ?? 'Unknown destination'}</p>
-                            <p className="muted-label">{formatReceiptDate(entry.createdAt)}</p>
+                        return (
+                          <div className="list-row" key={entry.transferId}>
+                            <div>
+                              <strong>{product?.name ?? 'Unknown product'}</strong>
+                              <p className="code-label">{entry.referenceNumber ?? entry.outboundMovement.movementNumber}</p>
+                              <p>{from?.name ?? 'Unknown source'} → {to?.name ?? 'Unknown destination'}</p>
+                              <p className="muted-label">{formatReceiptDate(entry.createdAt)}</p>
+                            </div>
+                            <div className="right-meta">
+                              <strong>{entry.quantity}</strong>
+                              <p>{product?.unit ?? 'units'}</p>
+                            </div>
                           </div>
-                          <div className="right-meta">
-                            <strong>{entry.quantity}</strong>
-                            <p>{product?.unit ?? 'units'}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </SectionCard>
+                        );
+                      })}
+                    </div>
+                  )}
+                </SectionCard>
+              ) : null}
 
               {/* REQUEST FORM - For Staff */}
               {selectedProductId && hasPermission('restockRequests.create') && (

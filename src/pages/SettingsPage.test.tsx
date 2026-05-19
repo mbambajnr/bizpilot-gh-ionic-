@@ -6,17 +6,14 @@ import { seedState } from '../data/seedBusiness';
 import SettingsPage from './SettingsPage';
 
 const mockUseBusiness = vi.fn();
+const mockUseAuth = vi.fn();
 
 vi.mock('../context/BusinessContext', () => ({
   useBusiness: () => mockUseBusiness(),
 }));
 
 vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({
-    user: { id: 'owner-id', email: 'owner@example.com' },
-    businessBootstrapStatus: { loading: false, label: 'Ready', detail: 'Ready' },
-    signOut: vi.fn(),
-  }),
+  useAuth: () => mockUseAuth(),
 }));
 
 vi.mock('../lib/businessEmailConfigClient', () => ({
@@ -49,6 +46,7 @@ function buildContext(permissionMap: Record<string, boolean>, overrides: Record<
     updateUserProfile: vi.fn(() => ({ ok: true })),
     addUserAccount: vi.fn(() => ({ ok: true })),
     resetEmployeeTemporaryPassword: vi.fn(() => ({ ok: true })),
+    changeEmployeePassword: vi.fn(async () => ({ ok: true })),
     updateEmployeeAccount: vi.fn(() => ({ ok: true })),
     reviewRestockRequest: vi.fn(() => ({ ok: true })),
     updateBranding: vi.fn(async () => ({ ok: true })),
@@ -74,6 +72,11 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     HTMLElement.prototype.scrollIntoView = vi.fn();
+    mockUseAuth.mockReturnValue({
+      user: { id: 'owner-id', email: 'owner@example.com' },
+      businessBootstrapStatus: { loading: false, label: 'Ready', detail: 'Ready' },
+      signOut: vi.fn(),
+    });
   });
 
   it('shows setup incomplete when the business profile is still missing required setup details', async () => {
@@ -88,6 +91,24 @@ describe('SettingsPage', () => {
     expect(screen.getByTestId('launch-state-setupIncomplete')).toBeInTheDocument();
     expect(screen.getByText('Finish the business setup before the workspace opens to the rest of the team.')).toBeInTheDocument();
     expect(screen.queryByTestId('launch-business-button')).not.toBeInTheDocument();
+  });
+
+  it('shows an employee password recommendation for employee sessions', async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: 'employee-id', email: 'staff@example.com', user_metadata: { auth_mode: 'employee-local' } },
+      businessBootstrapStatus: { loading: false, label: 'Ready', detail: 'Ready' },
+      signOut: vi.fn(),
+    });
+
+    mockUseBusiness.mockReturnValue(buildContext({
+      'business.view': true,
+    }));
+
+    render(<SettingsPage />);
+
+    expect(await screen.findByText('Employee password recommendation')).toBeInTheDocument();
+    expect(screen.getByText(/replace it with a personal password/i)).toBeInTheDocument();
+    expect(screen.getByText('Recommended')).toBeInTheDocument();
   });
 
   it('shows ready to launch and the launch button when business setup is saved', async () => {

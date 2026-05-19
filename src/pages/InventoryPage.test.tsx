@@ -88,7 +88,8 @@ describe('InventoryPage ERP discoverability', () => {
     HTMLElement.prototype.scrollIntoView = vi.fn();
   });
 
-  it('shows Procurement, Purchase Queue, Warehouse Receipts, and Stock Transfers to permitted users', async () => {
+  it('shows vendor-to-warehouse and warehouse-to-store sections to oversight users', async () => {
+    mockLocationSearch = '?section=procurement';
     mockUseBusiness.mockReturnValue(buildContext({
       'inventory.view': true,
       'purchases.view': true,
@@ -116,14 +117,15 @@ describe('InventoryPage ERP discoverability', () => {
 
     render(<InventoryPage />);
 
-    expect(await screen.findByText('ERP operations')).toBeInTheDocument();
-    expect(screen.getByText('Procurement')).toBeInTheDocument();
-    expect(screen.getByText('Purchase Queue')).toBeInTheDocument();
-    expect(screen.getByText('Warehouse Receipts')).toBeInTheDocument();
-    expect(screen.getByText('Stock Transfers')).toBeInTheDocument();
+    expect(await screen.findByText('Supply workflow')).toBeInTheDocument();
+    expect(screen.getByText('Vendor to Warehouse Supply')).toBeInTheDocument();
+    expect(screen.getAllByText('Purchase Queue').length).toBeGreaterThan(0);
+    expect(screen.getByText('Vendor to Warehouse Receipts')).toBeInTheDocument();
+    expect(screen.getByText('Warehouse to Store Tracking')).toBeInTheDocument();
   });
 
   it('renders helpful ERP empty states when there is no procurement or transfer activity', async () => {
+    mockLocationSearch = '?section=receipts';
     mockUseBusiness.mockReturnValue(buildContext({
       'inventory.view': true,
       'purchases.view': true,
@@ -234,6 +236,40 @@ describe('InventoryPage ERP discoverability', () => {
     expect(screen.queryByText('Decline note')).not.toBeInTheDocument();
   });
 
+  it('shows purchase approval controls to admin users with approval permission', async () => {
+    mockLocationSearch = '?section=procurement';
+    const context = buildContext({
+      'inventory.view': true,
+      'purchases.view': true,
+      'purchases.create': true,
+      'purchases.approve': true,
+      'restockRequests.view': true,
+    }, {
+      purchases: [
+        {
+          id: 'purchase-1',
+          purchaseCode: 'PO-0001',
+          vendorId: 'vendor-1',
+          vendorCode: 'VEN-0001',
+          items: [{ productId: 'p1', productName: 'Rice', quantity: 5, unitCost: 11, totalCost: 55, vendorCode: 'VEN-0001' }],
+          totalAmount: 55,
+          status: 'submitted',
+          createdBy: 'u1',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    });
+    context.currentUser.role = 'Admin';
+    mockUseBusiness.mockReturnValue(context);
+
+    render(<InventoryPage />);
+
+    expect(await screen.findByText('PO-0001')).toBeInTheDocument();
+    expect(screen.getByText('Approve')).toBeInTheDocument();
+    expect(screen.getByText('Decline')).toBeInTheDocument();
+  });
+
   it('blocks inline stock item creation until a purchase unit cost is provided', async () => {
     const context = buildContext({
       'inventory.view': true,
@@ -319,7 +355,7 @@ describe('InventoryPage ERP discoverability', () => {
     expect(await screen.findByText('Supply workflow')).toBeInTheDocument();
     expect(screen.getByText("You're viewing Warehouse Receipts")).toBeInTheDocument();
     expect(screen.getByTestId('arrival-receipts')).toHaveClass('section-card-highlighted');
-    expect(screen.getAllByText('Warehouse Receipts').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Vendor to Warehouse Receipts').length).toBeGreaterThan(0);
   });
 
   it('emphasizes Procurement when opened with the procurement deep link', async () => {
@@ -350,5 +386,45 @@ describe('InventoryPage ERP discoverability', () => {
 
     expect(await screen.findAllByText("You're viewing Stock Transfers")).toHaveLength(2);
     expect(screen.getByTestId('arrival-transfers')).toHaveClass('section-card-highlighted');
+  });
+
+  it('limits purchase managers to vendor-to-warehouse tracking', async () => {
+    const context = buildContext({
+      'inventory.view': true,
+      'purchases.view': true,
+      'purchases.create': true,
+      'transfers.view': true,
+      'transfers.create': true,
+      'restockRequests.view': true,
+    });
+    context.currentUser.role = 'PurchaseManager';
+    mockLocationSearch = '?section=procurement';
+    mockUseBusiness.mockReturnValue(context);
+
+    render(<InventoryPage />);
+
+    expect(await screen.findByText('Vendor to Warehouse Supply')).toBeInTheDocument();
+    expect(screen.queryByText('Warehouse to Store Tracking')).not.toBeInTheDocument();
+    expect(screen.queryByText('Transfer History')).not.toBeInTheDocument();
+  });
+
+  it('limits warehouse managers to warehouse-to-store tracking', async () => {
+    const context = buildContext({
+      'inventory.view': true,
+      'purchases.view': true,
+      'purchases.receive': true,
+      'transfers.view': true,
+      'transfers.create': true,
+      'restockRequests.view': true,
+    });
+    context.currentUser.role = 'WarehouseManager';
+    mockLocationSearch = '?section=transfers';
+    mockUseBusiness.mockReturnValue(context);
+
+    render(<InventoryPage />);
+
+    expect(await screen.findByText('Warehouse to Store Tracking')).toBeInTheDocument();
+    expect(screen.queryByText('Vendor to Warehouse Supply')).not.toBeInTheDocument();
+    expect(screen.queryByText('Vendor to Warehouse Receipts')).not.toBeInTheDocument();
   });
 });

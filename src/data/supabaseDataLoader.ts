@@ -114,6 +114,7 @@ type StockMovementRow = {
 
 type EmployeeCredentialRow = {
   id: string;
+  business_id: string;
   name: string;
   email: string;
   username: string;
@@ -316,6 +317,7 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       productId: s.product_id, // Legacy fallback
       quantity: s.quantity,     // Legacy fallback
       paymentMethod: mapPaymentMethod(s.payment_method),
+      paymentReference: s.payment_reference || undefined,
       paidAmount: s.paid_amount,
       subtotalAmount: s.subtotal_amount ?? undefined,
       taxAmount: s.tax_amount ?? undefined,
@@ -396,10 +398,13 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
 
     const mappedUsers: UserAccessProfile[] = ((employeeCredentials || []) as EmployeeCredentialRow[]).map((employee) => ({
       userId: employee.id,
+      businessId: employee.business_id,
       name: employee.name,
       email: employee.email,
       username: employee.username,
-      temporaryPassword: employee.temporary_password ?? undefined,
+      // Do not hydrate plaintext temporary passwords into the general app state.
+      // Employee sign-in should rely on the RPC/auth flow instead of broad password reads.
+      temporaryPassword: undefined,
       credentialsGeneratedAt: employee.credentials_generated_at ?? undefined,
       accountStatus: employee.account_status ?? 'active',
       deactivatedAt: employee.deactivated_at ?? undefined,

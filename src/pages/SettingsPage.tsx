@@ -121,7 +121,7 @@ const permissionGroups: Array<{ title: string; items: Array<{ permission: AppPer
 
 const SettingsPage: React.FC = () => {
   const { user, businessBootstrapStatus, signOut } = useAuth();
-  const { state, currentUser, backendStatus, updateBusinessProfile, launchBusinessWorkspace, switchUser, updateUserProfile, addUserAccount, resetEmployeeTemporaryPassword, updateEmployeeAccount, hasPermission, reviewRestockRequest, updateBranding, updateThemePreference, createProductCategory, updateProductCategory, setProductCategoryActive, setInventoryCategoriesEnabled, createBusinessLocation, updateBusinessLocation, createSupplyRoute, setSupplyRouteActive, setCustomerClassificationEnabled, setBusinessTaxSettings } = useBusiness();
+  const { state, currentUser, backendStatus, updateBusinessProfile, launchBusinessWorkspace, switchUser, updateUserProfile, addUserAccount, resetEmployeeTemporaryPassword, changeEmployeePassword, updateEmployeeAccount, hasPermission, reviewRestockRequest, updateBranding, updateThemePreference, createProductCategory, updateProductCategory, setProductCategoryActive, setInventoryCategoriesEnabled, createBusinessLocation, updateBusinessLocation, createSupplyRoute, setSupplyRouteActive, setCustomerClassificationEnabled, setBusinessTaxSettings } = useBusiness();
   
   const [businessName, setBusinessName] = useState(state.businessProfile.businessName);
   const [businessType, setBusinessType] = useState(state.businessProfile.businessType);
@@ -173,6 +173,7 @@ const SettingsPage: React.FC = () => {
   const [editEmployeeMessage, setEditEmployeeMessage] = useState('');
   const [editEmployeeUsername, setEditEmployeeUsername] = useState('');
   const [editEmployeeCredentials, setEditEmployeeCredentials] = useState<{ username: string; temporaryPassword: string } | null>(null);
+  const [isCreatingEmployeePassword, setIsCreatingEmployeePassword] = useState(false);
   const [customerClassificationEnabledDraft, setCustomerClassificationEnabledDraft] = useState(state.businessProfile.customerClassificationEnabled);
   const [customerClassificationMessage, setCustomerClassificationMessage] = useState('');
   const [inventoryCategoriesEnabledDraft, setInventoryCategoriesEnabledDraft] = useState(state.businessProfile.inventoryCategoriesEnabled);
@@ -205,6 +206,11 @@ const SettingsPage: React.FC = () => {
   const [routeMessage, setRouteMessage] = useState('');
   const [newRouteFromLocationId, setNewRouteFromLocationId] = useState('');
   const [newRouteToLocationId, setNewRouteToLocationId] = useState('');
+  const [employeeCurrentPassword, setEmployeeCurrentPassword] = useState('');
+  const [employeeNextPassword, setEmployeeNextPassword] = useState('');
+  const [employeeConfirmPassword, setEmployeeConfirmPassword] = useState('');
+  const [employeePasswordMessage, setEmployeePasswordMessage] = useState('');
+  const [isChangingEmployeePassword, setIsChangingEmployeePassword] = useState(false);
 
   useEffect(() => {
     setBusinessName(state.businessProfile.businessName);
@@ -238,6 +244,7 @@ const SettingsPage: React.FC = () => {
   const canManageTaxSettings = hasPermission('business.edit');
   const canManageLocations = hasPermission('business.edit');
   const businessLaunchState = getBusinessLaunchState(state.businessProfile);
+  const isEmployeeSession = user?.user_metadata?.auth_mode === 'employee-local';
   const launchStatusMeta =
     businessLaunchState === 'live'
       ? {
@@ -741,13 +748,56 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleAddEmployee = () => {
+  const handleChangeEmployeePassword = async () => {
+    setEmployeePasswordMessage('');
+
+    if (!employeeCurrentPassword.trim()) {
+      setEmployeePasswordMessage('Enter the current temporary or personal password first.');
+      return;
+    }
+
+    if (!employeeNextPassword.trim()) {
+      setEmployeePasswordMessage('Enter the new password you want to use going forward.');
+      return;
+    }
+
+    if (employeeNextPassword.trim().length < 8) {
+      setEmployeePasswordMessage('Use at least 8 characters for the new employee password.');
+      return;
+    }
+
+    if (employeeNextPassword !== employeeConfirmPassword) {
+      setEmployeePasswordMessage('The new password confirmation does not match.');
+      return;
+    }
+
+    setIsChangingEmployeePassword(true);
+    const result = await changeEmployeePassword({
+      currentPassword: employeeCurrentPassword,
+      nextPassword: employeeNextPassword,
+    });
+    setIsChangingEmployeePassword(false);
+
+    if (!result.ok) {
+      setEmployeePasswordMessage(result.message);
+      return;
+    }
+
+    setEmployeeCurrentPassword('');
+    setEmployeeNextPassword('');
+    setEmployeeConfirmPassword('');
+    setEmployeePasswordMessage('');
+    setSuccessToastMessage(result.message ?? 'Employee password updated.');
+    setShowSuccessToast(true);
+  };
+
+  const handleAddEmployee = async () => {
     const defaultPermissions = new Set(ROLE_DEFAULT_PERMISSIONS[newEmployeeRole]);
     const selectedPermissions = new Set(newEmployeePermissions);
     const grantedPermissions = Array.from(selectedPermissions).filter((permission) => !defaultPermissions.has(permission));
     const revokedPermissions = Array.from(defaultPermissions).filter((permission) => !selectedPermissions.has(permission));
 
-    const result = addUserAccount({
+    const result = await addUserAccount({
       name: newEmployeeName,
       email: newEmployeeEmail,
       role: newEmployeeRole,
@@ -763,7 +813,7 @@ const SettingsPage: React.FC = () => {
 
     setNewEmployeeCredentials(result.data ?? null);
     setNewEmployeeMessage('');
-    setSuccessToastMessage('Employee account created.');
+    setSuccessToastMessage(result.message ?? 'Employee account created.');
     setShowSuccessToast(true);
   };
 
@@ -843,8 +893,10 @@ const SettingsPage: React.FC = () => {
     closeEditEmployeeModal();
   };
 
-  const handleCreateTemporaryPassword = () => {
-    const result = resetEmployeeTemporaryPassword(editingEmployeeId);
+  const handleCreateTemporaryPassword = async () => {
+    setIsCreatingEmployeePassword(true);
+    const result = await resetEmployeeTemporaryPassword(editingEmployeeId);
+    setIsCreatingEmployeePassword(false);
 
     if (!result.ok) {
       setEditEmployeeMessage(result.message);
@@ -857,7 +909,7 @@ const SettingsPage: React.FC = () => {
     }
 
     setEditEmployeeMessage('');
-    setSuccessToastMessage('Temporary password created for employee.');
+    setSuccessToastMessage(result.message ?? 'Temporary password created for employee.');
     setShowSuccessToast(true);
   };
 
@@ -1095,11 +1147,51 @@ const SettingsPage: React.FC = () => {
             <div className="list-block">
               <div className="list-row">
                 <div>
-                  <strong>Owner authentication</strong>
-                  <p>Use the sign-in screen or password reset flow to manage your owner credentials securely through Supabase Auth.</p>
+                  <strong>{isEmployeeSession ? 'Employee password recommendation' : 'Owner authentication'}</strong>
+                  <p>
+                    {isEmployeeSession
+                      ? 'Recommendation: after signing in with an admin-issued temporary password, replace it with a personal password before continuing with daily work.'
+                      : 'Use the sign-in screen or password reset flow to manage your owner credentials securely through Supabase Auth.'}
+                  </p>
                 </div>
+                {isEmployeeSession ? <IonBadge color="warning">Recommended</IonBadge> : null}
               </div>
             </div>
+            {isEmployeeSession ? (
+              <div className="form-grid" style={{ marginTop: '12px' }}>
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">Current password</IonLabel>
+                  <IonInput
+                    type="password"
+                    value={employeeCurrentPassword}
+                    placeholder="Enter the temporary password you just used"
+                    onIonInput={(event) => setEmployeeCurrentPassword(event.detail.value ?? '')}
+                  />
+                </IonItem>
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">New personal password</IonLabel>
+                  <IonInput
+                    type="password"
+                    value={employeeNextPassword}
+                    placeholder="Choose a password only you know"
+                    onIonInput={(event) => setEmployeeNextPassword(event.detail.value ?? '')}
+                  />
+                </IonItem>
+                <IonItem lines="none" className="app-item">
+                  <IonLabel position="stacked">Confirm new password</IonLabel>
+                  <IonInput
+                    type="password"
+                    value={employeeConfirmPassword}
+                    placeholder="Re-enter the new password"
+                    onIonInput={(event) => setEmployeeConfirmPassword(event.detail.value ?? '')}
+                  />
+                </IonItem>
+                <IonButton expand="block" fill="outline" onClick={() => void handleChangeEmployeePassword()} disabled={isChangingEmployeePassword}>
+                  {isChangingEmployeePassword ? <IonSpinner name="crescent" /> : 'Change employee password'}
+                </IonButton>
+                {employeePasswordMessage ? <p className="form-message">{employeePasswordMessage}</p> : null}
+              </div>
+            ) : null}
           </SectionCard>
 
           {canManageCustomerClassification && (
@@ -2311,17 +2403,17 @@ const SettingsPage: React.FC = () => {
                     <IonButton
                       fill="outline"
                       size="small"
-                      onClick={handleCreateTemporaryPassword}
-                      disabled={!editingEmployeeId || editEmployeeStatus !== 'active'}
+                      onClick={() => void handleCreateTemporaryPassword()}
+                      disabled={!editingEmployeeId || editEmployeeStatus !== 'active' || isCreatingEmployeePassword}
                     >
-                      Create Temporary Password
+                      {isCreatingEmployeePassword ? 'Syncing Password...' : 'Create Temporary Password'}
                     </IonButton>
                   </div>
                   {editEmployeeCredentials ? (
                     <div className="list-row" style={{ borderTop: '1px solid var(--border-color)' }}>
                       <div>
                         <strong>Temporary credentials</strong>
-                        <p>Share these with the employee and ask them to sign in right away.</p>
+                        <p>Share these only after the sync confirmation message appears.</p>
                         <p className="code-label">Username: {editEmployeeCredentials.username}</p>
                         <p className="code-label">Temporary password: {editEmployeeCredentials.temporaryPassword}</p>
                       </div>

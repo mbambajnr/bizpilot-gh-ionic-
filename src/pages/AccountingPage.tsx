@@ -23,7 +23,7 @@ import { useHistory, useLocation } from 'react-router-dom';
 import SectionCard from '../components/SectionCard';
 import EmptyState from '../components/EmptyState';
 import { useBusiness } from '../context/BusinessContext';
-import { selectDashboardMetrics } from '../selectors/businessSelectors';
+import { selectDashboardMetrics, selectSaleBalanceRemaining } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate } from '../utils/format';
 
 const EXPENSE_CATEGORIES = [
@@ -65,8 +65,12 @@ const AccountingPage: React.FC = () => {
   const canViewExpenses = hasPermission('expenses.view');
   const canCreateExpenses = hasPermission('expenses.create');
   const canUseExpensesSegment = canViewExpenses || canCreateExpenses;
+  const canRecordPayments = hasPermission('payments.record');
+  const canViewDailySalesSummary = hasPermission('sales.view') || hasPermission('reports.sales.view');
   const canViewPayables = hasPermission('payables.view') || hasPermission('payables.manage') || hasPermission('payables.pay');
-  const canManagePayables = currentUser.role === 'GeneralManager' && (hasPermission('payables.manage') || hasPermission('payables.approve'));
+  const canManagePayables =
+    (currentUser.role === 'Admin' || currentUser.role === 'GeneralManager') &&
+    (hasPermission('payables.manage') || hasPermission('payables.approve'));
   const canPayPayables = hasPermission('payables.pay');
   const canUsePayablesSegment = canViewPayables || canManagePayables || canPayPayables;
 
@@ -116,6 +120,26 @@ const AccountingPage: React.FC = () => {
   const pendingReviewPayables = state.accountsPayable.filter((payable) => payable.status === 'pendingReview').length;
   const unpaidPayables = state.accountsPayable.filter((payable) => !['paid', 'cancelled'].includes(payable.status));
   const openPayablesBalance = unpaidPayables.reduce((sum, payable) => sum + payable.balance, 0);
+  const todaySalesKey = new Date().toDateString();
+  const todaysSales = useMemo(
+    () =>
+      state.sales
+        .filter((sale) => new Date(sale.createdAt).toDateString() === todaySalesKey)
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        .map((sale) => ({
+          sale,
+          customerName: state.customers.find((customer) => customer.id === sale.customerId)?.name ?? 'Walk-in customer',
+          balanceRemaining: selectSaleBalanceRemaining(sale),
+        })),
+    [state.customers, state.sales, todaySalesKey]
+  );
+  const todaysCashSales = useMemo(
+    () => todaysSales.filter(({ sale }) => sale.paymentMethod === 'Cash'),
+    [todaysSales]
+  );
+  const todaysCashToBank = todaysCashSales.reduce((sum, { sale }) => sum + sale.paidAmount, 0);
+  const todaysSalesBalance = todaysSales.reduce((sum, { balanceRemaining }) => sum + balanceRemaining, 0);
+  const bankedCashSalesCount = todaysCashSales.filter(({ sale }) => Boolean(sale.paymentReference?.trim())).length;
 
   useEffect(() => {
     if (!selectedPayableId && state.accountsPayable.length > 0) {
@@ -266,6 +290,69 @@ const AccountingPage: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                </SectionCard>
+              ) : null}
+
+              {canViewDailySalesSummary ? (
+                <SectionCard title="Today's Sales Summary" subtitle="Daily sales only, with per-invoice balances and cash-to-bank follow-up.">
+                  <div className="stats-row">
+                    <div className="app-card stat-pill">
+                      <p className="muted-label">Invoices today</p>
+                      <h2>{todaysSales.length}</h2>
+                    </div>
+                    <div className="app-card stat-pill">
+                      <p className="muted-label">Cash to bank</p>
+                      <h2>{formatCurrency(todaysCashToBank, currency)}</h2>
+                      <p>{todaysCashSales.length} cash sale{todaysCashSales.length === 1 ? '' : 's'}</p>
+                    </div>
+                  </div>
+                  <div className="stats-row" style={{ marginTop: '12px' }}>
+                    <div className="app-card stat-pill">
+                      <p className="muted-label">Outstanding balances</p>
+                      <h2 className={todaysSalesBalance > 0 ? 'warning-text' : 'success-text'}>
+                        {formatCurrency(todaysSalesBalance, currency)}
+                      </h2>
+                    </div>
+                    <div className="app-card stat-pill">
+                      <p className="muted-label">Cash banked</p>
+                      <h2>{bankedCashSalesCount}/{todaysCashSales.length}</h2>
+                      <p>Invoices with bank receipt codes</p>
+                    </div>
+                  </div>
+
+                  {todaysSales.length === 0 ? (
+                    <EmptyState
+                      eyebrow="No daily sales"
+                      title="No invoices recorded today."
+                      message="Once the store team records sales, today’s balances and bank follow-up will appear here."
+                    />
+                  ) : (
+                    <div className="list-block" style={{ marginTop: '12px' }}>
+                      {todaysSales.map(({ sale, customerName, balanceRemaining }) => (
+                        <div className="list-row" key={sale.id}>
+                          <div>
+                            <strong>{sale.invoiceNumber}</strong>
+                            <p>{customerName} • {sale.paymentMethod}</p>
+                            <p className="muted-label">
+                              Paid {formatCurrency(sale.paidAmount, currency)} • Balance {formatCurrency(balanceRemaining, currency)}
+                            </p>
+                            <p className="muted-label">
+                              {sale.paymentReference ? `Receipt ref: ${sale.paymentReference}` : 'Receipt ref pending'}
+                            </p>
+                          </div>
+                          <div className="right-meta">
+                            <strong>{formatCurrency(sale.totalAmount, currency)}</strong>
+                            <p>{formatReceiptDate(sale.createdAt)}</p>
+                            {canRecordPayments ? (
+                              <IonButton size="small" fill="outline" onClick={() => history.push(`/sales/${sale.id}`)}>
+                                {sale.paymentMethod === 'Cash' ? 'Update bank receipt' : 'Update reference'}
+                              </IonButton>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </SectionCard>
               ) : null}
 

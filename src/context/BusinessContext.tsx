@@ -85,9 +85,11 @@ import {
   CreatePayableInput,
   ApprovePayableInput,
   RecordPayablePaymentInput,
+  UpdateSalePaymentReferenceInput,
   LaunchBusinessWorkspaceInput,
+  updateSalePaymentReferenceInState,
 } from '../utils/businessLogic';
-import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpense, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovement, syncEmployeeCredential, syncPurchase, syncEmployeePurchase } from '../data/supabaseSync';
+import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpense, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovement, syncEmployeeCredential, syncPurchase, syncEmployeePurchase, verifyEmployeeCredential, rotateEmployeePassword } from '../data/supabaseSync';
 import { selectProductQuantityOnHand, selectSaleBalanceRemaining } from '../selectors/businessSelectors';
 import { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
 import { hasPermission } from '../authz/permissions';
@@ -179,8 +181,9 @@ type BusinessContextValue = {
   switchUser: (userId: string) => void;
   updateUserPermissions: (userId: string, granted: AppPermission[], revoked: AppPermission[]) => ActionResult;
   updateUserProfile: (userId: string, profile: Partial<Pick<UserAccessProfile, 'email' | 'name' | 'customerEmailSenderName' | 'customerEmailSenderEmail'>>) => ActionResult;
-  addUserAccount: (input: { name: string; email: string; role: AppRole; roleLabel?: string; grantedPermissions?: AppPermission[]; revokedPermissions?: AppPermission[] }) => ActionResult<{ username: string; temporaryPassword: string }>;
-  resetEmployeeTemporaryPassword: (userId: string) => ActionResult<{ username: string; temporaryPassword: string }>;
+  addUserAccount: (input: { name: string; email: string; role: AppRole; roleLabel?: string; grantedPermissions?: AppPermission[]; revokedPermissions?: AppPermission[] }) => Promise<ActionResult<{ username: string; temporaryPassword: string }>>;
+  resetEmployeeTemporaryPassword: (userId: string) => Promise<ActionResult<{ username: string; temporaryPassword: string }>>;
+  changeEmployeePassword: (input: { currentPassword: string; nextPassword: string }) => Promise<ActionResult>;
   updateEmployeeAccount: (input: {
     userId: string;
     name: string;
@@ -222,6 +225,7 @@ type BusinessContextValue = {
   createPayableFromPurchase: (input: CreatePayableInput) => Promise<ActionResult>;
   approvePayable: (input: ApprovePayableInput) => Promise<ActionResult>;
   recordPayablePayment: (input: RecordPayablePaymentInput) => Promise<ActionResult>;
+  updateSalePaymentReference: (input: UpdateSalePaymentReferenceInput) => Promise<ActionResult>;
   setCustomerClassificationEnabled: (input: SetCustomerClassificationEnabledInput) => Promise<ActionResult>;
   setBusinessTaxSettings: (input: SetBusinessTaxSettingsInput) => Promise<ActionResult>;
 };
@@ -292,6 +296,58 @@ function getEmployeeCredentialSyncKey(user: UserAccessProfile) {
     (user.grantedPermissions ?? []).join(','),
     (user.revokedPermissions ?? []).join(','),
   ].join('|');
+}
+
+function persistEmployeeCredentialForAuth(user: UserAccessProfile, businessId: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const credentialRecord: UserAccessProfile = {
+    ...user,
+    businessId,
+  };
+
+  try {
+    const rawCredentials = window.localStorage.getItem(EMPLOYEE_CREDENTIALS_STORAGE_KEY);
+    const parsedCredentials = rawCredentials ? JSON.parse(rawCredentials) as { users?: UserAccessProfile[] } : {};
+    const credentialUsers = new Map((parsedCredentials.users ?? []).map((entry) => [entry.userId, entry]));
+    credentialUsers.set(credentialRecord.userId, credentialRecord);
+    window.localStorage.setItem(
+      EMPLOYEE_CREDENTIALS_STORAGE_KEY,
+      JSON.stringify({ users: Array.from(credentialUsers.values()) })
+    );
+  } catch {
+    window.localStorage.setItem(
+      EMPLOYEE_CREDENTIALS_STORAGE_KEY,
+      JSON.stringify({ users: [credentialRecord] })
+    );
+  }
+
+  try {
+    const rawState = window.localStorage.getItem(STORAGE_KEY);
+    const parsedState = rawState ? JSON.parse(rawState) as { businessProfile?: { id?: string }; users?: UserAccessProfile[]; currentUserId?: string } : {};
+    const stateUsers = new Map((parsedState.users ?? []).map((entry) => [entry.userId, entry]));
+    stateUsers.set(credentialRecord.userId, {
+      ...credentialRecord,
+      temporaryPassword: undefined,
+    });
+
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        ...parsedState,
+        businessProfile: {
+          ...(parsedState.businessProfile ?? {}),
+          id: businessId,
+        },
+        users: Array.from(stateUsers.values()),
+        currentUserId: parsedState.currentUserId ?? credentialRecord.userId,
+      })
+    );
+  } catch {
+    // Keep the credential cache as the primary fallback even if the main state cache is malformed.
+  }
 }
 
 function getPurchaseSyncKey(purchase: BusinessState['purchases'][number]) {
@@ -386,10 +442,33 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     const employeeUsers = state.users.filter((user) => user.temporaryPassword);
-    window.localStorage.setItem(
-      EMPLOYEE_CREDENTIALS_STORAGE_KEY,
-      JSON.stringify({ users: employeeUsers })
-    );
+
+    try {
+      const rawCredentials = window.localStorage.getItem(EMPLOYEE_CREDENTIALS_STORAGE_KEY);
+      const parsedCredentials = rawCredentials ? JSON.parse(rawCredentials) as { users?: UserAccessProfile[] } : {};
+      const credentialUsers = new Map<string, UserAccessProfile>();
+
+      (parsedCredentials.users ?? []).forEach((user) => {
+        credentialUsers.set(user.userId, user);
+      });
+
+      employeeUsers.forEach((user) => {
+        credentialUsers.set(user.userId, {
+          ...credentialUsers.get(user.userId),
+          ...user,
+        });
+      });
+
+      window.localStorage.setItem(
+        EMPLOYEE_CREDENTIALS_STORAGE_KEY,
+        JSON.stringify({ users: Array.from(credentialUsers.values()) })
+      );
+    } catch {
+      window.localStorage.setItem(
+        EMPLOYEE_CREDENTIALS_STORAGE_KEY,
+        JSON.stringify({ users: employeeUsers })
+      );
+    }
   }, [state.users]);
 
   useEffect(() => {
@@ -554,6 +633,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
       state.users[0]
     );
   }, [state.currentUserId, state.users, user?.id]);
+  const canUseApprovalRole = currentUser.role === 'Admin' || currentUser.role === 'GeneralManager';
 
   useEffect(() => {
     const isLocalEmployeeSession = user?.user_metadata?.auth_mode === 'employee-local';
@@ -954,7 +1034,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         return { ok: true };
       },
-      addUserAccount(input) {
+      async addUserAccount(input) {
         if (!hasPermission(currentUser, 'permissions.manage')) {
           return { ok: false, message: 'Only admins can add employee accounts.' };
         }
@@ -1003,11 +1083,26 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           ],
         }));
 
-        void syncEmployeeCredential(state.businessProfile.id, createdUser);
+        persistEmployeeCredentialForAuth(createdUser, state.businessProfile.id);
+        const syncOk = await syncEmployeeCredential(state.businessProfile.id, createdUser);
+        if (!syncOk) {
+          return {
+            ok: false,
+            message: getCloudSaveMessage('Employee account was created locally, but cloud credential sync is not ready yet.'),
+          };
+        }
 
-        return { ok: true, data: { username, temporaryPassword } };
+        const verifyOk = await verifyEmployeeCredential(state.businessProfile.id, createdUser);
+        if (!verifyOk) {
+          return {
+            ok: false,
+            message: getCloudSaveMessage('Employee account was created locally, but sign-in verification could not be confirmed yet.'),
+          };
+        }
+
+        return { ok: true, data: { username, temporaryPassword }, message: 'Employee account created and verified.' };
       },
-      resetEmployeeTemporaryPassword(userId) {
+      async resetEmployeeTemporaryPassword(userId) {
         if (!hasPermission(currentUser, 'permissions.manage')) {
           return { ok: false, message: 'Only admins can create temporary passwords for employees.' };
         }
@@ -1040,9 +1135,102 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           ),
         }));
 
-        void syncEmployeeCredential(state.businessProfile.id, updatedUser);
+        persistEmployeeCredentialForAuth(updatedUser, state.businessProfile.id);
+        const syncOk = await syncEmployeeCredential(state.businessProfile.id, updatedUser);
+        if (!syncOk) {
+          return {
+            ok: false,
+            message: getCloudSaveMessage('Temporary password could not be confirmed in the cloud right now.'),
+          };
+        }
 
-        return { ok: true, data: { username, temporaryPassword } };
+        const verifyOk = await verifyEmployeeCredential(state.businessProfile.id, updatedUser);
+        if (!verifyOk) {
+          return {
+            ok: false,
+            message: getCloudSaveMessage('Temporary password was saved, but sign-in verification could not be confirmed yet.'),
+          };
+        }
+
+        return { ok: true, data: { username, temporaryPassword }, message: 'Temporary password created and synced.' };
+      },
+      async changeEmployeePassword(input) {
+        const isLocalEmployeeSession = user?.user_metadata?.auth_mode === 'employee-local';
+        if (!isLocalEmployeeSession) {
+          return { ok: false, message: 'Only signed-in employees can change their own password here.' };
+        }
+
+        const currentPassword = input.currentPassword.trim();
+        const nextPassword = input.nextPassword.trim();
+
+        if (!currentPassword) {
+          return { ok: false, message: 'Enter your current temporary or personal password.' };
+        }
+
+        if (!nextPassword) {
+          return { ok: false, message: 'Enter a new password for this employee account.' };
+        }
+
+        if (nextPassword.length < 8) {
+          return { ok: false, message: 'Use at least 8 characters for the new employee password.' };
+        }
+
+        if (currentPassword === nextPassword) {
+          return { ok: false, message: 'Choose a new password that is different from the current one.' };
+        }
+
+        const businessId = currentUser.businessId ?? state.businessProfile.id;
+        if (!businessId) {
+          return { ok: false, message: 'This employee workspace is missing the business reference needed for password updates.' };
+        }
+
+        const currentCredentialUser: UserAccessProfile = {
+          ...currentUser,
+          businessId,
+          temporaryPassword: currentUser.temporaryPassword ?? currentPassword,
+        };
+
+        const rotateOk = await rotateEmployeePassword(currentCredentialUser, currentPassword, nextPassword);
+        if (!rotateOk) {
+          return {
+            ok: false,
+            message: getCloudSaveMessage('We could not update the employee password in the cloud right now.'),
+          };
+        }
+
+        const updatedUser: UserAccessProfile = {
+          ...currentCredentialUser,
+          temporaryPassword: nextPassword,
+          credentialsGeneratedAt: new Date().toISOString(),
+        };
+
+        persistEmployeeCredentialForAuth(updatedUser, businessId);
+        const verifyOk = await verifyEmployeeCredential(businessId, updatedUser);
+        if (!verifyOk) {
+          return {
+            ok: false,
+            message: getCloudSaveMessage('The new employee password was saved, but sign-in verification could not be confirmed yet.'),
+          };
+        }
+
+        setState((current) => ({
+          ...current,
+          users: current.users.map((existingUser) =>
+            existingUser.userId === updatedUser.userId
+              ? {
+                  ...existingUser,
+                  username: updatedUser.username,
+                  temporaryPassword: updatedUser.temporaryPassword,
+                  credentialsGeneratedAt: updatedUser.credentialsGeneratedAt,
+                }
+              : existingUser
+          ),
+        }));
+
+        return {
+          ok: true,
+          message: 'Employee password updated. Use the new password the next time you sign in.',
+        };
       },
       updateEmployeeAccount(input) {
         if (!hasPermission(currentUser, 'permissions.manage')) {
@@ -1123,12 +1311,13 @@ export function BusinessProvider({ children }: PropsWithChildren) {
             ...current,
             users: nextUsers,
             currentUserId:
-              current.currentUserId === input.userId && input.accountStatus === 'deactivated'
+            current.currentUserId === input.userId && input.accountStatus === 'deactivated'
                 ? fallbackActiveUserId
                 : current.currentUserId,
           };
         });
 
+        persistEmployeeCredentialForAuth(updatedUser, state.businessProfile.id);
         void syncEmployeeCredential(state.businessProfile.id, updatedUser);
 
         return { ok: true };
@@ -1144,7 +1333,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       reviewRestockRequest(input) {
-        if (currentUser.role !== 'GeneralManager' || !hasPermission(currentUser, 'restockRequests.manage')) {
+        if (!canUseApprovalRole || !hasPermission(currentUser, 'restockRequests.manage')) {
           return { ok: false, message: 'You are not authorized to manage restock requests.' };
         }
         const result = reviewRestockRequestInState(state, input);
@@ -1523,7 +1712,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async approvePurchase(input) {
-        if (currentUser.role !== 'GeneralManager' || !hasPermission(currentUser, 'purchases.approve')) {
+        if (!canUseApprovalRole || !hasPermission(currentUser, 'purchases.approve')) {
           return { ok: false, message: 'You are not authorized to approve purchases.' };
         }
 
@@ -1545,7 +1734,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async cancelPurchase(input) {
-        if (currentUser.role !== 'GeneralManager' || !hasPermission(currentUser, 'purchases.approve')) {
+        if (!canUseApprovalRole || !hasPermission(currentUser, 'purchases.approve')) {
           return { ok: false, message: 'You are not authorized to decline purchases.' };
         }
 
@@ -1617,7 +1806,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async approvePayable(input) {
-        if (currentUser.role !== 'GeneralManager' || (!hasPermission(currentUser, 'payables.manage') && !hasPermission(currentUser, 'payables.approve'))) {
+        if (!canUseApprovalRole || (!hasPermission(currentUser, 'payables.manage') && !hasPermission(currentUser, 'payables.approve'))) {
           return { ok: false, message: 'You are not authorized to approve payables.' };
         }
 
@@ -1650,6 +1839,34 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         stateRef.current = result.data;
         setState(result.data);
+        return { ok: true };
+      },
+      async updateSalePaymentReference(input) {
+        if (!hasPermission(currentUser, 'payments.record')) {
+          return { ok: false, message: 'You are not authorized to update payment references.' };
+        }
+
+        const currentState = stateRef.current;
+        const result = updateSalePaymentReferenceInState(currentState, input);
+        if (!result.ok) {
+          return result;
+        }
+        if (!result.data) {
+          return { ok: false, message: 'Could not update the payment reference right now.' };
+        }
+
+        const updatedSale = result.data.sales.find((sale) => sale.id === input.saleId);
+        if (!updatedSale) {
+          return { ok: false, message: 'Could not find the updated sale right now.' };
+        }
+
+        stateRef.current = result.data;
+        setState(result.data);
+        const syncOk = await syncSale(currentState.businessProfile.id, updatedSale);
+        if (!syncOk) {
+          return { ok: true, message: buildLocalSaveWarning('Payment reference could not be saved to the cloud right now.') };
+        }
+
         return { ok: true };
       },
       async transferStock(input) {
@@ -1699,7 +1916,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async approveStockTransfer(input) {
-        if (currentUser.role !== 'GeneralManager' || !hasPermission(currentUser, 'transfers.approve')) {
+        if (!canUseApprovalRole || !hasPermission(currentUser, 'transfers.approve')) {
           return { ok: false, message: 'You are not authorized to approve stock transfers.' };
         }
 
@@ -1763,7 +1980,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async cancelStockTransfer(input) {
-        if (currentUser.role !== 'GeneralManager' || !hasPermission(currentUser, 'transfers.approve')) {
+        if (!canUseApprovalRole || !hasPermission(currentUser, 'transfers.approve')) {
           return { ok: false, message: 'You are not authorized to cancel stock transfers.' };
         }
 

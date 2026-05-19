@@ -5,31 +5,27 @@ import {
   IonContent,
   IonHeader,
   IonIcon,
+  IonInput,
   IonItem,
   IonLabel,
   IonModal,
   IonNote,
   IonPage,
-  IonText,
   IonTextarea,
   IonTitle,
   IonToolbar,
 } from '@ionic/react';
 import { printOutline, mailOutline, logoWhatsapp, documentText, downloadOutline } from 'ionicons/icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useHistory, useParams } from 'react-router-dom';
 
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
 import { useBusiness } from '../context/BusinessContext';
 import {
-  selectActivityDisplay,
   selectCustomerLedgerEntries,
   selectLedgerEntryDisplay,
-  selectProductMovements,
-  selectSaleActivityEntries,
   selectSaleBalanceRemaining,
-  selectSaleStatusDisplay,
   selectStockMovementDisplay,
   selectCustomerTypeDisplayLabel,
   selectDocumentTaxTotals,
@@ -40,9 +36,11 @@ import { formatCurrency, formatReceiptDate } from '../utils/format';
 const InvoiceDetailPage: React.FC = () => {
   const { saleId } = useParams<{ saleId: string }>();
   const history = useHistory();
-  const { state, reverseSale, hasPermission, currentUser } = useBusiness();
+  const { state, reverseSale, hasPermission, currentUser, updateSalePaymentReference } = useBusiness();
   const [showReverseModal, setShowReverseModal] = useState(false);
   const [reversalReason, setReversalReason] = useState('');
+  const [paymentReferenceInput, setPaymentReferenceInput] = useState('');
+  const [paymentReferenceMessage, setPaymentReferenceMessage] = useState('');
   const [formMessage, setFormMessage] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const currency = state.businessProfile.currency;
@@ -51,7 +49,10 @@ const InvoiceDetailPage: React.FC = () => {
   const sale = useMemo(() => state.sales.find((item) => item.id === saleId) ?? null, [saleId, state.sales]);
   const customer = useMemo(() => state.customers.find((item) => item.id === sale?.customerId) ?? null, [sale, state.customers]);
   const legacyProduct = useMemo(() => state.products.find((item) => item.id === sale?.productId) ?? null, [sale, state.products]);
-  const auditEvents = useMemo(() => (sale ? selectSaleActivityEntries(state, sale.id) : []), [sale, state]);
+
+  useEffect(() => {
+    setPaymentReferenceInput(sale?.paymentReference ?? '');
+  }, [sale?.id, sale?.paymentReference]);
   
   // Aggregate stock movements for all products in this specific sale/invoice
   const stockMovements = useMemo(() => {
@@ -68,6 +69,7 @@ const InvoiceDetailPage: React.FC = () => {
   const canExportInvoicePdf = hasPermission('invoices.export_pdf');
   const canSendCustomerEmail = hasPermission('customers.email.send');
   const canViewCustomerLedger = hasPermission('customers.ledger.view');
+  const canRecordPayments = hasPermission('payments.record');
 
   if (!sale) {
     return (
@@ -96,10 +98,8 @@ const InvoiceDetailPage: React.FC = () => {
   }
 
   const balanceRemaining = selectSaleBalanceRemaining(sale);
-  const invoiceStatus = selectSaleStatusDisplay(sale);
   const taxTotals = selectDocumentTaxTotals(sale);
   const withholdingTotals = selectDocumentWithholdingTotals(sale);
-  const receiptState = sale.status === 'Reversed' ? 'Void' : 'Valid';
   const customerName = customer?.name ?? 'Customer';
   const invoiceSummaryLine = `${sale.invoiceNumber} • ${customerName} • ${formatCurrency(sale.totalAmount, currency)} • ${sale.status}`;
   const whatsappDisabled = !customerPhone;
@@ -158,6 +158,20 @@ const InvoiceDetailPage: React.FC = () => {
     const cleanPhone = customerPhone.replace(/\D/g, '');
     const message = `Hello ${customerName}, thank you for your patronage at ${businessName}.\n\nInvoice Number: ${sale.invoiceNumber}\nAmount: ${formatCurrency(sale.totalAmount, currency)}\nStatus: ${sale.status}\nPaid To Date: ${formatCurrency(sale.paidAmount, currency)}${balanceRemaining > 0 ? `\nBalance Due: ${formatCurrency(balanceRemaining, currency)}` : ''}\n\nWe appreciate your business!`;
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
+  const handleUpdatePaymentReference = async () => {
+    const result = await updateSalePaymentReference({
+      saleId: sale.id,
+      paymentReference: paymentReferenceInput,
+    });
+
+    if (!result.ok) {
+      setPaymentReferenceMessage(result.message);
+      return;
+    }
+
+    setPaymentReferenceMessage(result.message ?? 'Payment reference updated.');
   };
 
   const invoiceActions = [
@@ -455,6 +469,38 @@ const InvoiceDetailPage: React.FC = () => {
                 </div>
               )}
             </SectionCard>
+
+            {canRecordPayments ? (
+              <SectionCard
+                title="Bank Receipt Reference"
+                subtitle={sale.paymentMethod === 'Cash'
+                  ? 'Update the bank receipt code after the day cash is deposited.'
+                  : 'Update the payment reference for this invoice when the transaction is confirmed.'}
+              >
+                <div className="form-grid">
+                  <IonItem lines="none" className="app-item">
+                    <IonLabel position="stacked">Reference code</IonLabel>
+                    <IonInput
+                      value={paymentReferenceInput}
+                      placeholder="Bank receipt, slip, cheque, or transfer reference"
+                      onIonInput={(event) => {
+                        setPaymentReferenceInput(event.detail.value ?? '');
+                        if (paymentReferenceMessage) {
+                          setPaymentReferenceMessage('');
+                        }
+                      }}
+                    />
+                  </IonItem>
+                  <IonButton expand="block" onClick={() => void handleUpdatePaymentReference()}>
+                    Save Reference
+                  </IonButton>
+                  {paymentReferenceMessage ? <p className="form-message">{paymentReferenceMessage}</p> : null}
+                  <IonNote color="medium">
+                    Individual balances remain tied to each invoice, so this update only changes the receipt reference.
+                  </IonNote>
+                </div>
+              </SectionCard>
+            ) : null}
 
             <SectionCard title="Audit History" subtitle="Full visibility into stock movements and ledger impacts.">
               <div className="list-block">

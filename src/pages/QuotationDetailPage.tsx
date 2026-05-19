@@ -8,7 +8,6 @@ import {
   IonPage,
   IonTitle,
   IonToolbar,
-  IonBadge,
 } from '@ionic/react';
 import { shareSocialOutline } from 'ionicons/icons';
 import { useMemo } from 'react';
@@ -18,7 +17,7 @@ import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
 import { useBusiness } from '../context/BusinessContext';
 import DocumentHeader from '../components/DocumentHeader';
-import { selectCustomerTypeDisplayLabel, selectDocumentTaxTotals, selectDocumentWithholdingTotals, selectQuotationStatusDisplay } from '../selectors/businessSelectors';
+import { selectCustomerTypeDisplayLabel, selectDocumentTaxTotals, selectDocumentWithholdingTotals } from '../selectors/businessSelectors';
 import { formatCurrency, formatReceiptDate } from '../utils/format';
 
 const QuotationDetailPage: React.FC = () => {
@@ -62,7 +61,6 @@ const QuotationDetailPage: React.FC = () => {
     );
   }
 
-  const statusDisplay = selectQuotationStatusDisplay(quotation);
   const taxTotals = selectDocumentTaxTotals(quotation);
   const withholdingTotals = selectDocumentWithholdingTotals(quotation);
   const canPrintQuotation = hasPermission('quotations.print');

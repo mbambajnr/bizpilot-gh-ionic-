@@ -164,6 +164,95 @@ export async function syncEmployeeCredential(businessId: string, user: UserAcces
   });
 }
 
+type EmployeeCredentialVerificationRow = {
+  id: string;
+  business_id: string;
+};
+
+type EmployeeCredentialRotationRow = {
+  id: string;
+  business_id: string;
+  email: string;
+  username: string;
+  credentials_generated_at: string | null;
+};
+
+export async function verifyEmployeeCredential(businessId: string, user: UserAccessProfile) {
+  if (!hasSupabaseConfig) return true;
+
+  if (!user.temporaryPassword) {
+    setLastSupabaseSyncErrorMessage('Employee credential verification is missing the temporary password.');
+    return false;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.rpc('authenticate_employee_credential', {
+      credential_identifier: user.username ?? user.email,
+      credential_password: user.temporaryPassword,
+    });
+
+    if (error) {
+      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(error.message));
+      console.error('[SupabaseSync] Error verifying employee credential:', error.message);
+      return false;
+    }
+
+    const matchesCredential = ((data ?? []) as EmployeeCredentialVerificationRow[]).some(
+      (row) => row.id === user.userId && row.business_id === businessId
+    );
+
+    if (!matchesCredential) {
+      setLastSupabaseSyncErrorMessage('Temporary password could not be confirmed by sign-in verification yet.');
+      return false;
+    }
+
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Employee credential verification failed before the request could complete.');
+    console.error('[SupabaseSync] Fatal error in employee credential verification:', err);
+    return false;
+  }
+}
+
+export async function rotateEmployeePassword(user: UserAccessProfile, currentPassword: string, nextPassword: string) {
+  if (!hasSupabaseConfig) {
+    setLastSupabaseSyncErrorMessage('Supabase is not configured for employee password updates.');
+    return false;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    // TODO(security): This RPC still depends on plaintext credential comparison.
+    // Keep it only until employee sign-in moves to hashed verification or Supabase Auth.
+    const { data, error } = await supabase.rpc('rotate_employee_credential_password', {
+      credential_identifier: user.username ?? user.email,
+      current_password: currentPassword.trim(),
+      next_password: nextPassword.trim(),
+    });
+
+    if (error) {
+      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(error.message));
+      console.error('[SupabaseSync] Error rotating employee password:', error.message);
+      return false;
+    }
+
+    const [row] = (data ?? []) as EmployeeCredentialRotationRow[];
+    if (!row || row.id !== user.userId || row.business_id !== user.businessId) {
+      setLastSupabaseSyncErrorMessage('We could not confirm the current password for this employee account.');
+      return false;
+    }
+
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Employee password update failed before the request could complete.');
+    console.error('[SupabaseSync] Fatal error rotating employee password:', err);
+    return false;
+  }
+}
+
 export async function syncSupplyRoute(businessId: string, route: LocationSupplyRoute) {
   return upsertEntity('location_supply_routes', {
     id: route.id,
@@ -252,6 +341,8 @@ export async function syncEmployeePurchase(user: UserAccessProfile, purchase: Pu
 
   try {
     const supabase = getSupabaseClient();
+    // TODO(security): This RPC still depends on a plaintext temporary password.
+    // Keep it only until employee sessions move to hashed verification or Supabase Auth.
     const { error } = await supabase.rpc('sync_employee_purchase', {
       credential_identifier: user.username ?? user.email,
       credential_password: user.temporaryPassword,
@@ -419,6 +510,7 @@ export async function syncSale(businessId: string, sale: Sale) {
     quantity: sale.quantity,     
     items: sale.items,           // Full multi-item JSONB persistence
     payment_method: mapPaymentMethodForSync(sale.paymentMethod),
+    payment_reference: sale.paymentReference ?? null,
     paid_amount: sale.paidAmount,
     total_amount: sale.totalAmount,
     subtotal_amount: sale.subtotalAmount ?? null,
