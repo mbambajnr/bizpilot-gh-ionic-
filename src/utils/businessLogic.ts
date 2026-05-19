@@ -2199,7 +2199,7 @@ export function submitPurchaseInState(current: BusinessState, input: PurchaseAct
           title: 'Purchase awaiting approval',
           message: `${purchase.purchaseCode} is in the purchase queue and needs General Manager review.`,
           createdAt: submittedAt,
-          recipientRoles: ['Admin', 'GeneralManager'],
+          recipientRoles: ['GeneralManager'],
           entityType: 'purchase',
           entityId: purchase.id,
           referenceNumber: purchase.purchaseCode,
@@ -2489,6 +2489,19 @@ export function approvePayableInState(current: BusinessState, input: ApprovePaya
     data: {
       ...current,
       accountsPayable: current.accountsPayable.map((item) => (item.id === payable.id ? updatedPayable : item)),
+      notifications: [
+        createAppNotification({
+          title: 'Payable approved for settlement',
+          message: `${payable.payableCode} was approved. Accounting can now record the supplier payment.`,
+          createdAt: updatedAt,
+          recipientRoles: ['Accountant'],
+          entityType: 'payable',
+          entityId: payable.id,
+          referenceNumber: payable.payableCode,
+          actionUrl: '/accounting?segment=payables&action=payment',
+        }),
+        ...current.notifications,
+      ],
       activityLogEntries: [
         createActivityLogEntry(current, {
           entityType: 'business',
@@ -2554,6 +2567,20 @@ export function recordPayablePaymentInState(current: BusinessState, input: Recor
       ...current,
       accountsPayable: current.accountsPayable.map((item) => (item.id === payable.id ? updatedPayable : item)),
       payments: [payment, ...current.payments],
+      notifications: [
+        createAppNotification({
+          title: balance === 0 ? 'Supplier payable settled' : 'Supplier payable partly paid',
+          message: `${payment.paymentCode} recorded ${input.amount} against ${payable.payableCode}.${balance > 0 ? ` ${balance} remains outstanding.` : ''}`,
+          createdAt,
+          recipientUserIds: payable.approvedBy ? [payable.approvedBy] : undefined,
+          recipientRoles: ['GeneralManager'],
+          entityType: 'payable',
+          entityId: payable.id,
+          referenceNumber: payable.payableCode,
+          actionUrl: '/accounting?segment=payables',
+        }),
+        ...current.notifications,
+      ],
       activityLogEntries: [
         createActivityLogEntry(current, {
           entityType: 'business',

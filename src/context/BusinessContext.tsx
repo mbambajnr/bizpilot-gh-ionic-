@@ -89,7 +89,7 @@ import {
   LaunchBusinessWorkspaceInput,
   updateSalePaymentReferenceInState,
 } from '../utils/businessLogic';
-import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpense, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovement, syncEmployeeCredential, syncPurchase, syncEmployeePurchase, verifyEmployeeCredential, rotateEmployeePassword } from '../data/supabaseSync';
+import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpense, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovement, syncEmployeeCredential, syncPurchase, syncEmployeePurchase, syncActivityLogEntry, syncAppNotification, syncAppNotificationRead, verifyEmployeeCredential, rotateEmployeePassword } from '../data/supabaseSync';
 import { selectProductQuantityOnHand, selectSaleBalanceRemaining } from '../selectors/businessSelectors';
 import { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
 import { hasPermission } from '../authz/permissions';
@@ -282,12 +282,21 @@ function shouldSyncEmployeeCredential(user: UserAccessProfile) {
   return Boolean(user.username || user.temporaryPassword || user.credentialsGeneratedAt);
 }
 
+function stripEmployeeSecrets(user: UserAccessProfile): UserAccessProfile {
+  return {
+    ...user,
+    temporaryPassword: undefined,
+    employeeSessionSecret: undefined,
+  };
+}
+
 function getEmployeeCredentialSyncKey(user: UserAccessProfile) {
   return [
     user.userId,
     user.email,
     user.username ?? '',
     user.temporaryPassword ?? '',
+    user.passwordChangeRequired ? 'password-change-required' : 'password-change-complete',
     user.credentialsGeneratedAt ?? '',
     user.accountStatus ?? 'active',
     user.deactivatedAt ?? '',
@@ -307,12 +316,13 @@ function persistEmployeeCredentialForAuth(user: UserAccessProfile, businessId: s
     ...user,
     businessId,
   };
+  const persistedCredentialRecord = stripEmployeeSecrets(credentialRecord);
 
   try {
     const rawCredentials = window.localStorage.getItem(EMPLOYEE_CREDENTIALS_STORAGE_KEY);
     const parsedCredentials = rawCredentials ? JSON.parse(rawCredentials) as { users?: UserAccessProfile[] } : {};
     const credentialUsers = new Map((parsedCredentials.users ?? []).map((entry) => [entry.userId, entry]));
-    credentialUsers.set(credentialRecord.userId, credentialRecord);
+    credentialUsers.set(credentialRecord.userId, persistedCredentialRecord);
     window.localStorage.setItem(
       EMPLOYEE_CREDENTIALS_STORAGE_KEY,
       JSON.stringify({ users: Array.from(credentialUsers.values()) })
@@ -320,7 +330,7 @@ function persistEmployeeCredentialForAuth(user: UserAccessProfile, businessId: s
   } catch {
     window.localStorage.setItem(
       EMPLOYEE_CREDENTIALS_STORAGE_KEY,
-      JSON.stringify({ users: [credentialRecord] })
+      JSON.stringify({ users: [persistedCredentialRecord] })
     );
   }
 
@@ -328,10 +338,7 @@ function persistEmployeeCredentialForAuth(user: UserAccessProfile, businessId: s
     const rawState = window.localStorage.getItem(STORAGE_KEY);
     const parsedState = rawState ? JSON.parse(rawState) as { businessProfile?: { id?: string }; users?: UserAccessProfile[]; currentUserId?: string } : {};
     const stateUsers = new Map((parsedState.users ?? []).map((entry) => [entry.userId, entry]));
-    stateUsers.set(credentialRecord.userId, {
-      ...credentialRecord,
-      temporaryPassword: undefined,
-    });
+    stateUsers.set(credentialRecord.userId, persistedCredentialRecord);
 
     window.localStorage.setItem(
       STORAGE_KEY,
@@ -363,8 +370,30 @@ function getPurchaseSyncKey(purchase: BusinessState['purchases'][number]) {
   ].join('|');
 }
 
+function getActivitySyncKey(entry: BusinessState['activityLogEntries'][number]) {
+  return [
+    entry.id,
+    entry.createdAt,
+    entry.actionType,
+    entry.status,
+    entry.referenceNumber ?? '',
+    entry.relatedEntityId ?? '',
+    entry.relatedSaleId ?? '',
+  ].join('|');
+}
+
+function getNotificationSyncKey(notification: BusinessState['notifications'][number]) {
+  return [
+    notification.id,
+    notification.createdAt,
+    notification.recipientUserIds?.join(',') ?? '',
+    notification.recipientRoles?.join(',') ?? '',
+    notification.readByUserIds.join(','),
+  ].join('|');
+}
+
 function syncPurchaseForUser(businessId: string, user: UserAccessProfile, purchase: BusinessState['purchases'][number]) {
-  if (user.temporaryPassword && user.businessId) {
+  if (user.employeeSessionSecret && user.businessId) {
     return syncEmployeePurchase(user, purchase);
   }
 
@@ -424,6 +453,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
   const stateRef = useRef(state);
   const employeeCredentialSyncKeysRef = useRef(new Set<string>());
   const purchaseSyncKeysRef = useRef(new Set<string>());
+  const activitySyncKeysRef = useRef(new Set<string>());
+  const notificationSyncKeysRef = useRef(new Set<string>());
+  const notificationReadSyncKeysRef = useRef(new Set<string>());
   const [backendStatus, setBackendStatus] = useState<BusinessBackendStatus>({
     source: 'local',
     loading: true,
@@ -437,11 +469,17 @@ export function BusinessProvider({ children }: PropsWithChildren) {
   }, [state]);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        ...state,
+        users: state.users.map(stripEmployeeSecrets),
+      })
+    );
   }, [state]);
 
   useEffect(() => {
-    const employeeUsers = state.users.filter((user) => user.temporaryPassword);
+    const employeeUsers = state.users.filter((user) => user.username || user.credentialsGeneratedAt);
 
     try {
       const rawCredentials = window.localStorage.getItem(EMPLOYEE_CREDENTIALS_STORAGE_KEY);
@@ -455,7 +493,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
       employeeUsers.forEach((user) => {
         credentialUsers.set(user.userId, {
           ...credentialUsers.get(user.userId),
-          ...user,
+          ...stripEmployeeSecrets(user),
         });
       });
 
@@ -466,7 +504,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
     } catch {
       window.localStorage.setItem(
         EMPLOYEE_CREDENTIALS_STORAGE_KEY,
-        JSON.stringify({ users: employeeUsers })
+        JSON.stringify({ users: employeeUsers.map(stripEmployeeSecrets) })
       );
     }
   }, [state.users]);
@@ -591,6 +629,8 @@ export function BusinessProvider({ children }: PropsWithChildren) {
             sales: fullCloudData.sales ?? current.sales,
             stockMovements: fullCloudData.stockMovements ?? current.stockMovements,
             expenses: fullCloudData.expenses ?? current.expenses,
+            activityLogEntries: fullCloudData.activityLogEntries ?? current.activityLogEntries,
+            notifications: fullCloudData.notifications ?? current.notifications,
           };
         });
 
@@ -618,26 +658,46 @@ export function BusinessProvider({ children }: PropsWithChildren) {
     };
   }, [user?.id, user?.email, user?.user_metadata?.auth_mode, user?.user_metadata?.full_name]);
   
-  const currentUser = useMemo(() => {
+  const currentUser = useMemo<UserAccessProfile>(() => {
+    const applySessionSecret = (profile: UserAccessProfile) => {
+      const employeeSessionSecret =
+        user?.user_metadata?.auth_mode === 'employee-local' &&
+        typeof user.user_metadata.employee_session_secret === 'string'
+          ? user.user_metadata.employee_session_secret
+          : undefined;
+
+      return employeeSessionSecret
+        ? {
+            ...profile,
+            employeeSessionSecret,
+          }
+        : profile;
+    };
+
     if (user?.id) {
-      return (
+      const profile =
         state.users.find((u) => u.userId === user.id && (u.accountStatus ?? 'active') !== 'deactivated') ||
         state.users.find((u) => (u.accountStatus ?? 'active') !== 'deactivated') ||
-        state.users[0]
-      );
+        state.users[0] ||
+        seedState.users[0];
+      return applySessionSecret(profile);
     }
 
-    return (
+    const profile =
       state.users.find((u) => u.userId === state.currentUserId && (u.accountStatus ?? 'active') !== 'deactivated') ||
       state.users.find((u) => (u.accountStatus ?? 'active') !== 'deactivated') ||
-      state.users[0]
-    );
-  }, [state.currentUserId, state.users, user?.id]);
-  const canUseApprovalRole = currentUser.role === 'Admin' || currentUser.role === 'GeneralManager';
+      state.users[0] ||
+      seedState.users[0];
+    return applySessionSecret(profile);
+  }, [state.currentUserId, state.users, user?.id, user?.user_metadata?.auth_mode, user?.user_metadata?.employee_session_secret]);
+  const canUseApprovalRole = currentUser.role === 'GeneralManager';
+  const canUseRestockManagerRole =
+    currentUser.role === 'GeneralManager' ||
+    currentUser.role === 'WarehouseManager';
 
   useEffect(() => {
     const isLocalEmployeeSession = user?.user_metadata?.auth_mode === 'employee-local';
-    const canEmployeeSync = isLocalEmployeeSession && Boolean(currentUser.businessId && currentUser.temporaryPassword);
+    const canEmployeeSync = isLocalEmployeeSession && Boolean(currentUser.businessId && currentUser.employeeSessionSecret);
     if (backendStatus.loading || (backendStatus.source !== 'supabase' && !canEmployeeSync)) {
       return;
     }
@@ -652,6 +712,57 @@ export function BusinessProvider({ children }: PropsWithChildren) {
       void syncPurchaseForUser(state.businessProfile.id, currentUser, purchase);
     });
   }, [backendStatus.loading, backendStatus.source, currentUser, state.businessProfile.id, state.purchases, user?.user_metadata?.auth_mode]);
+
+  useEffect(() => {
+    const isLocalEmployeeSession = user?.user_metadata?.auth_mode === 'employee-local';
+    if (backendStatus.loading || backendStatus.source !== 'supabase' || isLocalEmployeeSession) {
+      return;
+    }
+
+    state.activityLogEntries.forEach((entry) => {
+      const syncKey = getActivitySyncKey(entry);
+      if (activitySyncKeysRef.current.has(syncKey)) {
+        return;
+      }
+
+      activitySyncKeysRef.current.add(syncKey);
+      void syncActivityLogEntry(state.businessProfile.id, entry);
+    });
+
+    state.notifications.forEach((notification) => {
+      const syncKey = getNotificationSyncKey(notification);
+      const syncReads = () => {
+        notification.readByUserIds.forEach((readUserId) => {
+          const readSyncKey = `${notification.id}|${readUserId}`;
+          if (notificationReadSyncKeysRef.current.has(readSyncKey)) {
+            return;
+          }
+
+          notificationReadSyncKeysRef.current.add(readSyncKey);
+          void syncAppNotificationRead(state.businessProfile.id, notification.id, readUserId, notification.createdAt);
+        });
+      };
+
+      if (!notificationSyncKeysRef.current.has(syncKey)) {
+        notificationSyncKeysRef.current.add(syncKey);
+        void syncAppNotification(state.businessProfile.id, notification).then((ok) => {
+          if (ok) {
+            syncReads();
+          }
+        });
+        return;
+      }
+
+      syncReads();
+    });
+  }, [
+    backendStatus.loading,
+    backendStatus.source,
+    state.activityLogEntries,
+    state.businessProfile.id,
+    state.notifications,
+    user?.user_metadata?.auth_mode,
+  ]);
 
   const value = useMemo<BusinessContextValue>(
     () => ({
@@ -1067,6 +1178,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           email,
           username,
           temporaryPassword,
+          passwordChangeRequired: true,
           credentialsGeneratedAt,
           accountStatus: 'active',
           roleLabel: input.roleLabel?.trim() || undefined,
@@ -1100,6 +1212,15 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           };
         }
 
+        setState((current) => ({
+          ...current,
+          users: current.users.map((user) =>
+            user.userId === createdUser.userId
+              ? stripEmployeeSecrets(createdUser)
+              : user
+          ),
+        }));
+
         return { ok: true, data: { username, temporaryPassword }, message: 'Employee account created and verified.' };
       },
       async resetEmployeeTemporaryPassword(userId) {
@@ -1123,6 +1244,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           ...targetUser,
           username,
           temporaryPassword,
+          passwordChangeRequired: true,
           credentialsGeneratedAt,
         };
 
@@ -1151,6 +1273,15 @@ export function BusinessProvider({ children }: PropsWithChildren) {
             message: getCloudSaveMessage('Temporary password was saved, but sign-in verification could not be confirmed yet.'),
           };
         }
+
+        setState((current) => ({
+          ...current,
+          users: current.users.map((user) =>
+            user.userId === userId
+              ? stripEmployeeSecrets(updatedUser)
+              : user
+          ),
+        }));
 
         return { ok: true, data: { username, temporaryPassword }, message: 'Temporary password created and synced.' };
       },
@@ -1188,6 +1319,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           ...currentUser,
           businessId,
           temporaryPassword: currentUser.temporaryPassword ?? currentPassword,
+          passwordChangeRequired: currentUser.passwordChangeRequired,
         };
 
         const rotateOk = await rotateEmployeePassword(currentCredentialUser, currentPassword, nextPassword);
@@ -1201,6 +1333,8 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         const updatedUser: UserAccessProfile = {
           ...currentCredentialUser,
           temporaryPassword: nextPassword,
+          employeeSessionSecret: nextPassword,
+          passwordChangeRequired: false,
           credentialsGeneratedAt: new Date().toISOString(),
         };
 
@@ -1220,7 +1354,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
               ? {
                   ...existingUser,
                   username: updatedUser.username,
-                  temporaryPassword: updatedUser.temporaryPassword,
+                  temporaryPassword: undefined,
+                  employeeSessionSecret: updatedUser.employeeSessionSecret,
+                  passwordChangeRequired: false,
                   credentialsGeneratedAt: updatedUser.credentialsGeneratedAt,
                 }
               : existingUser
@@ -1333,7 +1469,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       reviewRestockRequest(input) {
-        if (!canUseApprovalRole || !hasPermission(currentUser, 'restockRequests.manage')) {
+        if (!canUseRestockManagerRole || !hasPermission(currentUser, 'restockRequests.manage')) {
           return { ok: false, message: 'You are not authorized to manage restock requests.' };
         }
         const result = reviewRestockRequestInState(state, input);

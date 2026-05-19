@@ -1,6 +1,6 @@
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
 import type { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
-import type { BusinessLocation, BusinessState, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, StockMovement, TaxSnapshot, WithholdingTaxSnapshot, Purchase } from './seedBusiness';
+import type { ActivityLogEntry, AppNotification, BusinessLocation, BusinessState, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, StockMovement, TaxSnapshot, WithholdingTaxSnapshot, Purchase } from './seedBusiness';
 
 type BusinessLocationRow = {
   id: string;
@@ -119,6 +119,7 @@ type EmployeeCredentialRow = {
   email: string;
   username: string;
   temporary_password: string | null;
+  requires_password_change: boolean | null;
   credentials_generated_at: string | null;
   account_status: 'active' | 'deactivated';
   deactivated_at: string | null;
@@ -159,6 +160,37 @@ type PurchaseRow = {
   purchase_items: PurchaseItemRow[] | null;
 };
 
+type AuditEventRow = {
+  id: string;
+  activity_number: string;
+  entity_type: ActivityLogEntry['entityType'];
+  entity_id: string;
+  action_type: ActivityLogEntry['actionType'];
+  title: string;
+  detail: string;
+  status: ActivityLogEntry['status'];
+  reference_number: string | null;
+  related_entity_id: string | null;
+  related_sale_id: string | null;
+  created_at: string;
+};
+
+type AppNotificationRow = {
+  id: string;
+  title: string;
+  message: string;
+  recipient_user_ids: string[] | null;
+  recipient_roles: AppNotification['recipientRoles'] | null;
+  entity_type: AppNotification['entityType'];
+  entity_id: string;
+  reference_number: string | null;
+  action_url: string | null;
+  created_at: string;
+  app_notification_reads?: Array<{
+    user_id: string;
+  }> | null;
+};
+
 function mapPaymentMethod(value: string | null | undefined): Sale['paymentMethod'] {
   if (value === 'mobile_money') {
     return 'Mobile Money';
@@ -188,7 +220,9 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       { data: purchases },
       { data: stockMovements },
       { data: expenses },
-      { data: employeeCredentials }
+      { data: employeeCredentials },
+      { data: auditEvents },
+      { data: appNotifications }
     ] = await Promise.all([
       supabase.from('business_locations').select('*').eq('business_id', businessId).order('is_default', { ascending: false }).order('name', { ascending: true }),
       supabase.from('products').select('*').eq('business_id', businessId),
@@ -208,7 +242,13 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
         .order('created_at', { ascending: false }),
       supabase.from('stock_movements').select('*').eq('business_id', businessId).order('created_at', { ascending: false }),
       supabase.from('expenses').select('*').eq('business_id', businessId),
-      supabase.from('employee_credentials').select('*').eq('business_id', businessId)
+      supabase.from('employee_credentials').select('*').eq('business_id', businessId),
+      supabase.from('business_audit_events').select('*').eq('business_id', businessId).order('created_at', { ascending: false }),
+      supabase
+        .from('app_notifications')
+        .select('*, app_notification_reads(user_id)')
+        .eq('business_id', businessId)
+        .order('created_at', { ascending: false })
     ]);
 
     const mappedLocations: BusinessLocation[] = ((locations || []) as BusinessLocationRow[]).map((location) => ({
@@ -405,6 +445,7 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       // Do not hydrate plaintext temporary passwords into the general app state.
       // Employee sign-in should rely on the RPC/auth flow instead of broad password reads.
       temporaryPassword: undefined,
+      passwordChangeRequired: employee.requires_password_change ?? false,
       credentialsGeneratedAt: employee.credentials_generated_at ?? undefined,
       accountStatus: employee.account_status ?? 'active',
       deactivatedAt: employee.deactivated_at ?? undefined,
@@ -414,6 +455,35 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       revokedPermissions: employee.revoked_permissions ?? [],
       customerEmailSenderName: employee.customer_email_sender_name ?? undefined,
       customerEmailSenderEmail: employee.customer_email_sender_email ?? undefined,
+    }));
+
+    const mappedAuditEvents: ActivityLogEntry[] = ((auditEvents || []) as AuditEventRow[]).map((event) => ({
+      id: event.id,
+      activityNumber: event.activity_number,
+      entityType: event.entity_type,
+      entityId: event.entity_id,
+      actionType: event.action_type,
+      title: event.title,
+      detail: event.detail,
+      status: event.status,
+      createdAt: event.created_at,
+      referenceNumber: event.reference_number ?? undefined,
+      relatedEntityId: event.related_entity_id ?? undefined,
+      relatedSaleId: event.related_sale_id ?? undefined,
+    }));
+
+    const mappedNotifications: AppNotification[] = ((appNotifications || []) as AppNotificationRow[]).map((notification) => ({
+      id: notification.id,
+      title: notification.title,
+      message: notification.message,
+      createdAt: notification.created_at,
+      recipientUserIds: notification.recipient_user_ids ?? undefined,
+      recipientRoles: notification.recipient_roles ?? undefined,
+      readByUserIds: (notification.app_notification_reads ?? []).map((read) => read.user_id),
+      entityType: notification.entity_type,
+      entityId: notification.entity_id,
+      referenceNumber: notification.reference_number ?? undefined,
+      actionUrl: notification.action_url ?? undefined,
     }));
 
     return {
@@ -427,6 +497,8 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       purchases: mappedPurchases,
       stockMovements: mappedStockMovements,
       expenses: mappedExpenses,
+      activityLogEntries: mappedAuditEvents,
+      notifications: mappedNotifications,
       users: mappedUsers
     };
   } catch (err) {

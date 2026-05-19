@@ -81,7 +81,7 @@ describe('AuthContext employee sign-in', () => {
     });
   });
 
-  it('uses local employee credentials before calling Supabase owner auth', async () => {
+  it('does not trust local employee password data when Supabase auth is configured', async () => {
     signInWithPassword.mockResolvedValue({
       error: { message: 'Invalid login credentials' },
     });
@@ -116,16 +116,18 @@ describe('AuthContext employee sign-in', () => {
     await waitFor(() => {
       expect(onDone).toHaveBeenCalledWith(
         expect.objectContaining({
-          ok: true,
-          authMode: 'employee-local',
+          ok: false,
         })
       );
     });
 
-    expect(signInWithPassword).not.toHaveBeenCalled();
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: 'storelead@example.com',
+      password: 'BP-TestPass1',
+    });
   });
 
-  it('ignores accidental spaces around local employee temporary passwords', async () => {
+  it('requires cloud verification even when a matching local temporary password exists', async () => {
     signInWithPassword.mockResolvedValue({
       error: { message: 'Invalid login credentials' },
     });
@@ -160,13 +162,15 @@ describe('AuthContext employee sign-in', () => {
     await waitFor(() => {
       expect(onDone).toHaveBeenCalledWith(
         expect.objectContaining({
-          ok: true,
-          authMode: 'employee-local',
+          ok: false,
         })
       );
     });
 
-    expect(signInWithPassword).not.toHaveBeenCalled();
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: 'trim@example.com',
+      password: ' BP-TrimPass1 ',
+    });
   });
 
   it('trims accidental spaces before checking Supabase employee credentials', async () => {
@@ -181,7 +185,6 @@ describe('AuthContext employee sign-in', () => {
           name: 'Cloud Trim',
           email: 'cloudtrim@example.com',
           username: 'cloudtrim@example.com',
-          temporary_password: 'BP-CloudTrim1',
           credentials_generated_at: '2026-05-06T10:30:00.000Z',
           account_status: 'active',
           deactivated_at: null,
@@ -219,7 +222,7 @@ describe('AuthContext employee sign-in', () => {
     });
   });
 
-  it('uses cached employee credentials when the cloud workspace state no longer contains the employee', async () => {
+  it('does not authenticate from cached employee credential records', async () => {
     signInWithPassword.mockResolvedValue({
       error: { message: 'Invalid login credentials' },
     });
@@ -260,13 +263,15 @@ describe('AuthContext employee sign-in', () => {
     await waitFor(() => {
       expect(onDone).toHaveBeenCalledWith(
         expect.objectContaining({
-          ok: true,
-          authMode: 'employee-local',
+          ok: false,
         })
       );
     });
 
-    expect(signInWithPassword).not.toHaveBeenCalled();
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: 'info@silentstarltd.com',
+      password: 'BP-TestPass2',
+    });
   });
 
   it('falls through to Supabase owner auth when a cached employee email has a different password', async () => {
@@ -334,7 +339,6 @@ describe('AuthContext employee sign-in', () => {
           name: 'Purchase Officer',
           email: 'jaysino14@gmail.com',
           username: 'jaysino14@gmail.com',
-          temporary_password: 'BP-CloudPass1',
           credentials_generated_at: '2026-05-06T10:30:00.000Z',
           account_status: 'active',
           deactivated_at: null,
@@ -380,5 +384,7 @@ describe('AuthContext employee sign-in', () => {
         username: 'jaysino14@gmail.com',
       })
     );
+    expect(cachedCredentials.users?.[0]?.temporaryPassword).toBeUndefined();
+    expect(cachedCredentials.users?.[0]?.employeeSessionSecret).toBeUndefined();
   });
 });

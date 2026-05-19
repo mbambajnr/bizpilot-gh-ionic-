@@ -240,7 +240,7 @@ test('keeps the workspace closed until the admin launches the business', async (
   expect(screen.queryByTestId('dashboard-page')).not.toBeInTheDocument();
 });
 
-test('opens role interfaces after setup is complete and launched', async () => {
+test('opens system administrator interface after setup is complete and launched', async () => {
   mockedSession = {
     user: {
       id: 'owner-open-id',
@@ -297,9 +297,78 @@ test('opens role interfaces after setup is complete and launched', async () => {
   render(<App />);
 
   await waitFor(() => {
-    expect(screen.getByTestId('tab-dashboard')).toBeInTheDocument();
-    expect(screen.getByTestId('tab-sales')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-settings')).toBeInTheDocument();
   });
+  expect(screen.queryByTestId('tab-dashboard')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('tab-sales')).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Complete Business Setup' })).not.toBeInTheDocument();
   expect(screen.queryByTestId('loading-screen')).not.toBeInTheDocument();
 });
+
+test('routes every employee role with a temporary password requirement to security settings', async () => {
+  mockedSession = {
+    user: {
+      id: 'warehouse-employee-id',
+      email: 'warehouse@open.com',
+      user_metadata: {
+        auth_mode: 'employee-local',
+        business_id: '33333333-3333-4333-8333-333333333333',
+        username: 'warehouse@open.com',
+        employee_session_secret: 'BP-TempPass1',
+      },
+    },
+    access_token: 'employee-access-token',
+    refresh_token: '',
+    expires_in: 3600,
+    token_type: 'bearer',
+  };
+
+  window.localStorage.setItem('bizpilot-gh-state-v1', JSON.stringify({
+    businessProfile: {
+      id: '33333333-3333-4333-8333-333333333333',
+      businessName: 'Open Business',
+      businessType: 'General Retail',
+      currency: 'GHS',
+      country: 'Ghana',
+      receiptPrefix: 'RCP-',
+      invoicePrefix: 'INV-',
+      phone: '0240000002',
+      email: 'owner@open.com',
+      address: 'Kumasi',
+      website: '',
+      waybillPrefix: 'WAY-',
+      logoUrl: 'data:image/png;base64,logo',
+      launchedAt: '2026-05-03T10:00:00.000Z',
+    },
+    products: [],
+    customers: [],
+    sales: [],
+    quotations: [],
+    stockMovements: [],
+    customerLedgerEntries: [],
+    activityLogEntries: [],
+    users: [
+      {
+        userId: 'warehouse-employee-id',
+        businessId: '33333333-3333-4333-8333-333333333333',
+        name: 'Warehouse Employee',
+        email: 'warehouse@open.com',
+        username: 'warehouse@open.com',
+        role: 'WarehouseManager',
+        passwordChangeRequired: true,
+        grantedPermissions: [],
+        revokedPermissions: [],
+      },
+    ],
+    currentUserId: 'warehouse-employee-id',
+    restockRequests: [],
+    expenses: [],
+    themePreference: 'system',
+  }));
+
+  window.history.pushState({}, '', '/inventory');
+  render(<App />);
+
+  expect(await screen.findByText('Temporary password must be changed')).toBeInTheDocument();
+  expect(screen.getByText('Required')).toBeInTheDocument();
+}, 15000);

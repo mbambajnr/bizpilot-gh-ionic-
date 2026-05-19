@@ -1,5 +1,5 @@
 import { type ReactNode, Suspense, lazy, useEffect, useState } from 'react';
-import { Redirect, Route, useHistory } from 'react-router-dom';
+import { Redirect, Route, useHistory, useLocation } from 'react-router-dom';
 import {
   IonApp,
   IonBadge,
@@ -185,10 +185,15 @@ function PublicShell() {
 
 function AppShell() {
   const history = useHistory();
+  const location = useLocation();
   const [showNotifications, setShowNotifications] = useState(false);
   const { state, currentUser, hasPermission } = useBusiness();
+  const { user } = useAuth();
   const businessLaunchState = getBusinessLaunchState(state.businessProfile);
   const businessSetupComplete = isBusinessWorkspaceLive(state.businessProfile);
+  const mustChangeEmployeePassword =
+    user?.user_metadata?.auth_mode === 'employee-local' &&
+    currentUser.passwordChangeRequired === true;
   const canViewDashboard = hasPermission('reports.dashboard.view');
   const canViewSettings = hasPermission('business.view');
   const canManageSetup = hasPermission('business.edit');
@@ -197,7 +202,9 @@ function AppShell() {
     hasPermission('invoices.export_pdf') ||
     hasPermission('quotations.print') ||
     hasPermission('quotations.export_pdf');
-  const defaultRoute = !businessSetupComplete
+  const defaultRoute = mustChangeEmployeePassword
+    ? '/settings?section=security'
+    : !businessSetupComplete
     ? canManageSetup
       ? '/settings'
       : '/dashboard'
@@ -218,8 +225,13 @@ function AppShell() {
                         : canViewSettings
                           ? '/settings'
                           : '/dashboard';
-  const canReviewPurchaseQueue =
-    currentUser.role === 'Admin' || currentUser.role === 'GeneralManager';
+  const canReviewPurchaseQueue = currentUser.role === 'GeneralManager';
+
+  useEffect(() => {
+    if (mustChangeEmployeePassword && location.pathname !== '/settings') {
+      history.replace('/settings?section=security');
+    }
+  }, [history, location.pathname, mustChangeEmployeePassword]);
   const purchaseQueueNotifications: AppNotification[] =
     canReviewPurchaseQueue
       ? state.purchases

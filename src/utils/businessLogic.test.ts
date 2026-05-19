@@ -2098,8 +2098,8 @@ describe('businessLogic', () => {
       return;
     }
     expect(submitted.data.notifications.some((notification) =>
-      notification.recipientRoles?.includes('Admin') &&
       notification.recipientRoles?.includes('GeneralManager') &&
+      !notification.recipientRoles?.includes('Admin') &&
       notification.title === 'Purchase awaiting approval' &&
       notification.referenceNumber === draft.purchaseCode &&
       notification.actionUrl === '/inventory?section=procurement'
@@ -2135,12 +2135,18 @@ describe('businessLogic', () => {
 
     const approvedPayable = approvePayableInState(approved.data, {
       payableId: payable!.id,
-      approvedBy: 'u-accountant',
+      approvedBy: 'u-gm',
     });
     expect(approvedPayable.ok).toBe(true);
     if (!approvedPayable.ok || !approvedPayable.data) {
       return;
     }
+    expect(approvedPayable.data.notifications.some((notification) =>
+      notification.title === 'Payable approved for settlement' &&
+      notification.recipientRoles?.includes('Accountant') &&
+      notification.referenceNumber === payable!.payableCode &&
+      notification.actionUrl === '/accounting?segment=payables&action=payment'
+    )).toBe(true);
 
     const received = receivePurchaseInWarehouseInState(approvedPayable.data, {
       purchaseId: draft.id,
@@ -2178,6 +2184,14 @@ describe('businessLogic', () => {
     const partiallyPaid = partialPayment.data.accountsPayable.find((entry) => entry.id === payable!.id);
     expect(partiallyPaid?.status).toBe('partiallyPaid');
     expect(partiallyPaid?.balance).toBe(50);
+    expect(partialPayment.data.notifications.some((notification) =>
+      notification.title === 'Supplier payable partly paid' &&
+      notification.recipientUserIds?.includes('u-gm') &&
+      notification.recipientRoles?.includes('GeneralManager') &&
+      !notification.recipientRoles?.includes('Admin') &&
+      notification.referenceNumber === payable!.payableCode &&
+      notification.actionUrl === '/accounting?segment=payables'
+    )).toBe(true);
 
     const overPayment = recordPayablePaymentInState(partialPayment.data, {
       payableId: payable!.id,
@@ -2197,6 +2211,12 @@ describe('businessLogic', () => {
     if (finalPayment.ok && finalPayment.data) {
       expect(finalPayment.data.accountsPayable.find((entry) => entry.id === payable!.id)?.status).toBe('paid');
       expect(finalPayment.data.payments.some((payment) => payment.sourceId === payable!.id && payment.sourceType === 'payable')).toBe(true);
+      expect(finalPayment.data.notifications.some((notification) =>
+        notification.title === 'Supplier payable settled' &&
+        notification.recipientUserIds?.includes('u-gm') &&
+        !notification.recipientRoles?.includes('Admin') &&
+        notification.referenceNumber === payable!.payableCode
+      )).toBe(true);
     }
   });
 

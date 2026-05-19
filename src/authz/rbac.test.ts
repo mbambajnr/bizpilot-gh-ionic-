@@ -4,7 +4,7 @@ import { UserAccessProfile } from './types';
 import { ROLE_DEFAULT_PERMISSIONS } from './defaults';
 
 describe('RBAC Logic', () => {
-  it('should resolve full permissions for Admin by default', () => {
+  it('should resolve system administration permissions for Admin by default', () => {
     const admin: UserAccessProfile = {
       userId: '1',
       name: 'Admin',
@@ -14,9 +14,17 @@ describe('RBAC Logic', () => {
       revokedPermissions: [],
     };
     
-    expect(hasPermission(admin, 'inventory.create')).toBe(true);
-    expect(hasPermission(admin, 'accounting.access')).toBe(true);
     expect(hasPermission(admin, 'users.manage')).toBe(true);
+    expect(hasPermission(admin, 'roles.assign')).toBe(true);
+    expect(hasPermission(admin, 'permissions.manage')).toBe(true);
+    expect(hasPermission(admin, 'business.edit')).toBe(true);
+    expect(hasPermission(admin, 'branding.manage')).toBe(true);
+    expect(hasPermission(admin, 'inventory.create')).toBe(false);
+    expect(hasPermission(admin, 'accounting.access')).toBe(false);
+    expect(hasPermission(admin, 'purchases.approve')).toBe(false);
+    expect(hasPermission(admin, 'purchases.receive')).toBe(false);
+    expect(hasPermission(admin, 'payables.pay')).toBe(false);
+    expect(hasPermission(admin, 'transfers.approve')).toBe(false);
   });
 
   it('should resolve full operational permissions for General Manager by default', () => {
@@ -33,7 +41,15 @@ describe('RBAC Logic', () => {
     expect(hasPermission(generalManager, 'purchases.approve')).toBe(true);
     expect(hasPermission(generalManager, 'payables.approve')).toBe(true);
     expect(hasPermission(generalManager, 'transfers.approve')).toBe(true);
-    expect(hasPermission(generalManager, 'users.manage')).toBe(true);
+    expect(hasPermission(generalManager, 'purchases.receive')).toBe(false);
+    expect(hasPermission(generalManager, 'payables.pay')).toBe(false);
+    expect(hasPermission(generalManager, 'transfers.dispatch')).toBe(false);
+    expect(hasPermission(generalManager, 'transfers.receive')).toBe(false);
+    expect(hasPermission(generalManager, 'inventory.adjust')).toBe(false);
+    expect(hasPermission(generalManager, 'expenses.create')).toBe(false);
+    expect(hasPermission(generalManager, 'expenses.edit')).toBe(false);
+    expect(hasPermission(generalManager, 'users.manage')).toBe(false);
+    expect(hasPermission(generalManager, 'permissions.manage')).toBe(false);
     expect(hasPermission(generalManager, 'business.edit')).toBe(false);
   });
 
@@ -55,7 +71,7 @@ describe('RBAC Logic', () => {
     expect(hasPermission(sales, 'accounting.access')).toBe(false);
   });
 
-  it('should resolve no permissions for Accountant by default', () => {
+  it('should resolve finance-focused permissions for Accountant by default', () => {
     const accountant: UserAccessProfile = {
       userId: '3',
       name: 'Accountant',
@@ -66,7 +82,19 @@ describe('RBAC Logic', () => {
     };
     
     expect(hasPermission(accountant, 'accounting.access')).toBe(true);
-    expect(hasPermission(accountant, 'sales.view')).toBe(true);
+    expect(hasPermission(accountant, 'customers.ledger.view')).toBe(true);
+    expect(hasPermission(accountant, 'payables.view')).toBe(true);
+    expect(hasPermission(accountant, 'payables.pay')).toBe(true);
+    expect(hasPermission(accountant, 'payments.record')).toBe(true);
+    expect(hasPermission(accountant, 'expenses.view')).toBe(true);
+    expect(hasPermission(accountant, 'expenses.create')).toBe(true);
+    expect(hasPermission(accountant, 'reports.financial.view')).toBe(true);
+    expect(hasPermission(accountant, 'sales.view')).toBe(false);
+    expect(hasPermission(accountant, 'reports.sales.view')).toBe(false);
+    expect(hasPermission(accountant, 'purchases.view')).toBe(false);
+    expect(hasPermission(accountant, 'procurement.view')).toBe(false);
+    expect(hasPermission(accountant, 'payables.approve')).toBe(false);
+    expect(hasPermission(accountant, 'transfers.view')).toBe(false);
   });
 
   it('should allow Admin to grant specific permissions to SalesManager', () => {
@@ -83,18 +111,18 @@ describe('RBAC Logic', () => {
     expect(hasPermission(sales, 'sales.reverse')).toBe(true);
   });
 
-  it('should allow Admin to revoke specific permissions from Admin (Deny wins)', () => {
+  it('should allow Admin to revoke specific system permissions from Admin (Deny wins)', () => {
     const admin: UserAccessProfile = {
       userId: '1',
       name: 'Admin',
       email: 'admin@test.com',
       role: 'Admin',
       grantedPermissions: [],
-      revokedPermissions: ['inventory.create'],
+      revokedPermissions: ['business.edit'],
     };
     
-    expect(hasPermission(admin, 'inventory.create')).toBe(false);
-    expect(hasPermission(admin, 'inventory.view')).toBe(true);
+    expect(hasPermission(admin, 'business.edit')).toBe(false);
+    expect(hasPermission(admin, 'business.view')).toBe(true);
   });
 
   it('should enforce Deny wins if a permission is both granted and revoked', () => {
@@ -142,7 +170,12 @@ describe('RBAC Logic', () => {
     expect(hasPermission(storeManager, 'payments.record')).toBe(true);
     expect(hasPermission(storeManager, 'transfers.receive')).toBe(true);
     expect(hasPermission(storeManager, 'restockRequests.create')).toBe(true);
+    expect(hasPermission(storeManager, 'vendors.view')).toBe(false);
     expect(hasPermission(storeManager, 'vendors.manage')).toBe(false);
+    expect(hasPermission(storeManager, 'purchases.view')).toBe(false);
+    expect(hasPermission(storeManager, 'purchases.create')).toBe(false);
+    expect(hasPermission(storeManager, 'procurement.view')).toBe(false);
+    expect(hasPermission(storeManager, 'procurement.create')).toBe(false);
   });
 
   it('should give Purchase Manager procurement permissions by default', () => {
@@ -157,6 +190,7 @@ describe('RBAC Logic', () => {
 
     expect(hasPermission(purchaseManager, 'vendors.manage')).toBe(true);
     expect(hasPermission(purchaseManager, 'inventory.create')).toBe(true);
+    expect(hasPermission(purchaseManager, 'purchases.receive')).toBe(false);
     expect(hasPermission(purchaseManager, 'purchases.approve')).toBe(false);
     expect(hasPermission(purchaseManager, 'procurement.approve')).toBe(false);
     expect(hasPermission(purchaseManager, 'transfers.view')).toBe(false);

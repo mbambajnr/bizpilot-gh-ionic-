@@ -77,6 +77,8 @@ export interface UserAccessProfile {
   email: string;
   username?: string;
   temporaryPassword?: string;
+  employeeSessionSecret?: string;
+  passwordChangeRequired?: boolean;
   credentialsGeneratedAt?: string;
   accountStatus?: 'active' | 'deactivated';
   deactivatedAt?: string;

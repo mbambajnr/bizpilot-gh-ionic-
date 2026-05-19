@@ -1,6 +1,6 @@
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
 import type { UserAccessProfile } from '../authz/types';
-import type { BusinessLocation, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, BusinessProfile, Quotation, StockMovement, Purchase } from './seedBusiness';
+import type { ActivityLogEntry, AppNotification, BusinessLocation, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, BusinessProfile, Quotation, StockMovement, Purchase } from './seedBusiness';
 
 let lastSupabaseSyncErrorMessage: string | null = null;
 
@@ -67,7 +67,7 @@ function mapPaymentMethodForSync(paymentMethod: Sale['paymentMethod']) {
  * Follows an 'upsert' pattern (ID-based insert or update).
  * Returns true if sync successful or skipped (no config), false on error.
  */
-async function upsertEntity(table: string, payload: Record<string, unknown>): Promise<boolean> {
+async function upsertEntity(table: string, payload: Record<string, unknown>, onConflict = 'id'): Promise<boolean> {
   if (!hasSupabaseConfig) return true;
 
   try {
@@ -75,7 +75,7 @@ async function upsertEntity(table: string, payload: Record<string, unknown>): Pr
     const nextPayload = { ...payload };
 
     while (true) {
-      const response = await supabase.from(table).upsert(nextPayload, { onConflict: 'id' });
+      const response = await supabase.from(table).upsert(nextPayload, { onConflict });
       const error = response?.error ?? null;
 
       if (!error) {
@@ -145,23 +145,42 @@ export async function syncBusinessLocation(businessId: string, location: Busines
 }
 
 export async function syncEmployeeCredential(businessId: string, user: UserAccessProfile) {
-  return upsertEntity('employee_credentials', {
-    id: user.userId,
-    business_id: businessId,
-    name: user.name,
-    email: user.email,
-    username: user.username ?? user.email,
-    temporary_password: user.temporaryPassword ?? null,
-    credentials_generated_at: user.credentialsGeneratedAt ?? null,
-    account_status: user.accountStatus ?? 'active',
-    deactivated_at: user.deactivatedAt ?? null,
-    role: user.role,
-    role_label: user.roleLabel ?? null,
-    granted_permissions: user.grantedPermissions ?? [],
-    revoked_permissions: user.revokedPermissions ?? [],
-    customer_email_sender_name: user.customerEmailSenderName ?? null,
-    customer_email_sender_email: user.customerEmailSenderEmail ?? null,
-  });
+  if (!hasSupabaseConfig) return true;
+
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.rpc('upsert_employee_credential', {
+      credential_user_id: user.userId,
+      credential_business_id: businessId,
+      credential_name: user.name,
+      credential_email: user.email,
+      credential_username: user.username ?? user.email,
+      credential_password: user.temporaryPassword ?? null,
+      credential_requires_password_change: user.passwordChangeRequired ?? Boolean(user.temporaryPassword),
+      credential_generated_at: user.credentialsGeneratedAt ?? null,
+      credential_account_status: user.accountStatus ?? 'active',
+      credential_deactivated_at: user.deactivatedAt ?? null,
+      credential_role: user.role,
+      credential_role_label: user.roleLabel ?? null,
+      credential_granted_permissions: user.grantedPermissions ?? [],
+      credential_revoked_permissions: user.revokedPermissions ?? [],
+      credential_customer_email_sender_name: user.customerEmailSenderName ?? null,
+      credential_customer_email_sender_email: user.customerEmailSenderEmail ?? null,
+    });
+
+    if (error) {
+      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(error.message));
+      console.error('[SupabaseSync] Error syncing employee credential:', error.message);
+      return false;
+    }
+
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Employee credential sync failed before the request could complete.');
+    console.error('[SupabaseSync] Fatal error syncing employee credential:', err);
+    return false;
+  }
 }
 
 type EmployeeCredentialVerificationRow = {
@@ -334,18 +353,17 @@ export async function syncPurchase(businessId: string, purchase: Purchase) {
 
 export async function syncEmployeePurchase(user: UserAccessProfile, purchase: Purchase) {
   if (!hasSupabaseConfig) return true;
-  if (!user.businessId || !user.temporaryPassword) {
-    setLastSupabaseSyncErrorMessage('Employee purchase sync is missing cloud workspace credentials.');
+  const credentialPassword = user.employeeSessionSecret;
+  if (!user.businessId || !credentialPassword) {
+    setLastSupabaseSyncErrorMessage('Employee purchase sync requires a fresh cloud employee sign-in.');
     return false;
   }
 
   try {
     const supabase = getSupabaseClient();
-    // TODO(security): This RPC still depends on a plaintext temporary password.
-    // Keep it only until employee sessions move to hashed verification or Supabase Auth.
     const { error } = await supabase.rpc('sync_employee_purchase', {
       credential_identifier: user.username ?? user.email,
-      credential_password: user.temporaryPassword,
+      credential_password: credentialPassword,
       purchase_payload: {
         id: purchase.id,
         purchaseCode: purchase.purchaseCode,
@@ -380,6 +398,54 @@ export async function syncEmployeePurchase(user: UserAccessProfile, purchase: Pu
     console.error('[SupabaseSync] Fatal error in employee purchase sync:', err);
     return false;
   }
+}
+
+export async function syncActivityLogEntry(businessId: string, entry: ActivityLogEntry) {
+  return upsertEntity('business_audit_events', {
+    id: entry.id,
+    business_id: businessId,
+    activity_number: entry.activityNumber,
+    entity_type: entry.entityType,
+    entity_id: entry.entityId,
+    action_type: entry.actionType,
+    title: entry.title,
+    detail: entry.detail,
+    status: entry.status,
+    reference_number: entry.referenceNumber ?? null,
+    related_entity_id: entry.relatedEntityId ?? null,
+    related_sale_id: entry.relatedSaleId ?? null,
+    created_at: entry.createdAt,
+  });
+}
+
+export async function syncAppNotification(businessId: string, notification: AppNotification) {
+  return upsertEntity('app_notifications', {
+    id: notification.id,
+    business_id: businessId,
+    title: notification.title,
+    message: notification.message,
+    recipient_user_ids: notification.recipientUserIds ?? [],
+    recipient_roles: notification.recipientRoles ?? [],
+    entity_type: notification.entityType,
+    entity_id: notification.entityId,
+    reference_number: notification.referenceNumber ?? null,
+    action_url: notification.actionUrl ?? null,
+    created_at: notification.createdAt,
+  });
+}
+
+export async function syncAppNotificationRead(
+  businessId: string,
+  notificationId: string,
+  userId: string,
+  readAt = new Date().toISOString()
+) {
+  return upsertEntity('app_notification_reads', {
+    notification_id: notificationId,
+    business_id: businessId,
+    user_id: userId,
+    read_at: readAt,
+  }, 'notification_id,user_id');
 }
 
 export async function syncStockMovement(businessId: string, movement: StockMovement) {

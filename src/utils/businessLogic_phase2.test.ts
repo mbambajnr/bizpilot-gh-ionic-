@@ -28,7 +28,7 @@ describe('Phase 2 Business Logic', () => {
       }
     });
 
-    it('should allow an admin to approve a restock request', () => {
+    it('should record restock request review decisions', () => {
       const stateWithRequest = addRestockRequestToState(initialState, {
         productId: 'p1',
         requestedByUserId: 'u-sales',

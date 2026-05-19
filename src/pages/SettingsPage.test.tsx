@@ -111,6 +111,31 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Recommended')).toBeInTheDocument();
   });
 
+  it('marks temporary employee passwords as required to change for any role', async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: 'employee-id', email: 'staff@example.com', user_metadata: { auth_mode: 'employee-local' } },
+      businessBootstrapStatus: { loading: false, label: 'Ready', detail: 'Ready' },
+      signOut: vi.fn(),
+    });
+
+    const context = buildContext({
+      'business.view': true,
+    });
+    context.currentUser = {
+      ...context.currentUser,
+      userId: 'employee-id',
+      role: 'WarehouseManager',
+      passwordChangeRequired: true,
+    } as typeof context.currentUser & { passwordChangeRequired: boolean };
+    mockUseBusiness.mockReturnValue(context);
+
+    render(<SettingsPage />);
+
+    expect(await screen.findByText('Temporary password must be changed')).toBeInTheDocument();
+    expect(screen.getByText(/Before continuing with daily work/i)).toBeInTheDocument();
+    expect(screen.getByText('Required')).toBeInTheDocument();
+  });
+
   it('shows ready to launch and the launch button when business setup is saved', async () => {
     mockUseBusiness.mockReturnValue(buildContext(
       {
@@ -208,9 +233,11 @@ describe('SettingsPage', () => {
   }, 10000);
 
   it('shows the expanded base role list in Add Employee', async () => {
-    mockUseBusiness.mockReturnValue(buildContext({
+    const context = buildContext({
       'permissions.manage': true,
-    }));
+    });
+    context.currentUser.role = 'Admin';
+    mockUseBusiness.mockReturnValue(context);
 
     render(<SettingsPage />);
 
@@ -238,9 +265,11 @@ describe('SettingsPage', () => {
   });
 
   it('shows the temporary password action inside employee account management', async () => {
-    mockUseBusiness.mockReturnValue(buildContext({
+    const context = buildContext({
       'permissions.manage': true,
-    }));
+    });
+    context.currentUser.role = 'Admin';
+    mockUseBusiness.mockReturnValue(context);
 
     render(<SettingsPage />);
 
@@ -248,6 +277,25 @@ describe('SettingsPage', () => {
 
     expect(await screen.findByText('Add a new employee')).toBeInTheDocument();
     expect(screen.getByText('Create a fresh BisaPilot login and assign the employee a role in one step.')).toBeInTheDocument();
+  });
+
+  it('hides sensitive admin settings from non-admin roles even if they can view settings', async () => {
+    const context = buildContext({
+      'business.view': true,
+      'permissions.manage': true,
+    });
+    context.currentUser.role = 'StoreManager';
+    mockUseBusiness.mockReturnValue(context);
+
+    render(<SettingsPage />);
+
+    expect(await screen.findByText('Security')).toBeInTheDocument();
+    expect(screen.queryByText('Cloud integrity')).not.toBeInTheDocument();
+    expect(screen.queryByText('Business owner identity')).not.toBeInTheDocument();
+    expect(screen.queryByText('Team accounts')).not.toBeInTheDocument();
+    expect(screen.queryByText('Repair admin access')).not.toBeInTheDocument();
+    expect(screen.queryByText('Business mailing system')).not.toBeInTheDocument();
+    expect(screen.queryByText('SMTP password / app password')).not.toBeInTheDocument();
   });
 
 });

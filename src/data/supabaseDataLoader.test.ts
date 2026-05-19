@@ -45,6 +45,7 @@ describe('supabaseDataLoader', () => {
                 email: 'store@example.com',
                 username: 'store@example.com',
                 temporary_password: 'BP-Temp1',
+                requires_password_change: true,
                 credentials_generated_at: '2026-05-07T08:00:00.000Z',
                 account_status: 'active',
                 deactivated_at: null,
@@ -73,6 +74,7 @@ describe('supabaseDataLoader', () => {
         userId: 'user-1',
         businessId: 'biz-1',
         email: 'store@example.com',
+        passwordChangeRequired: true,
       }),
     ]);
   });

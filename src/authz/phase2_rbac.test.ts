@@ -40,22 +40,24 @@ describe('Phase 2 RBAC Enforcement', () => {
     revokedPermissions: [],
   };
 
-  it('Admin should have all Phase 2 permissions', () => {
-    expect(hasPermission(admin, 'vendors.manage')).toBe(true);
-    expect(hasPermission(admin, 'purchases.create')).toBe(true);
-    expect(hasPermission(admin, 'purchases.approve')).toBe(true);
-    expect(hasPermission(admin, 'purchases.receive')).toBe(true);
-    expect(hasPermission(admin, 'payables.manage')).toBe(true);
-    expect(hasPermission(admin, 'payables.pay')).toBe(true);
-    expect(hasPermission(admin, 'restockRequests.create')).toBe(true);
-    expect(hasPermission(admin, 'restockRequests.manage')).toBe(true);
-    expect(hasPermission(admin, 'transfers.create')).toBe(true);
-    expect(hasPermission(admin, 'transfers.approve')).toBe(true);
-    expect(hasPermission(admin, 'transfers.dispatch')).toBe(true);
-    expect(hasPermission(admin, 'transfers.receive')).toBe(true);
+  it('Admin should stay limited to system administration by default', () => {
+    expect(hasPermission(admin, 'vendors.manage')).toBe(false);
+    expect(hasPermission(admin, 'purchases.create')).toBe(false);
+    expect(hasPermission(admin, 'purchases.approve')).toBe(false);
+    expect(hasPermission(admin, 'purchases.receive')).toBe(false);
+    expect(hasPermission(admin, 'payables.manage')).toBe(false);
+    expect(hasPermission(admin, 'payables.pay')).toBe(false);
+    expect(hasPermission(admin, 'restockRequests.create')).toBe(false);
+    expect(hasPermission(admin, 'restockRequests.manage')).toBe(false);
+    expect(hasPermission(admin, 'transfers.create')).toBe(false);
+    expect(hasPermission(admin, 'transfers.approve')).toBe(false);
+    expect(hasPermission(admin, 'transfers.dispatch')).toBe(false);
+    expect(hasPermission(admin, 'transfers.receive')).toBe(false);
     expect(hasPermission(admin, 'branding.manage')).toBe(true);
-    expect(hasPermission(admin, 'invoices.print')).toBe(true);
-    expect(hasPermission(admin, 'quotations.export_pdf')).toBe(true);
+    expect(hasPermission(admin, 'permissions.manage')).toBe(true);
+    expect(hasPermission(admin, 'business.edit')).toBe(true);
+    expect(hasPermission(admin, 'invoices.print')).toBe(false);
+    expect(hasPermission(admin, 'quotations.export_pdf')).toBe(false);
   });
 
   it('General Manager should have all approval and reporting permissions', () => {
@@ -68,6 +70,13 @@ describe('Phase 2 RBAC Enforcement', () => {
     expect(hasPermission(generalManager, 'reports.financial.view')).toBe(true);
     expect(hasPermission(generalManager, 'reports.sales.view')).toBe(true);
     expect(hasPermission(generalManager, 'reports.inventory.view')).toBe(true);
+    expect(hasPermission(generalManager, 'purchases.receive')).toBe(false);
+    expect(hasPermission(generalManager, 'payables.pay')).toBe(false);
+    expect(hasPermission(generalManager, 'transfers.dispatch')).toBe(false);
+    expect(hasPermission(generalManager, 'transfers.receive')).toBe(false);
+    expect(hasPermission(generalManager, 'inventory.adjust')).toBe(false);
+    expect(hasPermission(generalManager, 'expenses.create')).toBe(false);
+    expect(hasPermission(generalManager, 'expenses.edit')).toBe(false);
   });
 
   it('Sales Manager should have restricted Phase 2 permissions', () => {
@@ -93,14 +102,16 @@ describe('Phase 2 RBAC Enforcement', () => {
     expect(hasPermission(salesManager, 'branding.manage')).toBe(false);
   });
 
-  it('Accountant should have no Phase 2 permissions by default', () => {
-    expect(hasPermission(accountant, 'purchases.view')).toBe(true);
+  it('Accountant should focus on settlement and financial records by default', () => {
+    expect(hasPermission(accountant, 'purchases.view')).toBe(false);
     expect(hasPermission(accountant, 'purchases.create')).toBe(false);
     expect(hasPermission(accountant, 'payables.view')).toBe(true);
     expect(hasPermission(accountant, 'payables.manage')).toBe(true);
+    expect(hasPermission(accountant, 'payables.approve')).toBe(false);
     expect(hasPermission(accountant, 'payables.pay')).toBe(true);
+    expect(hasPermission(accountant, 'expenses.create')).toBe(true);
     expect(hasPermission(accountant, 'restockRequests.create')).toBe(false);
-    expect(hasPermission(accountant, 'transfers.view')).toBe(true);
+    expect(hasPermission(accountant, 'transfers.view')).toBe(false);
     expect(hasPermission(accountant, 'transfers.create')).toBe(false);
     expect(hasPermission(accountant, 'transfers.receive')).toBe(false);
     expect(hasPermission(accountant, 'invoices.print')).toBe(false);

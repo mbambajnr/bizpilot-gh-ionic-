@@ -73,7 +73,7 @@ function buildContext(permissionMap: Record<string, boolean>, overrides: Record<
       userId: 'u1',
       name: 'Owner',
       email: 'owner@example.com',
-      role: 'Admin',
+      role: 'GeneralManager',
       grantedPermissions: [],
       revokedPermissions: [],
     },
@@ -236,7 +236,7 @@ describe('InventoryPage ERP discoverability', () => {
     expect(screen.queryByText('Decline note')).not.toBeInTheDocument();
   });
 
-  it('shows purchase approval controls to admin users with approval permission', async () => {
+  it('shows purchase approval controls to general managers with approval permission', async () => {
     mockLocationSearch = '?section=procurement';
     const context = buildContext({
       'inventory.view': true,
@@ -260,7 +260,7 @@ describe('InventoryPage ERP discoverability', () => {
         },
       ],
     });
-    context.currentUser.role = 'Admin';
+    context.currentUser.role = 'GeneralManager';
     mockUseBusiness.mockReturnValue(context);
 
     render(<InventoryPage />);

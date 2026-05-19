@@ -201,15 +201,22 @@ const InventoryPage: React.FC = () => {
     hasPermission('inventory.create') &&
     currentUser.role !== 'PurchaseManager' &&
     (hasPermission('inventory.edit') || hasPermission('inventory.adjust') || hasPermission('business.edit'));
-  const canUseApprovalRole = currentUser.role === 'Admin' || currentUser.role === 'GeneralManager';
-  const canSeeAllSupplyTracking = currentUser.role === 'Admin' || currentUser.role === 'GeneralManager';
+  const canUseApprovalRole = currentUser.role === 'GeneralManager';
+  const canUseRestockManagerRole =
+    currentUser.role === 'GeneralManager' ||
+    currentUser.role === 'WarehouseManager';
+  const canSeeAllSupplyTracking = currentUser.role === 'GeneralManager';
   const canSeeVendorToWarehouseTracking = canSeeAllSupplyTracking || currentUser.role === 'PurchaseManager';
   const canSeeWarehouseToStoreTracking =
     canSeeAllSupplyTracking || currentUser.role === 'WarehouseManager' || currentUser.role === 'StoreManager';
   const canApprovePurchases = canUseApprovalRole && hasPermission('purchases.approve');
-  const canManageRestockRequests = canUseApprovalRole && hasPermission('restockRequests.manage');
+  const canManageRestockRequests = canUseRestockManagerRole && hasPermission('restockRequests.manage');
   const activeWarehouses = useMemo(() => activeLocations.filter((location) => location.type === 'warehouse'), [activeLocations]);
   const activeStores = useMemo(() => activeLocations.filter((location) => location.type === 'store'), [activeLocations]);
+  const getWarehouseAvailability = (productId: string) => activeWarehouses.reduce(
+    (total, warehouse) => total + selectProductQuantityOnHand(state, productId, warehouse.id),
+    0
+  );
   const visibleInventoryLocations = useMemo(
     () => activeLocations.filter((location) =>
       location.type === 'store' ? canViewStoreInventory : canViewWarehouseInventory
@@ -2247,6 +2254,8 @@ const InventoryPage: React.FC = () => {
                       .map(req => {
                         const product = state.products.find(p => p.id === req.productId);
                         const isPending = req.status === 'Pending';
+                        const warehouseAvailableQuantity = getWarehouseAvailability(req.productId);
+                        const warehouseCanCover = warehouseAvailableQuantity >= req.requestedQuantity;
 
                         return (
                           <div className="list-row" key={req.id} style={{ borderBottom: '1px solid var(--border-color)', padding: '16px 0' }}>
@@ -2261,6 +2270,18 @@ const InventoryPage: React.FC = () => {
                               <p style={{ fontSize: '1.1rem', fontWeight: 'bold', marginTop: '4px' }}>{product?.name ?? 'Unknown item'}</p>
                               <p>Requested by: {req.requestedByName}</p>
                               <p className="muted-label">Requested {formatReceiptDate(req.createdAt)}</p>
+                              {isPending && canManageRestockRequests ? (
+                                <div style={{ marginTop: '8px', padding: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', fontSize: '0.85rem' }}>
+                                  <p>
+                                    <strong>Warehouse check:</strong> {warehouseAvailableQuantity} {product?.unit ?? 'units'} available across warehouses.
+                                  </p>
+                                  <p className={warehouseCanCover ? 'success-text' : 'warning-text'}>
+                                    {warehouseCanCover
+                                      ? 'Warehouse can cover this request. Approve it, then create or dispatch a warehouse-to-store transfer.'
+                                      : 'Warehouse cannot cover this request. Escalate to the Purchase Manager before approving store replenishment.'}
+                                  </p>
+                                </div>
+                              ) : null}
                               
                               {(req.status === 'Fulfilled' || req.status === 'Rejected') && (
                                 <div style={{ marginTop: '8px', padding: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', fontSize: '0.85rem' }}>

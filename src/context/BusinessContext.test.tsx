@@ -251,6 +251,7 @@ describe('BusinessContext quotation conversion sync', () => {
         taxMode: 'exclusive' as const,
         applyTaxByDefault: true,
       },
+      currentUserId: 'u-sales',
     };
     const withQuotation = addQuotationToState(classifiedState, {
       customerId: 'c1',
@@ -397,7 +398,8 @@ describe('BusinessContext quotation conversion sync', () => {
     const savedState = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}');
     const createdUser = savedState.users?.find((user: { email?: string }) => user.email === 'kwame@example.com');
     expect(createdUser?.username).toBe('kwame@example.com');
-    expect(createdUser?.temporaryPassword).toMatch(/^BP-/);
+    expect(createdUser?.temporaryPassword).toBeUndefined();
+    expect(createdUser?.passwordChangeRequired).toBe(true);
     expect(syncEmployeeCredential).toHaveBeenCalledWith(
       seedState.businessProfile.id,
       expect.objectContaining({
@@ -447,7 +449,8 @@ describe('BusinessContext quotation conversion sync', () => {
     const savedState = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}');
     const updatedUser = savedState.users?.find((user: { userId?: string }) => user.userId === 'u-store-operator');
     expect(updatedUser?.username).toBe('store@example.com');
-    expect(updatedUser?.temporaryPassword).toMatch(/^BP-/);
+    expect(updatedUser?.temporaryPassword).toBeUndefined();
+    expect(updatedUser?.passwordChangeRequired).toBe(true);
     expect(syncEmployeeCredential).toHaveBeenCalledWith(
       seedState.businessProfile.id,
       expect.objectContaining({
@@ -459,7 +462,7 @@ describe('BusinessContext quotation conversion sync', () => {
     );
   });
 
-  it('still lets seeded admin users approve submitted purchases', async () => {
+  it('blocks system administrators from approving submitted purchases', async () => {
     const onDone = vi.fn();
     const purchaseId = 'purchase-awaiting-approval';
     const existingState = {
@@ -498,7 +501,10 @@ describe('BusinessContext quotation conversion sync', () => {
     );
 
     await waitFor(() => {
-      expect(onDone).toHaveBeenCalledWith({ ok: true, message: undefined });
+      expect(onDone).toHaveBeenCalledWith({
+        ok: false,
+        message: 'You are not authorized to approve purchases.',
+      });
     });
   });
 });

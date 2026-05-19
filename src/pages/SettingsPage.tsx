@@ -243,8 +243,10 @@ const SettingsPage: React.FC = () => {
   const canManageInventoryCategories = hasPermission('business.edit');
   const canManageTaxSettings = hasPermission('business.edit');
   const canManageLocations = hasPermission('business.edit');
+  const canManageSensitiveAdminSettings = currentUser.role === 'Admin' && hasPermission('permissions.manage');
   const businessLaunchState = getBusinessLaunchState(state.businessProfile);
   const isEmployeeSession = user?.user_metadata?.auth_mode === 'employee-local';
+  const mustChangeEmployeePassword = isEmployeeSession && currentUser.passwordChangeRequired === true;
   const launchStatusMeta =
     businessLaunchState === 'live'
       ? {
@@ -973,46 +975,48 @@ const SettingsPage: React.FC = () => {
             </SectionCard>
           ) : null}
 
-          <SectionCard
-            title="Cloud integrity"
-            subtitle="Verify your workspace is correctly synchronized with the Supabase backend."
-          >
-            <div className="diagnostic-grid">
-              <div className="sync-line">
-                <IonBadge color={backendStatus.source === 'supabase' ? 'success' : 'medium'}>
-                  {backendStatus.loading ? 'Syncing...' : backendStatus.source === 'supabase' ? 'Active' : 'Offline Mode'}
-                </IonBadge>
-                <div className="diagnostic-info">
-                  <strong>{backendStatus.label}</strong>
-                  <p className="diagnostic-detail">{backendStatus.detail}</p>
+          {canManageSensitiveAdminSettings ? (
+            <SectionCard
+              title="Cloud integrity"
+              subtitle="Verify your workspace is correctly synchronized with the Supabase backend."
+            >
+              <div className="diagnostic-grid">
+                <div className="sync-line">
+                  <IonBadge color={backendStatus.source === 'supabase' ? 'success' : 'medium'}>
+                    {backendStatus.loading ? 'Syncing...' : backendStatus.source === 'supabase' ? 'Active' : 'Offline Mode'}
+                  </IonBadge>
+                  <div className="diagnostic-info">
+                    <strong>{backendStatus.label}</strong>
+                    <p className="diagnostic-detail">{backendStatus.detail}</p>
+                  </div>
                 </div>
+                
+                <div className="integrity-check-list">
+                  <div className="integrity-item">
+                    <span className={`status-pill ${hasSupabaseConfig ? 'success' : 'danger'}`}>
+                      {hasSupabaseConfig ? 'Keys Loaded' : 'Missing Keys'}
+                    </span>
+                    <span className="integrity-label">Environment Config</span>
+                  </div>
+                  <div className="integrity-item">
+                    <span className={`status-pill ${user ? 'success' : 'warning'}`}>
+                      {user ? 'Authenticated' : 'Local Only'}
+                    </span>
+                    <span className="integrity-label">Owner Identity</span>
+                  </div>
+                </div>
+                
+                <IonButton 
+                  fill="solid" 
+                  size="small" 
+                  onClick={() => window.location.reload()}
+                  className="diagnostic-reload"
+                >
+                  Re-verify Connection
+                </IonButton>
               </div>
-              
-              <div className="integrity-check-list">
-                <div className="integrity-item">
-                  <span className={`status-pill ${hasSupabaseConfig ? 'success' : 'danger'}`}>
-                    {hasSupabaseConfig ? 'Keys Loaded' : 'Missing Keys'}
-                  </span>
-                  <span className="integrity-label">Environment Config</span>
-                </div>
-                <div className="integrity-item">
-                  <span className={`status-pill ${user ? 'success' : 'warning'}`}>
-                    {user ? 'Authenticated' : 'Local Only'}
-                  </span>
-                  <span className="integrity-label">Owner Identity</span>
-                </div>
-              </div>
-              
-              <IonButton 
-                fill="solid" 
-                size="small" 
-                onClick={() => window.location.reload()}
-                className="diagnostic-reload"
-              >
-                Re-verify Connection
-              </IonButton>
-            </div>
-          </SectionCard>
+            </SectionCard>
+          ) : null}
 
           <SectionCard
             title="Owner access"
@@ -1031,39 +1035,41 @@ const SettingsPage: React.FC = () => {
             </div>
           </SectionCard>
 
-          <SectionCard
-            title="Business owner identity"
-            subtitle="Switch between roles to test permissions or repair your admin access."
-          >
-            <div className="list-block">
-               <div className="tab-group" style={{ padding: '8px 4px', borderBottom: '1px solid var(--border-color)', marginBottom: '16px' }}>
-                {state.users.map((u) => (
-                  <IonChip
-                    key={u.userId}
-                    color={state.currentUserId === u.userId ? 'primary' : 'medium'}
-                    onClick={() => switchUser(u.userId)}
-                    disabled={(u.accountStatus ?? 'active') === 'deactivated'}
-                  >
-                    <IonLabel>
-                      {u.name} ({u.roleLabel || u.role}){(u.accountStatus ?? 'active') === 'deactivated' ? ' • Deactivated' : ''}
-                    </IonLabel>
-                  </IonChip>
-                ))}
-              </div>
-
-               <div className="list-row" style={{ border: 'none' }}>
-                <div>
-                  <strong>Stuck in restricted mode?</strong>
-                  <p>If you cannot see Sales or Accounting, tap below to force system administrator access.</p>
+          {canManageSensitiveAdminSettings ? (
+            <SectionCard
+              title="Business owner identity"
+              subtitle="Switch between roles to test permissions or repair your admin access."
+            >
+              <div className="list-block">
+                 <div className="tab-group" style={{ padding: '8px 4px', borderBottom: '1px solid var(--border-color)', marginBottom: '16px' }}>
+                  {state.users.map((u) => (
+                    <IonChip
+                      key={u.userId}
+                      color={state.currentUserId === u.userId ? 'primary' : 'medium'}
+                      onClick={() => switchUser(u.userId)}
+                      disabled={(u.accountStatus ?? 'active') === 'deactivated'}
+                    >
+                      <IonLabel>
+                        {u.name} ({u.roleLabel || u.role}){(u.accountStatus ?? 'active') === 'deactivated' ? ' • Deactivated' : ''}
+                      </IonLabel>
+                    </IonChip>
+                  ))}
                 </div>
-                <IonButton fill="solid" color="danger" size="small" onClick={() => {
-                  switchUser('u-admin');
-                }}>
-                  Repair admin access
-                </IonButton>
+
+                 <div className="list-row" style={{ border: 'none' }}>
+                  <div>
+                    <strong>Stuck in restricted mode?</strong>
+                    <p>If you cannot see Sales or Accounting, tap below to force system administrator access.</p>
+                  </div>
+                  <IonButton fill="solid" color="danger" size="small" onClick={() => {
+                    switchUser('u-admin');
+                  }}>
+                    Repair admin access
+                  </IonButton>
+                </div>
               </div>
-            </div>
-          </SectionCard>
+            </SectionCard>
+          ) : null}
 
           <SectionCard
             title="Appearance"
@@ -1088,7 +1094,7 @@ const SettingsPage: React.FC = () => {
             </div>
           </SectionCard>
 
-           {hasPermission('permissions.manage') && (
+           {canManageSensitiveAdminSettings && (
              <SectionCard
                title="Team accounts"
                subtitle="Create, edit, and control employee access from one coherent team-management flow."
@@ -1147,14 +1153,16 @@ const SettingsPage: React.FC = () => {
             <div className="list-block">
               <div className="list-row">
                 <div>
-                  <strong>{isEmployeeSession ? 'Employee password recommendation' : 'Owner authentication'}</strong>
+                  <strong>{mustChangeEmployeePassword ? 'Temporary password must be changed' : isEmployeeSession ? 'Employee password recommendation' : 'Owner authentication'}</strong>
                   <p>
-                    {isEmployeeSession
+                    {mustChangeEmployeePassword
+                      ? 'Before continuing with daily work, replace the admin-issued temporary password with a personal password only you know.'
+                      : isEmployeeSession
                       ? 'Recommendation: after signing in with an admin-issued temporary password, replace it with a personal password before continuing with daily work.'
                       : 'Use the sign-in screen or password reset flow to manage your owner credentials securely through Supabase Auth.'}
                   </p>
                 </div>
-                {isEmployeeSession ? <IonBadge color="warning">Recommended</IonBadge> : null}
+                {mustChangeEmployeePassword ? <IonBadge color="danger">Required</IonBadge> : isEmployeeSession ? <IonBadge color="warning">Recommended</IonBadge> : null}
               </div>
             </div>
             {isEmployeeSession ? (
