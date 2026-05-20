@@ -1,6 +1,6 @@
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
 import type { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
-import type { ActivityLogEntry, AppNotification, BusinessLocation, BusinessState, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, StockMovement, TaxSnapshot, WithholdingTaxSnapshot, Purchase } from './seedBusiness';
+import type { AccountsPayable, ActivityLogEntry, AppNotification, BusinessLocation, BusinessState, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, Payment, RestockRequest, StockMovement, StockTransfer, TaxSnapshot, WithholdingTaxSnapshot, Purchase } from './seedBusiness';
 
 type BusinessLocationRow = {
   id: string;
@@ -191,6 +191,81 @@ type AppNotificationRow = {
   }> | null;
 };
 
+type AccountsPayableRow = {
+  id: string;
+  payable_code: string;
+  vendor_id: string;
+  vendor_code: string;
+  purchase_id: string;
+  amount_due: number;
+  amount_paid: number;
+  balance: number;
+  due_date: string | null;
+  status: AccountsPayable['status'];
+  payment_method: AccountsPayable['paymentMethod'] | null;
+  payment_reference: string | null;
+  created_by: string | null;
+  approved_by: string | null;
+  paid_by: string | null;
+  created_at: string;
+  updated_at: string;
+  paid_at: string | null;
+};
+
+type PaymentRow = {
+  id: string;
+  payment_code: string;
+  source_type: Payment['sourceType'];
+  source_id: string;
+  amount: number;
+  method: Payment['method'];
+  reference: string | null;
+  recorded_by: string;
+  created_at: string;
+};
+
+type StockTransferItemRow = {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+};
+
+type StockTransferRow = {
+  id: string;
+  transfer_code: string;
+  from_warehouse_id: string;
+  to_store_id: string;
+  status: StockTransfer['status'];
+  initiated_by: string;
+  approved_by: string | null;
+  dispatched_by: string | null;
+  received_by: string | null;
+  created_at: string;
+  approved_at: string | null;
+  dispatched_at: string | null;
+  received_at: string | null;
+  cancelled_at: string | null;
+  stock_transfer_items: StockTransferItemRow[] | null;
+};
+
+type RestockRequestRow = {
+  id: string;
+  product_id: string;
+  product_name: string;
+  requested_by_user_id: string;
+  requested_by_name: string;
+  current_quantity: number;
+  requested_quantity: number;
+  urgency: RestockRequest['urgency'];
+  note: string | null;
+  status: RestockRequest['status'];
+  created_at: string;
+  reviewed_at: string | null;
+  reviewed_by_user_id: string | null;
+  reviewed_by_name: string | null;
+  review_note: string | null;
+};
+
 function mapPaymentMethod(value: string | null | undefined): Sale['paymentMethod'] {
   if (value === 'mobile_money') {
     return 'Mobile Money';
@@ -222,7 +297,11 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       { data: expenses },
       { data: employeeCredentials },
       { data: auditEvents },
-      { data: appNotifications }
+      { data: appNotifications },
+      { data: accountsPayable },
+      { data: payments },
+      { data: stockTransfers },
+      { data: restockRequests }
     ] = await Promise.all([
       supabase.from('business_locations').select('*').eq('business_id', businessId).order('is_default', { ascending: false }).order('name', { ascending: true }),
       supabase.from('products').select('*').eq('business_id', businessId),
@@ -248,7 +327,15 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
         .from('app_notifications')
         .select('*, app_notification_reads(user_id)')
         .eq('business_id', businessId)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false }),
+      supabase.from('accounts_payable').select('*').eq('business_id', businessId).order('created_at', { ascending: false }),
+      supabase.from('payments').select('*').eq('business_id', businessId).order('created_at', { ascending: false }),
+      supabase
+        .from('stock_transfers')
+        .select('*, stock_transfer_items(product_id, product_name, quantity)')
+        .eq('business_id', businessId)
+        .order('created_at', { ascending: false }),
+      supabase.from('restock_requests').select('*').eq('business_id', businessId).order('created_at', { ascending: false })
     ]);
 
     const mappedLocations: BusinessLocation[] = ((locations || []) as BusinessLocationRow[]).map((location) => ({
@@ -486,6 +573,79 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       actionUrl: notification.action_url ?? undefined,
     }));
 
+    const mappedAccountsPayable: AccountsPayable[] = ((accountsPayable || []) as AccountsPayableRow[]).map((payable) => ({
+      id: payable.id,
+      payableCode: payable.payable_code,
+      vendorId: payable.vendor_id,
+      vendorCode: payable.vendor_code,
+      purchaseId: payable.purchase_id,
+      amountDue: payable.amount_due,
+      amountPaid: payable.amount_paid,
+      balance: payable.balance,
+      dueDate: payable.due_date ?? undefined,
+      status: payable.status,
+      paymentMethod: payable.payment_method ?? undefined,
+      paymentReference: payable.payment_reference ?? undefined,
+      createdBy: payable.created_by ?? undefined,
+      approvedBy: payable.approved_by ?? undefined,
+      paidBy: payable.paid_by ?? undefined,
+      createdAt: payable.created_at,
+      updatedAt: payable.updated_at,
+      paidAt: payable.paid_at ?? undefined,
+    }));
+
+    const mappedPayments: Payment[] = ((payments || []) as PaymentRow[]).map((payment) => ({
+      id: payment.id,
+      paymentCode: payment.payment_code,
+      sourceType: payment.source_type,
+      sourceId: payment.source_id,
+      amount: payment.amount,
+      method: payment.method,
+      reference: payment.reference ?? undefined,
+      recordedBy: payment.recorded_by,
+      createdAt: payment.created_at,
+    }));
+
+    const mappedStockTransfers: StockTransfer[] = ((stockTransfers || []) as StockTransferRow[]).map((transfer) => ({
+      id: transfer.id,
+      transferCode: transfer.transfer_code,
+      fromWarehouseId: transfer.from_warehouse_id,
+      toStoreId: transfer.to_store_id,
+      items: (transfer.stock_transfer_items ?? []).map((item) => ({
+        productId: item.product_id,
+        productName: item.product_name,
+        quantity: item.quantity,
+      })),
+      status: transfer.status,
+      initiatedBy: transfer.initiated_by,
+      approvedBy: transfer.approved_by ?? undefined,
+      dispatchedBy: transfer.dispatched_by ?? undefined,
+      receivedBy: transfer.received_by ?? undefined,
+      createdAt: transfer.created_at,
+      approvedAt: transfer.approved_at ?? undefined,
+      dispatchedAt: transfer.dispatched_at ?? undefined,
+      receivedAt: transfer.received_at ?? undefined,
+      cancelledAt: transfer.cancelled_at ?? undefined,
+    }));
+
+    const mappedRestockRequests: RestockRequest[] = ((restockRequests || []) as RestockRequestRow[]).map((request) => ({
+      id: request.id,
+      productId: request.product_id,
+      productName: request.product_name,
+      requestedByUserId: request.requested_by_user_id,
+      requestedByName: request.requested_by_name,
+      currentQuantity: request.current_quantity,
+      requestedQuantity: request.requested_quantity,
+      urgency: request.urgency,
+      note: request.note ?? undefined,
+      status: request.status,
+      createdAt: request.created_at,
+      reviewedAt: request.reviewed_at ?? undefined,
+      reviewedByUserId: request.reviewed_by_user_id ?? undefined,
+      reviewedByName: request.reviewed_by_name ?? undefined,
+      reviewNote: request.review_note ?? undefined,
+    }));
+
     return {
       products: mappedProducts,
       locations: mappedLocations,
@@ -495,11 +655,15 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       quotations: mappedQuotations,
       sales: mappedSales,
       purchases: mappedPurchases,
+      accountsPayable: mappedAccountsPayable,
+      payments: mappedPayments,
+      stockTransfers: mappedStockTransfers,
       stockMovements: mappedStockMovements,
       expenses: mappedExpenses,
       activityLogEntries: mappedAuditEvents,
       notifications: mappedNotifications,
-      users: mappedUsers
+      users: mappedUsers,
+      restockRequests: mappedRestockRequests
     };
   } catch (err) {
     console.error('[SupabaseLoader] Failed to load business data:', err);

@@ -89,7 +89,7 @@ import {
   LaunchBusinessWorkspaceInput,
   updateSalePaymentReferenceInState,
 } from '../utils/businessLogic';
-import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpense, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovement, syncEmployeeCredential, syncPurchase, syncEmployeePurchase, syncActivityLogEntry, syncAppNotification, syncAppNotificationRead, verifyEmployeeCredential, rotateEmployeePassword } from '../data/supabaseSync';
+import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpenseForUser, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovementForUser, syncEmployeeCredential, syncPurchase, syncEmployeePurchase, syncActivityLogEntry, syncAppNotification, syncAppNotificationRead, syncAccountsPayableForUser, syncPaymentForUser, syncRestockRequestForUser, syncStockTransferForUser, verifyEmployeeCredential, rotateEmployeePassword } from '../data/supabaseSync';
 import { selectProductQuantityOnHand, selectSaleBalanceRemaining } from '../selectors/businessSelectors';
 import { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
 import { hasPermission } from '../authz/permissions';
@@ -626,11 +626,15 @@ export function BusinessProvider({ children }: PropsWithChildren) {
             purchases: Array.from(cloudPurchasesById.values()).sort((left, right) =>
               new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
             ),
+            accountsPayable: fullCloudData.accountsPayable ?? current.accountsPayable,
+            payments: fullCloudData.payments ?? current.payments,
+            stockTransfers: fullCloudData.stockTransfers ?? current.stockTransfers,
             sales: fullCloudData.sales ?? current.sales,
             stockMovements: fullCloudData.stockMovements ?? current.stockMovements,
             expenses: fullCloudData.expenses ?? current.expenses,
             activityLogEntries: fullCloudData.activityLogEntries ?? current.activityLogEntries,
             notifications: fullCloudData.notifications ?? current.notifications,
+            restockRequests: fullCloudData.restockRequests ?? current.restockRequests,
           };
         });
 
@@ -793,7 +797,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         result.data.stockMovements
           .filter((movement) => !currentState.stockMovements.some((existing) => existing.id === movement.id))
           .forEach((movement) => {
-            void syncStockMovement(currentState.businessProfile.id, movement);
+            void syncStockMovementForUser(currentState.businessProfile.id, currentUser, movement);
           });
 
         return { ok: true };
@@ -956,7 +960,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         data.stockMovements
           .filter((movement) => !state.stockMovements.some((existing) => existing.id === movement.id))
           .forEach((movement) => {
-            void syncStockMovement(state.businessProfile.id, movement);
+            void syncStockMovementForUser(state.businessProfile.id, currentUser, movement);
           });
 
         return { ok: true, receipts: receipts.map(mapConvertedReceipt), quotationNumber };
@@ -981,7 +985,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         result.data.data.stockMovements
           .filter((movement) => !state.stockMovements.some((existing) => existing.id === movement.id))
           .forEach((movement) => {
-            void syncStockMovement(state.businessProfile.id, movement);
+            void syncStockMovementForUser(state.businessProfile.id, currentUser, movement);
           });
 
         return { ok: true, reversedSaleId: reversedSale.id };
@@ -1057,7 +1061,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         result.data.stockMovements
           .filter((movement) => !state.stockMovements.some((existing) => existing.id === movement.id))
           .forEach((movement) => {
-            void syncStockMovement(state.businessProfile.id, movement);
+            void syncStockMovementForUser(state.businessProfile.id, currentUser, movement);
           });
 
         return lowStockAlert ? { ok: true, receipt, lowStockAlert } : { ok: true, receipt };
@@ -1466,6 +1470,12 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         if (!result.ok) return result;
         if (!result.data) return { ok: false, message: 'Action failed to update state.' };
         setState(result.data);
+        const createdRequest = result.data.restockRequests.find((request) =>
+          !state.restockRequests.some((existing) => existing.id === request.id)
+        );
+        if (createdRequest) {
+          void syncRestockRequestForUser(state.businessProfile.id, currentUser, createdRequest);
+        }
         return { ok: true };
       },
       reviewRestockRequest(input) {
@@ -1476,6 +1486,10 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         if (!result.ok) return result;
         if (!result.data) return { ok: false, message: 'Review failed to update state.' };
         setState(result.data);
+        const updatedRequest = result.data.restockRequests.find((request) => request.id === input.requestId);
+        if (updatedRequest) {
+          void syncRestockRequestForUser(state.businessProfile.id, currentUser, updatedRequest);
+        }
         return { ok: true };
       },
       async updateBranding(input) {
@@ -1511,7 +1525,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         // Background Sync
         const newExpense = result.data.expenses[0];
         if (newExpense) {
-          void syncExpense(state.businessProfile.id, newExpense);
+          void syncExpenseForUser(state.businessProfile.id, currentUser, newExpense);
         }
 
         return { ok: true };
@@ -1909,7 +1923,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           !currentState.stockMovements.some((existing) => existing.id === movement.id)
         );
         const syncResults = await Promise.all(newMovements.map((movement) =>
-          syncStockMovement(currentState.businessProfile.id, movement)
+          syncStockMovementForUser(currentState.businessProfile.id, currentUser, movement)
         ));
         if (syncResults.some((ok) => !ok)) {
           return { ok: false, message: getCloudSaveMessage('Purchase receipt could not be saved to the cloud right now.') };
@@ -1939,6 +1953,15 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         stateRef.current = result.data;
         setState(result.data);
+        const createdPayable = result.data.accountsPayable.find((payable) =>
+          !currentState.accountsPayable.some((existing) => existing.id === payable.id)
+        );
+        if (createdPayable) {
+          const syncOk = await syncAccountsPayableForUser(currentState.businessProfile.id, currentUser, createdPayable);
+          if (!syncOk) {
+            return { ok: true, message: buildLocalSaveWarning('Payable could not be saved to the cloud right now.') };
+          }
+        }
         return { ok: true };
       },
       async approvePayable(input) {
@@ -1957,6 +1980,13 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         stateRef.current = result.data;
         setState(result.data);
+        const updatedPayable = result.data.accountsPayable.find((payable) => payable.id === input.payableId);
+        if (updatedPayable) {
+          const syncOk = await syncAccountsPayableForUser(currentState.businessProfile.id, currentUser, updatedPayable);
+          if (!syncOk) {
+            return { ok: true, message: buildLocalSaveWarning('Payable approval could not be saved to the cloud right now.') };
+          }
+        }
         return { ok: true };
       },
       async recordPayablePayment(input) {
@@ -1975,6 +2005,21 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         stateRef.current = result.data;
         setState(result.data);
+        const updatedPayable = result.data.accountsPayable.find((payable) => payable.id === input.payableId);
+        const createdPayment = result.data.payments.find((payment) =>
+          !currentState.payments.some((existing) => existing.id === payment.id)
+        );
+        const syncResults = await Promise.all([
+          updatedPayable
+            ? syncAccountsPayableForUser(currentState.businessProfile.id, currentUser, updatedPayable)
+            : Promise.resolve(true),
+          createdPayment
+            ? syncPaymentForUser(currentState.businessProfile.id, currentUser, createdPayment)
+            : Promise.resolve(true),
+        ]);
+        if (syncResults.some((ok) => !ok)) {
+          return { ok: true, message: buildLocalSaveWarning('Payable payment could not be saved to the cloud right now.') };
+        }
         return { ok: true };
       },
       async updateSalePaymentReference(input) {
@@ -2023,10 +2068,19 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           !currentState.stockMovements.some((existing) => existing.id === movement.id)
         );
         const syncResults = await Promise.all(newMovements.map((movement) =>
-          syncStockMovement(currentState.businessProfile.id, movement)
+          syncStockMovementForUser(currentState.businessProfile.id, currentUser, movement)
         ));
         if (syncResults.some((ok) => !ok)) {
           return { ok: false, message: getCloudSaveMessage('Transfer could not be saved to the cloud right now.') };
+        }
+        const createdTransfer = result.data.stockTransfers.find((transfer) =>
+          !currentState.stockTransfers.some((existing) => existing.id === transfer.id)
+        );
+        if (createdTransfer) {
+          const transferSyncOk = await syncStockTransferForUser(currentState.businessProfile.id, currentUser, createdTransfer);
+          if (!transferSyncOk) {
+            return { ok: false, message: getCloudSaveMessage('Transfer could not be saved to the cloud right now.') };
+          }
         }
 
         stateRef.current = result.data;
@@ -2047,6 +2101,16 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           return { ok: false, message: 'Could not create the stock transfer right now.' };
         }
 
+        const createdTransfer = result.data.stockTransfers.find((transfer) =>
+          !currentState.stockTransfers.some((existing) => existing.id === transfer.id)
+        );
+        if (createdTransfer) {
+          const syncOk = await syncStockTransferForUser(currentState.businessProfile.id, currentUser, createdTransfer);
+          if (!syncOk) {
+            return { ok: false, message: getCloudSaveMessage('Stock transfer could not be saved to the cloud right now.') };
+          }
+        }
+
         stateRef.current = result.data;
         setState(result.data);
         return { ok: true };
@@ -2065,6 +2129,14 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           return { ok: false, message: 'Could not approve the stock transfer right now.' };
         }
 
+        const updatedTransfer = result.data.stockTransfers.find((transfer) => transfer.id === input.transferId);
+        if (updatedTransfer) {
+          const syncOk = await syncStockTransferForUser(currentState.businessProfile.id, currentUser, updatedTransfer);
+          if (!syncOk) {
+            return { ok: false, message: getCloudSaveMessage('Stock transfer approval could not be saved to the cloud right now.') };
+          }
+        }
+
         stateRef.current = result.data;
         setState(result.data);
         return { ok: true };
@@ -2081,6 +2153,14 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         }
         if (!result.data) {
           return { ok: false, message: 'Could not dispatch the stock transfer right now.' };
+        }
+
+        const updatedTransfer = result.data.stockTransfers.find((transfer) => transfer.id === input.transferId);
+        if (updatedTransfer) {
+          const syncOk = await syncStockTransferForUser(currentState.businessProfile.id, currentUser, updatedTransfer);
+          if (!syncOk) {
+            return { ok: false, message: getCloudSaveMessage('Stock transfer dispatch could not be saved to the cloud right now.') };
+          }
         }
 
         stateRef.current = result.data;
@@ -2105,10 +2185,17 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           !currentState.stockMovements.some((existing) => existing.id === movement.id)
         );
         const syncResults = await Promise.all(newMovements.map((movement) =>
-          syncStockMovement(currentState.businessProfile.id, movement)
+          syncStockMovementForUser(currentState.businessProfile.id, currentUser, movement)
         ));
         if (syncResults.some((ok) => !ok)) {
           return { ok: false, message: getCloudSaveMessage('Transfer receipt could not be saved to the cloud right now.') };
+        }
+        const updatedTransfer = result.data.stockTransfers.find((transfer) => transfer.id === input.transferId);
+        if (updatedTransfer) {
+          const syncOk = await syncStockTransferForUser(currentState.businessProfile.id, currentUser, updatedTransfer);
+          if (!syncOk) {
+            return { ok: false, message: getCloudSaveMessage('Transfer receipt could not be saved to the cloud right now.') };
+          }
         }
 
         stateRef.current = result.data;
@@ -2127,6 +2214,14 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         }
         if (!result.data) {
           return { ok: false, message: 'Could not cancel the stock transfer right now.' };
+        }
+
+        const updatedTransfer = result.data.stockTransfers.find((transfer) => transfer.id === input.transferId);
+        if (updatedTransfer) {
+          const syncOk = await syncStockTransferForUser(currentState.businessProfile.id, currentUser, updatedTransfer);
+          if (!syncOk) {
+            return { ok: false, message: getCloudSaveMessage('Stock transfer cancellation could not be saved to the cloud right now.') };
+          }
         }
 
         stateRef.current = result.data;

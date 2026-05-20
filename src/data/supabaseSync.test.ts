@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockUpdate = vi.fn();
 const mockEq = vi.fn();
 const mockUpsert = vi.fn();
+const mockRpc = vi.fn();
 const mockFrom = vi.fn();
 
 vi.mock('../lib/supabase', () => ({
   hasSupabaseConfig: true,
   getSupabaseClient: () => ({
     from: mockFrom,
+    rpc: mockRpc,
   }),
 }));
 
@@ -18,10 +20,12 @@ describe('supabaseSync', () => {
     mockUpdate.mockReset();
     mockEq.mockReset();
     mockUpsert.mockReset();
+    mockRpc.mockReset();
     mockFrom.mockReset();
     mockFrom.mockReturnValue({ update: mockUpdate, upsert: mockUpsert });
     mockUpdate.mockReturnValue({ eq: mockEq });
     mockUpsert.mockResolvedValue({ error: null });
+    mockRpc.mockResolvedValue({ error: null });
   });
 
   it('formats missing-column schema cache errors clearly', async () => {
@@ -205,5 +209,48 @@ describe('supabaseSync', () => {
       }),
       { onConflict: 'notification_id,user_id' }
     );
+  });
+
+  it('routes employee payable payments through the server-enforced workflow RPC', async () => {
+    const { syncPaymentForUser } = await import('./supabaseSync');
+
+    const ok = await syncPaymentForUser(
+      'biz-123',
+      {
+        userId: 'accountant-1',
+        businessId: 'biz-123',
+        name: 'Accountant',
+        email: 'accountant@example.com',
+        username: 'accountant@example.com',
+        role: 'Accountant',
+        grantedPermissions: [],
+        revokedPermissions: [],
+        employeeSessionSecret: 'session-secret',
+      },
+      {
+        id: 'pay-123',
+        paymentCode: 'PAY-001',
+        sourceType: 'payable',
+        sourceId: 'ap-123',
+        amount: 100,
+        method: 'bank',
+        reference: 'BANK-1',
+        recordedBy: 'accountant-1',
+        createdAt: '2026-05-19T10:00:00.000Z',
+      }
+    );
+
+    expect(ok).toBe(true);
+    expect(mockRpc).toHaveBeenCalledWith('sync_employee_workflow', {
+      credential_identifier: 'accountant@example.com',
+      credential_password: 'session-secret',
+      workflow_type: 'payment',
+      workflow_payload: expect.objectContaining({
+        id: 'pay-123',
+        sourceType: 'payable',
+        amount: 100,
+      }),
+    });
+    expect(mockFrom).not.toHaveBeenCalledWith('payments');
   });
 });

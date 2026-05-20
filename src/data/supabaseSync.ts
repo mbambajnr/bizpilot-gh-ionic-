@@ -1,6 +1,6 @@
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
 import type { UserAccessProfile } from '../authz/types';
-import type { ActivityLogEntry, AppNotification, BusinessLocation, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, BusinessProfile, Quotation, StockMovement, Purchase } from './seedBusiness';
+import type { AccountsPayable, ActivityLogEntry, AppNotification, BusinessLocation, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, BusinessProfile, Payment, Quotation, RestockRequest, StockMovement, StockTransfer, Purchase } from './seedBusiness';
 
 let lastSupabaseSyncErrorMessage: string | null = null;
 
@@ -60,6 +60,38 @@ function mapPaymentMethodForSync(paymentMethod: Sale['paymentMethod']) {
   }
 
   return 'cash';
+}
+
+async function syncEmployeeWorkflow(user: UserAccessProfile, workflowType: string, workflowPayload: Record<string, unknown>) {
+  if (!hasSupabaseConfig) return true;
+  const credentialPassword = user.employeeSessionSecret;
+  if (!user.businessId || !credentialPassword) {
+    setLastSupabaseSyncErrorMessage('Employee workflow sync requires a fresh cloud employee sign-in.');
+    return false;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.rpc('sync_employee_workflow', {
+      credential_identifier: user.username ?? user.email,
+      credential_password: credentialPassword,
+      workflow_type: workflowType,
+      workflow_payload: workflowPayload,
+    });
+
+    if (error) {
+      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(error.message));
+      console.error(`[SupabaseSync] Error syncing employee ${workflowType}:`, error.message);
+      return false;
+    }
+
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Employee workflow sync failed before the request could complete.');
+    console.error(`[SupabaseSync] Fatal error syncing employee ${workflowType}:`, err);
+    return false;
+  }
 }
 
 /**
@@ -475,6 +507,167 @@ export async function syncStockMovement(businessId: string, movement: StockMovem
   });
 }
 
+export async function syncStockMovementForUser(businessId: string, user: UserAccessProfile, movement: StockMovement) {
+  if (user.employeeSessionSecret && user.businessId) {
+    return syncEmployeeWorkflow(user, 'stock_movement', movement);
+  }
+
+  return syncStockMovement(businessId, movement);
+}
+
+export async function syncAccountsPayable(businessId: string, payable: AccountsPayable) {
+  return upsertEntity('accounts_payable', {
+    id: payable.id,
+    business_id: businessId,
+    payable_code: payable.payableCode,
+    vendor_id: payable.vendorId,
+    vendor_code: payable.vendorCode,
+    purchase_id: payable.purchaseId,
+    amount_due: payable.amountDue,
+    amount_paid: payable.amountPaid,
+    balance: payable.balance,
+    due_date: payable.dueDate ?? null,
+    status: payable.status,
+    payment_method: payable.paymentMethod ?? null,
+    payment_reference: payable.paymentReference ?? null,
+    created_by: payable.createdBy ?? null,
+    approved_by: payable.approvedBy ?? null,
+    paid_by: payable.paidBy ?? null,
+    created_at: payable.createdAt,
+    updated_at: payable.updatedAt,
+    paid_at: payable.paidAt ?? null,
+  });
+}
+
+export async function syncAccountsPayableForUser(businessId: string, user: UserAccessProfile, payable: AccountsPayable) {
+  if (user.employeeSessionSecret && user.businessId) {
+    return syncEmployeeWorkflow(user, 'payable', payable);
+  }
+
+  return syncAccountsPayable(businessId, payable);
+}
+
+export async function syncPayment(businessId: string, payment: Payment) {
+  return upsertEntity('payments', {
+    id: payment.id,
+    business_id: businessId,
+    payment_code: payment.paymentCode,
+    source_type: payment.sourceType,
+    source_id: payment.sourceId,
+    amount: payment.amount,
+    method: payment.method,
+    reference: payment.reference ?? null,
+    recorded_by: payment.recordedBy,
+    created_at: payment.createdAt,
+  });
+}
+
+export async function syncPaymentForUser(businessId: string, user: UserAccessProfile, payment: Payment) {
+  if (user.employeeSessionSecret && user.businessId) {
+    return syncEmployeeWorkflow(user, 'payment', payment);
+  }
+
+  return syncPayment(businessId, payment);
+}
+
+export async function syncStockTransfer(businessId: string, transfer: StockTransfer) {
+  const transferOk = await upsertEntity('stock_transfers', {
+    id: transfer.id,
+    business_id: businessId,
+    transfer_code: transfer.transferCode,
+    from_warehouse_id: transfer.fromWarehouseId,
+    to_store_id: transfer.toStoreId,
+    status: transfer.status,
+    initiated_by: transfer.initiatedBy,
+    approved_by: transfer.approvedBy ?? null,
+    dispatched_by: transfer.dispatchedBy ?? null,
+    received_by: transfer.receivedBy ?? null,
+    created_at: transfer.createdAt,
+    approved_at: transfer.approvedAt ?? null,
+    dispatched_at: transfer.dispatchedAt ?? null,
+    received_at: transfer.receivedAt ?? null,
+    cancelled_at: transfer.cancelledAt ?? null,
+  });
+
+  if (!transferOk || !hasSupabaseConfig) {
+    return transferOk;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { error: deleteError } = await supabase.from('stock_transfer_items').delete().eq('transfer_id', transfer.id);
+    if (deleteError) {
+      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(deleteError.message));
+      console.error('[SupabaseSync] Error replacing stock transfer items:', deleteError.message);
+      return false;
+    }
+
+    if (transfer.items.length === 0) {
+      setLastSupabaseSyncErrorMessage(null);
+      return true;
+    }
+
+    const { error: insertError } = await supabase.from('stock_transfer_items').insert(
+      transfer.items.map((item) => ({
+        transfer_id: transfer.id,
+        product_id: item.productId,
+        product_name: item.productName,
+        quantity: item.quantity,
+      }))
+    );
+
+    if (insertError) {
+      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(insertError.message));
+      console.error('[SupabaseSync] Error inserting stock transfer items:', insertError.message);
+      return false;
+    }
+
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Supabase sync failed before stock transfer items could be updated.');
+    console.error('[SupabaseSync] Fatal error syncing stock transfer items:', err);
+    return false;
+  }
+}
+
+export async function syncStockTransferForUser(businessId: string, user: UserAccessProfile, transfer: StockTransfer) {
+  if (user.employeeSessionSecret && user.businessId) {
+    return syncEmployeeWorkflow(user, 'stock_transfer', transfer);
+  }
+
+  return syncStockTransfer(businessId, transfer);
+}
+
+export async function syncRestockRequest(businessId: string, request: RestockRequest) {
+  return upsertEntity('restock_requests', {
+    id: request.id,
+    business_id: businessId,
+    product_id: request.productId,
+    product_name: request.productName,
+    requested_by_user_id: request.requestedByUserId,
+    requested_by_name: request.requestedByName,
+    current_quantity: request.currentQuantity,
+    requested_quantity: request.requestedQuantity,
+    urgency: request.urgency,
+    note: request.note ?? null,
+    status: request.status,
+    created_at: request.createdAt,
+    reviewed_at: request.reviewedAt ?? null,
+    reviewed_by_user_id: request.reviewedByUserId ?? null,
+    reviewed_by_name: request.reviewedByName ?? null,
+    review_note: request.reviewNote ?? null,
+  });
+}
+
+export async function syncRestockRequestForUser(businessId: string, user: UserAccessProfile, request: RestockRequest) {
+  if (user.employeeSessionSecret && user.businessId) {
+    return syncEmployeeWorkflow(user, 'restock_request', request);
+  }
+
+  return syncRestockRequest(businessId, request);
+}
+
 export async function syncCustomer(businessId: string, customer: Customer) {
   return upsertEntity('customers', {
     id: customer.id,
@@ -602,8 +795,18 @@ export async function syncExpense(businessId: string, expense: Expense) {
     amount: expense.amount,
     note: expense.note,
     proof_url: '', // placeholder for future attachment flow
+    recorded_by_user_id: expense.recordedByUserId,
+    recorded_by_name: expense.recordedByName,
     created_at: expense.createdAt,
   });
+}
+
+export async function syncExpenseForUser(businessId: string, user: UserAccessProfile, expense: Expense) {
+  if (user.employeeSessionSecret && user.businessId) {
+    return syncEmployeeWorkflow(user, 'expense', expense);
+  }
+
+  return syncExpense(businessId, expense);
 }
 
 export async function syncBusinessProfile(profile: BusinessProfile) {
