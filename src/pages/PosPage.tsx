@@ -31,11 +31,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import OfflineSyncStatus from '../components/OfflineSyncStatus';
 import {
+  loadMagentoStock,
   type MagentoCatalog,
   type MagentoCatalogProduct,
   type MagentoPosOrder,
   type MagentoPosOrderInput,
 } from '../lib/magentoClient';
+import { isOnline } from '../offline/networkStatus';
 import { loadPosCatalogWithOfflineSupport, placePosOrderWithOfflineSupport } from '../offline/offlinePos';
 import { formatCurrency } from '../utils/format';
 
@@ -86,6 +88,67 @@ const PosPage = () => {
 
   useEffect(() => {
     void loadCatalog();
+  }, []);
+
+  // Live register: poll the cheap stock snapshot every 30s (online + visible
+  // only) and merge fresh per-branch quantities into the loaded catalog, so
+  // sales from the website or other branches show up without a full resync.
+  useEffect(() => {
+    const refreshStock = async () => {
+      if (!isOnline() || document.visibilityState !== 'visible') {
+        return;
+      }
+      try {
+        const { stock } = await loadMagentoStock();
+        const bySku = new Map<string, Map<string, { quantity: number; is_salable: boolean }>>();
+        for (const item of stock.items) {
+          if (!bySku.has(item.sku)) {
+            bySku.set(item.sku, new Map());
+          }
+          bySku.get(item.sku)!.set(item.source_code, { quantity: item.quantity, is_salable: item.is_salable });
+        }
+        setCatalog((current) => {
+          if (!current) {
+            return current;
+          }
+          return {
+            ...current,
+            products: current.products.map((product) => {
+              const sources = bySku.get(product.sku);
+              if (!sources) {
+                return product;
+              }
+              const sourceQuantities = [...sources.entries()].map(([source_code, entry]) => ({
+                source_code,
+                quantity: entry.quantity,
+                is_salable: entry.is_salable,
+              }));
+              const total = sourceQuantities.reduce((sum, sq) => sum + sq.quantity, 0);
+              return {
+                ...product,
+                quantity: total,
+                is_salable: sourceQuantities.some((sq) => sq.is_salable),
+                source_quantities: sourceQuantities,
+              };
+            }),
+          };
+        });
+      } catch {
+        // Polling is best-effort; the register keeps its last known numbers.
+      }
+    };
+    const interval = window.setInterval(refreshStock, 30_000);
+    // A register waking from sleep/background should show the truth at once.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshStock();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   const selectedBranch = catalog?.branches.find((branch) => branch.id === branchId);

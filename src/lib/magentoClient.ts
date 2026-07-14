@@ -48,6 +48,16 @@ export type MagentoIntegrationStatus = {
   storeCode: string;
 };
 
+export type MagentoStockSnapshot = {
+  generated_at: string;
+  items: Array<{
+    sku: string;
+    source_code: string;
+    quantity: number;
+    is_salable: boolean;
+  }>;
+};
+
 export type MagentoPosOrderInput = {
   branchId: number;
   /**
@@ -105,6 +115,15 @@ export async function loadMagentoCatalog() {
   return parseResponse<{ ok: true; catalog: MagentoCatalog }>(
     response,
     'Magento catalog synchronization failed.'
+  );
+}
+
+/** Cheap per-branch quantities snapshot — polled to keep the register live. */
+export async function loadMagentoStock() {
+  const response = await apiFetch('/api/magento/stock');
+  return parseResponse<{ ok: true; stock: MagentoStockSnapshot }>(
+    response,
+    'Magento stock refresh failed.'
   );
 }
 

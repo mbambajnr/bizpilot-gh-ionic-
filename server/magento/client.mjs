@@ -109,6 +109,22 @@ export async function fetchMagentoCatalog() {
   }
 }
 
+/**
+ * Lightweight per-branch stock snapshot — polled by the POS register so
+ * sales from other channels (website, other branches) show up within ~30s.
+ */
+export async function fetchMagentoStock() {
+  const config = getConfig();
+  if (!config.baseUrl || !config.accessToken) {
+    throw new Error('Magento integration is not configured on the BizPilot server.');
+  }
+  const payload = await magentoRequest('/V1/custom-storefront/pos/stock');
+  if (!payload || !Array.isArray(payload.items)) {
+    throw new Error('Magento returned an invalid POS stock payload.');
+  }
+  return payload;
+}
+
 export async function createMagentoPosOrder(input) {
   const config = getConfig();
   if (!config.baseUrl || !config.accessToken) {

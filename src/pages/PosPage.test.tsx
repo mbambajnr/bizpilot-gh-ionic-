@@ -5,10 +5,12 @@ import PosPage from './PosPage';
 
 const loadMagentoCatalog = vi.fn();
 const createMagentoPosOrder = vi.fn();
+const loadMagentoStock = vi.fn(async () => ({ ok: true, stock: { generated_at: '', items: [] } }));
 
 vi.mock('../lib/magentoClient', () => ({
   loadMagentoCatalog: () => loadMagentoCatalog(),
   createMagentoPosOrder: (input: unknown) => createMagentoPosOrder(input),
+  loadMagentoStock: () => loadMagentoStock(),
 }));
 
 describe('PosPage', () => {

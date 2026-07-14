@@ -7,7 +7,7 @@ import {
   saveBusinessEmailConfig,
 } from './email/configStore.mjs';
 import { createBusinessEmailService } from './email/createBusinessEmailService.mjs';
-import { createMagentoPosOrder, fetchMagentoCatalog, getMagentoIntegrationStatus } from './magento/client.mjs';
+import { createMagentoPosOrder, fetchMagentoCatalog, fetchMagentoStock, getMagentoIntegrationStatus } from './magento/client.mjs';
 import { createCorsPolicy, createSecurity } from './security.mjs';
 import { createStaticServer } from './static.mjs';
 
@@ -295,6 +295,20 @@ const server = http.createServer(async (request, response) => {
       json(response, 200, { ok: true, catalog });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Magento catalog synchronization failed.';
+      json(response, 502, { ok: false, message });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && request.url === '/api/magento/stock') {
+    if (!(await requireUser(request, response))) {
+      return;
+    }
+    try {
+      const stock = await fetchMagentoStock();
+      json(response, 200, { ok: true, stock });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Magento stock refresh failed.';
       json(response, 502, { ok: false, message });
     }
     return;
