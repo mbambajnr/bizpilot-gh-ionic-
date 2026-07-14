@@ -1,3 +1,5 @@
+import { apiFetch } from './apiClient';
+
 export type MagentoCatalogProduct = {
   id: number;
   sku: string;
@@ -79,7 +81,7 @@ async function parseResponse<T>(response: Response, fallback: string): Promise<T
 }
 
 export async function loadMagentoIntegrationStatus() {
-  const response = await fetch('/api/magento/health');
+  const response = await apiFetch('/api/magento/health');
   return parseResponse<{ ok: true; integration: MagentoIntegrationStatus }>(
     response,
     'Magento integration status is unavailable.'
@@ -87,7 +89,7 @@ export async function loadMagentoIntegrationStatus() {
 }
 
 export async function loadMagentoCatalog() {
-  const response = await fetch('/api/magento/catalog');
+  const response = await apiFetch('/api/magento/catalog');
   return parseResponse<{ ok: true; catalog: MagentoCatalog }>(
     response,
     'Magento catalog synchronization failed.'
@@ -95,7 +97,7 @@ export async function loadMagentoCatalog() {
 }
 
 export async function createMagentoPosOrder(input: MagentoPosOrderInput) {
-  const response = await fetch('/api/magento/orders', {
+  const response = await apiFetch('/api/magento/orders', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

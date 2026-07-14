@@ -1,3 +1,5 @@
+import { apiFetch } from './apiClient';
+
 export type SendEmailInput = {
   businessId: string;
   recipient: string;
@@ -10,7 +12,7 @@ export type SendEmailInput = {
 };
 
 export async function sendEmail(input: SendEmailInput) {
-  const response = await fetch('/api/email/send', {
+  const response = await apiFetch('/api/email/send', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

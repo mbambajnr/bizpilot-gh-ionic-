@@ -125,8 +125,8 @@ const AuthPage: React.FC = () => {
                 <span>Signed-in owner data isolation.</span>
               </div>
               <div>
-                <strong>Local-first</strong>
-                <span>Workflows stay online or offline.</span>
+                <strong>Works anywhere</strong>
+                <span>On your phone, tablet, or laptop browser.</span>
               </div>
               <div>
                 <strong>Enterprise focus</strong>

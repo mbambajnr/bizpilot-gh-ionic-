@@ -1,3 +1,5 @@
+import { apiFetch } from './apiClient';
+
 export type BusinessEmailConfig = {
   businessId: string;
   smtpHost: string;
@@ -36,7 +38,7 @@ async function parseApiPayload(response: Response, fallbackMessage: string) {
 export async function loadBusinessEmailConfig(businessId: string) {
   let response: Response;
   try {
-    response = await fetch(`/api/email/config/${encodeURIComponent(businessId)}`);
+    response = await apiFetch(`/api/email/config/${encodeURIComponent(businessId)}`);
   } catch {
     throw new Error('Business email service is unavailable. Start the email server and try again.');
   }
@@ -52,7 +54,7 @@ export async function loadBusinessEmailConfig(businessId: string) {
 export async function saveBusinessEmailConfig(input: SaveBusinessEmailConfigInput) {
   let response: Response;
   try {
-    response = await fetch('/api/email/config', {
+    response = await apiFetch('/api/email/config', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
