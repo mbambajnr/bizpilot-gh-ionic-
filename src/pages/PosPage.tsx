@@ -29,14 +29,14 @@ import {
 } from 'ionicons/icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import OfflineSyncStatus from '../components/OfflineSyncStatus';
 import {
-  createMagentoPosOrder,
-  loadMagentoCatalog,
   type MagentoCatalog,
   type MagentoCatalogProduct,
   type MagentoPosOrder,
   type MagentoPosOrderInput,
 } from '../lib/magentoClient';
+import { loadPosCatalogWithOfflineSupport, placePosOrderWithOfflineSupport } from '../offline/offlinePos';
 import { formatCurrency } from '../utils/format';
 
 type CartLine = {
@@ -65,13 +65,18 @@ const PosPage = () => {
     setLoading(true);
     setMessage('');
     try {
-      const result = await loadMagentoCatalog();
+      const result = await loadPosCatalogWithOfflineSupport();
       setCatalog(result.catalog);
       setBranchId((current) =>
         result.catalog.branches.some((branch) => branch.id === current)
           ? current
           : result.catalog.branches[0]?.id ?? null
       );
+      if (result.cachedAt) {
+        setMessage(
+          `Offline — using the catalog saved ${new Date(result.cachedAt).toLocaleString()}. Sales made now will sync automatically.`
+        );
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not load the Magento catalog.');
     } finally {
@@ -130,7 +135,7 @@ const PosPage = () => {
     setSubmitting(true);
     setMessage('');
     try {
-      const result = await createMagentoPosOrder({
+      const result = await placePosOrderWithOfflineSupport({
         branchId,
         clientRef: saleClientRef.current,
         customer: {
@@ -145,11 +150,20 @@ const PosPage = () => {
           quantity: line.quantity,
         })),
       });
+
+      // Both outcomes mean the sale is recorded (immediately, or durably
+      // queued for idempotent replay) — the cart is done either way.
       saleClientRef.current = null;
-      setCompletedOrder(result.order);
       setCart([]);
       setPaymentReference('');
-      await loadCatalog();
+
+      if (result.status === 'placed') {
+        setCompletedOrder(result.order);
+        await loadCatalog();
+      } else {
+        setCompletedOrder(null);
+        setMessage('No connection — sale saved on this device and will sync to Magento automatically.');
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Magento POS checkout failed.');
     } finally {
@@ -162,6 +176,9 @@ const PosPage = () => {
       <IonHeader translucent={true}>
         <IonToolbar>
           <IonTitle>Point of Sale</IonTitle>
+          <div slot="end" style={{ paddingRight: 12 }}>
+            <OfflineSyncStatus />
+          </div>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>

@@ -89,7 +89,9 @@ import {
   LaunchBusinessWorkspaceInput,
   updateSalePaymentReferenceInState,
 } from '../utils/businessLogic';
-import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpenseForUser, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovementForUser, syncEmployeeCredential, syncPurchase, syncEmployeePurchase, syncActivityLogEntry, syncAppNotification, syncAppNotificationRead, syncAccountsPayableForUser, syncPaymentForUser, syncRestockRequestForUser, syncStockTransferForUser, verifyEmployeeCredential, rotateEmployeePassword } from '../data/supabaseSync';
+// Offline-resilient wrappers: identical behavior online; when the network is
+// down, writes are captured in a durable queue and replayed on reconnect.
+import { getLastSupabaseSyncErrorMessage, syncProduct, syncCustomer, syncSale, syncExpenseForUser, syncBusinessProfile, syncProductCategory, syncQuotation, syncBusinessLocation, syncSupplyRoute, syncStockMovementForUser, syncEmployeeCredential, syncPurchase, syncEmployeePurchase, syncActivityLogEntry, syncAppNotification, syncAppNotificationRead, syncAccountsPayableForUser, syncPaymentForUser, syncRestockRequestForUser, syncStockTransferForUser, verifyEmployeeCredential, rotateEmployeePassword, flushOfflineSync } from '../offline/offlineSync';
 import { selectProductQuantityOnHand, selectSaleBalanceRemaining } from '../selectors/businessSelectors';
 import { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
 import { hasPermission } from '../authz/permissions';
@@ -575,6 +577,11 @@ export function BusinessProvider({ children }: PropsWithChildren) {
       }
 
       if (result.status === 'loaded') {
+        // Push any offline-captured writes BEFORE pulling cloud state, so a
+        // reconnecting device can't overwrite its own unsynced work.
+        await flushOfflineSync();
+        if (cancelled) return;
+
         const fullCloudData = await loadFullBusinessDataFromSupabase(result.profile.id);
         if (cancelled) return;
 
