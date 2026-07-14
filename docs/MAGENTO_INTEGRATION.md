@@ -25,6 +25,13 @@ Products include `price` (the charge price — special prices and catalog rules 
 `updatedSince` (ISO-8601 delta sync; changed-but-disabled products come back with `is_salable:false`),
 `page` + `pageSize` (max 500). Deltas cannot express deletions — do a periodic full resync.
 
+**Per-branch stock:** each branch carries a `source_code` (its Magento MSI inventory source) and each
+product carries `source_quantities: [{source_code, quantity, is_salable}]` — the stock on that specific
+branch's shelf. `quantity` remains the network-wide total. The POS page shows and enforces the selected
+branch's own availability, and `/pos/sale` orders are invoiced and shipped from the branch's source
+automatically, so Magento's per-store ledger and the shipment record always show which store the goods
+moved from.
+
 **Sale** records a counter sale in one call:
 
 ```json

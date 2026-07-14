@@ -88,23 +88,38 @@ const PosPage = () => {
     void loadCatalog();
   }, []);
 
+  const selectedBranch = catalog?.branches.find((branch) => branch.id === branchId);
+
+  // Stock at THIS branch's shelf (per-source), falling back to the network
+  // total for unmapped branches or older Magento payloads.
+  const stockAtBranch = (product: MagentoCatalogProduct): number => {
+    const sourceCode = selectedBranch?.source_code;
+    if (sourceCode && product.source_quantities) {
+      const entry = product.source_quantities.find((sq) => sq.source_code === sourceCode);
+      if (entry) {
+        return entry.is_salable ? entry.quantity : 0;
+      }
+    }
+    return product.quantity;
+  };
+
   const visibleProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
     return (catalog?.products ?? [])
-      .filter((product) => product.is_salable && product.quantity > 0)
+      .filter((product) => product.is_salable && stockAtBranch(product) > 0)
       .filter((product) =>
         !query || product.name.toLowerCase().includes(query) || product.sku.toLowerCase().includes(query)
       );
-  }, [catalog?.products, search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog?.products, search, selectedBranch?.source_code]);
 
   const subtotal = cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0);
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
-  const selectedBranch = catalog?.branches.find((branch) => branch.id === branchId);
 
   const changeQuantity = (product: MagentoCatalogProduct, delta: number) => {
     setCart((current) => {
       const existing = current.find((line) => line.product.sku === product.sku);
-      const nextQuantity = Math.min(product.quantity, Math.max(0, (existing?.quantity ?? 0) + delta));
+      const nextQuantity = Math.min(stockAtBranch(product), Math.max(0, (existing?.quantity ?? 0) + delta));
       if (nextQuantity === 0) {
         return current.filter((line) => line.product.sku !== product.sku);
       }
@@ -258,7 +273,10 @@ const PosPage = () => {
                       <article className="pos-product" key={product.sku}>
                         <div className="pos-product-image">
                           {product.image_url ? <img src={product.image_url} alt="" /> : <IonIcon icon={cubeOutline} />}
-                          <span>{product.quantity} in stock</span>
+                          <span>
+                            {stockAtBranch(product)} at this branch
+                            {product.quantity !== stockAtBranch(product) ? ` (${product.quantity} network-wide)` : ''}
+                          </span>
                         </div>
                         <div className="pos-product-copy">
                           <p>{product.sku}</p>
@@ -270,7 +288,7 @@ const PosPage = () => {
                           fill={cartLine ? 'outline' : 'solid'}
                           size="small"
                           onClick={() => changeQuantity(product, 1)}
-                          disabled={(cartLine?.quantity ?? 0) >= product.quantity}
+                          disabled={(cartLine?.quantity ?? 0) >= stockAtBranch(product)}
                         >
                           <IonIcon slot="start" icon={addOutline} />
                           {cartLine ? `${cartLine.quantity} in cart` : 'Add'}
@@ -316,7 +334,7 @@ const PosPage = () => {
                           <IonButton
                             fill="clear"
                             aria-label={`Add one ${line.product.name}`}
-                            disabled={line.quantity >= line.product.quantity}
+                            disabled={line.quantity >= stockAtBranch(line.product)}
                             onClick={() => changeQuantity(line.product, 1)}
                           >
                             <IonIcon slot="icon-only" icon={addOutline} />

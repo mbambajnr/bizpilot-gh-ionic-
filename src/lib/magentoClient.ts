@@ -1,5 +1,12 @@
 import { apiFetch } from './apiClient';
 
+export type MagentoSourceQuantity = {
+  /** MSI inventory source (= one branch's shelf), e.g. "market_circle". */
+  source_code: string;
+  quantity: number;
+  is_salable: boolean;
+};
+
 export type MagentoCatalogProduct = {
   id: number;
   sku: string;
@@ -8,9 +15,12 @@ export type MagentoCatalogProduct = {
   price: number;
   /** Undiscounted price; when it differs from price, the item is on promo. */
   regular_price?: number;
+  /** Network-wide total across all branch sources. */
   quantity: number;
   is_salable: boolean;
   image_url: string;
+  /** Per-branch stock; match entries to a branch via its source_code. */
+  source_quantities?: MagentoSourceQuantity[];
 };
 
 export type MagentoCatalogBranch = {
@@ -20,6 +30,8 @@ export type MagentoCatalogBranch = {
   address: string;
   phone: string;
   is_active: boolean;
+  /** MSI source this branch sells from ('' when unmapped). */
+  source_code?: string;
 };
 
 export type MagentoCatalog = {
