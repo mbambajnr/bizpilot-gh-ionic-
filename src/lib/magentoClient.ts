@@ -127,6 +127,48 @@ export async function loadMagentoStock() {
   );
 }
 
+export type MomoProvider = 'mtn' | 'vod' | 'atl';
+
+export type MomoSaleInput = {
+  branchId: number;
+  /** Unique reference (also the Paystack reference). Reuse across polls. */
+  clientRef: string;
+  momoNumber: string;
+  momoProvider: MomoProvider;
+  customer: { name: string; email?: string };
+  items: Array<{ sku: string; quantity: number }>;
+};
+
+export type MomoResult = {
+  /** 'pending' = awaiting phone approval; 'success' = paid + fulfilled; 'failed' = canceled. */
+  status: 'pending' | 'success' | 'failed';
+  order_id: number;
+  increment_id: string;
+  grand_total: number;
+  currency: string;
+  paystack_ref: string;
+  /** Instruction to show while pending (e.g. "Approve the prompt on your phone"). */
+  display_text: string;
+  message: string;
+  duplicate: boolean;
+};
+
+/** Start a Mobile Money charge (customer approves on their phone). */
+export async function initiateMomoSale(input: MomoSaleInput) {
+  const response = await apiFetch('/api/magento/momo/initiate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return parseResponse<{ ok: true; result: MomoResult }>(response, 'Mobile Money charge could not be started.');
+}
+
+/** Poll a Mobile Money sale until it settles ('success' or 'failed'). */
+export async function pollMomoStatus(clientRef: string) {
+  const response = await apiFetch(`/api/magento/momo/status/${encodeURIComponent(clientRef)}`);
+  return parseResponse<{ ok: true; result: MomoResult }>(response, 'Could not check Mobile Money status.');
+}
+
 export async function createMagentoPosOrder(input: MagentoPosOrderInput) {
   const response = await apiFetch('/api/magento/orders', {
     method: 'POST',

@@ -125,6 +125,38 @@ export async function fetchMagentoStock() {
   return payload;
 }
 
+/**
+ * Start a Mobile Money counter sale — pushes a Paystack charge to the
+ * customer's phone. Returns { status: 'pending' | 'success' | ... }.
+ */
+export async function initiateMagentoMomo(input) {
+  const config = getConfig();
+  if (!config.baseUrl || !config.accessToken) {
+    throw new Error('Magento integration is not configured on the BizPilot server.');
+  }
+  return magentoRequest('/V1/custom-storefront/pos/sale/momo/initiate', {
+    method: 'POST',
+    body: JSON.stringify({
+      branchId: input.branchId,
+      clientRef: input.clientRef,
+      items: input.items.map((item) => ({ sku: item.sku, qty: item.quantity })),
+      momoNumber: input.momoNumber,
+      momoProvider: input.momoProvider,
+      customerName: input.customer?.name || '',
+      customerEmail: input.customer?.email || '',
+    }),
+  });
+}
+
+/** Poll a Mobile Money sale's payment status (register polls until settled). */
+export async function getMagentoMomoStatus(clientRef) {
+  const config = getConfig();
+  if (!config.baseUrl || !config.accessToken) {
+    throw new Error('Magento integration is not configured on the BizPilot server.');
+  }
+  return magentoRequest('/V1/custom-storefront/pos/sale/momo/status/' + encodeURIComponent(clientRef));
+}
+
 export async function createMagentoPosOrder(input) {
   const config = getConfig();
   if (!config.baseUrl || !config.accessToken) {

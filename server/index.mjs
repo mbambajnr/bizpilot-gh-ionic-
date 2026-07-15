@@ -7,7 +7,14 @@ import {
   saveBusinessEmailConfig,
 } from './email/configStore.mjs';
 import { createBusinessEmailService } from './email/createBusinessEmailService.mjs';
-import { createMagentoPosOrder, fetchMagentoCatalog, fetchMagentoStock, getMagentoIntegrationStatus } from './magento/client.mjs';
+import {
+  createMagentoPosOrder,
+  fetchMagentoCatalog,
+  fetchMagentoStock,
+  getMagentoIntegrationStatus,
+  getMagentoMomoStatus,
+  initiateMagentoMomo,
+} from './magento/client.mjs';
 import { createCorsPolicy, createSecurity } from './security.mjs';
 import { createStaticServer } from './static.mjs';
 
@@ -309,6 +316,35 @@ const server = http.createServer(async (request, response) => {
       json(response, 200, { ok: true, stock });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Magento stock refresh failed.';
+      json(response, 502, { ok: false, message });
+    }
+    return;
+  }
+
+  if (request.method === 'POST' && request.url === '/api/magento/momo/initiate') {
+    if (!(await requireUser(request, response))) {
+      return;
+    }
+    try {
+      const result = await initiateMagentoMomo(await readJsonBody(request));
+      json(response, 200, { ok: true, result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Mobile Money charge could not be started.';
+      json(response, 502, { ok: false, message });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && request.url.startsWith('/api/magento/momo/status/')) {
+    if (!(await requireUser(request, response))) {
+      return;
+    }
+    try {
+      const ref = decodeURIComponent(request.url.replace('/api/magento/momo/status/', ''));
+      const result = await getMagentoMomoStatus(ref);
+      json(response, 200, { ok: true, result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not check Mobile Money status.';
       json(response, 502, { ok: false, message });
     }
     return;
