@@ -118,6 +118,42 @@ export async function loadMagentoCatalog() {
   );
 }
 
+export type MagentoReorderItem = {
+  sku: string;
+  name: string;
+  source_code: string;
+  branch_name: string;
+  units_sold: number;
+  revenue: number;
+  avg_price: number;
+  on_hand: number;
+  daily_velocity: number;
+  days_of_cover: number;
+  suggested_reorder: number;
+  needs_reorder: boolean;
+};
+
+export type MagentoReorderResult = {
+  generated_at: string;
+  period_days: number;
+  target_cover_days: number;
+  /** Sorted most-urgent-first (lowest days of cover). */
+  items: MagentoReorderItem[];
+};
+
+/**
+ * Demand + reorder intelligence per SKU per branch — drives data-backed
+ * restock and inter-branch transfer decisions.
+ */
+export async function loadMagentoReorder(days?: number) {
+  const query = days && days > 0 ? `?days=${Math.floor(days)}` : '';
+  const response = await apiFetch(`/api/magento/reorder${query}`);
+  return parseResponse<{ ok: true; reorder: MagentoReorderResult }>(
+    response,
+    'Magento reorder feed failed.'
+  );
+}
+
 /** Cheap per-branch quantities snapshot — polled to keep the register live. */
 export async function loadMagentoStock() {
   const response = await apiFetch('/api/magento/stock');

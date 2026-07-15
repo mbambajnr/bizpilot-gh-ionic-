@@ -10,6 +10,7 @@ import { createBusinessEmailService } from './email/createBusinessEmailService.m
 import {
   createMagentoPosOrder,
   fetchMagentoCatalog,
+  fetchMagentoReorder,
   fetchMagentoStock,
   getMagentoIntegrationStatus,
   getMagentoMomoStatus,
@@ -316,6 +317,22 @@ const server = http.createServer(async (request, response) => {
       json(response, 200, { ok: true, stock });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Magento stock refresh failed.';
+      json(response, 502, { ok: false, message });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && request.url.startsWith('/api/magento/reorder')) {
+    if (!(await requireUser(request, response))) {
+      return;
+    }
+    try {
+      const daysParam = new URL(request.url, 'http://internal').searchParams.get('days');
+      const days = daysParam ? Number(daysParam) : undefined;
+      const reorder = await fetchMagentoReorder(days);
+      json(response, 200, { ok: true, reorder });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Magento reorder feed failed.';
       json(response, 502, { ok: false, message });
     }
     return;

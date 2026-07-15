@@ -148,6 +148,23 @@ export async function initiateMagentoMomo(input) {
   });
 }
 
+/**
+ * Demand + reorder intelligence per SKU per branch (velocity, days of cover,
+ * suggested reorder). Feeds procurement/transfer decisions.
+ */
+export async function fetchMagentoReorder(days) {
+  const config = getConfig();
+  if (!config.baseUrl || !config.accessToken) {
+    throw new Error('Magento integration is not configured on the BizPilot server.');
+  }
+  const query = Number.isFinite(days) && days > 0 ? `?days=${Math.floor(days)}` : '';
+  const payload = await magentoRequest('/V1/custom-storefront/pos/reorder' + query);
+  if (!payload || !Array.isArray(payload.items)) {
+    throw new Error('Magento returned an invalid reorder payload.');
+  }
+  return payload;
+}
+
 /** Poll a Mobile Money sale's payment status (register polls until settled). */
 export async function getMagentoMomoStatus(clientRef) {
   const config = getConfig();
