@@ -1529,6 +1529,9 @@ const InventoryPage: React.FC = () => {
                             ? 'Track procurement from the vendor through warehouse receipt without exposing store transfer operations.'
                             : 'Track which warehouse supplies which store and keep transfer movements visible from approval through receipt.'}
                       </p>
+                      <IonButton fill="outline" size="small" routerLink="/reorder" style={{ marginTop: 8 }}>
+                        View reorder suggestions →
+                      </IonButton>
                     </div>
                   </div>
                 </div>

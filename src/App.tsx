@@ -17,7 +17,7 @@ import {
   setupIonicReact,
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import { cart, cubeOutline, documentText, grid, home, notificationsOutline, people, settings, wallet } from 'ionicons/icons';
+import { calculatorOutline, cart, cubeOutline, documentText, grid, home, notificationsOutline, people, settings, wallet } from 'ionicons/icons';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BusinessProvider, useBusiness } from './context/BusinessContext';
@@ -47,8 +47,10 @@ const CustomersPage = lazy(() => import('./pages/CustomersPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const InvoiceDetailPage = lazy(() => import('./pages/InvoiceDetailPage'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
+const ReorderPage = lazy(() => import('./pages/ReorderPage'));
 const QuotationsPage = lazy(() => import('./pages/QuotationsPage'));
 const SalesPage = lazy(() => import('./pages/SalesPage'));
+const PosPage = lazy(() => import('./pages/PosPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AccountingPage = lazy(() => import('./pages/AccountingPage'));
 const QuotationDetailPage = lazy(() => import('./pages/QuotationDetailPage'));
@@ -197,6 +199,10 @@ function AppShell() {
   const canViewDashboard = hasPermission('reports.dashboard.view');
   const canViewSettings = hasPermission('business.view');
   const canManageSetup = hasPermission('business.edit');
+  const canViewSystemAdminDashboard =
+    currentUser.role === 'Admin' &&
+    (hasPermission('users.manage') || hasPermission('permissions.manage') || hasPermission('business.edit'));
+  const canAccessDashboard = canViewDashboard || canViewSystemAdminDashboard;
   const canUseDocumentPack =
     hasPermission('invoices.print') ||
     hasPermission('invoices.export_pdf') ||
@@ -208,7 +214,7 @@ function AppShell() {
     ? canManageSetup
       ? '/settings'
       : '/dashboard'
-    : canViewDashboard
+    : canAccessDashboard
             ? '/dashboard'
             : hasPermission('sales.view')
               ? '/sales'
@@ -266,7 +272,7 @@ function AppShell() {
 
   return (
     <IonTabs>
-      {businessSetupComplete ? (
+      {businessSetupComplete && location.pathname === '/dashboard' ? (
         <>
           <IonButton
             className="notification-bell"
@@ -336,10 +342,13 @@ function AppShell() {
       ) : null}
       <IonRouterOutlet>
         <Route exact path="/dashboard">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : canViewDashboard ? <LazyRoute><DashboardPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : canAccessDashboard ? <LazyRoute><DashboardPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/sales">
           {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('sales.view') ? <LazyRoute><SalesPage /></LazyRoute> : <UnauthorizedPage />}
+        </Route>
+        <Route exact path="/pos">
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('sales.create') ? <LazyRoute><PosPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/sales/:saleId">
           {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('invoices.view') ? <LazyRoute><InvoiceDetailPage /></LazyRoute> : <UnauthorizedPage />}
@@ -349,6 +358,9 @@ function AppShell() {
         </Route>
         <Route exact path="/inventory">
           {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('inventory.view') ? <LazyRoute><InventoryPage /></LazyRoute> : <UnauthorizedPage />}
+        </Route>
+        <Route exact path="/reorder">
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('inventory.view') ? <LazyRoute><ReorderPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/vendors">
           {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : (hasPermission('vendors.view') || hasPermission('vendors.manage')) ? <LazyRoute><VendorsPage /></LazyRoute> : <UnauthorizedPage />}
@@ -376,7 +388,7 @@ function AppShell() {
         </Route>
       </IonRouterOutlet>
       <IonTabBar slot="bottom">
-        {businessSetupComplete && canViewDashboard && (
+        {businessSetupComplete && canAccessDashboard && (
           <IonTabButton tab="dashboard" href="/dashboard" data-testid="tab-dashboard">
             <IonIcon aria-hidden="true" icon={home} />
             <IonLabel>Dashboard</IonLabel>
@@ -386,6 +398,12 @@ function AppShell() {
           <IonTabButton tab="sales" href="/sales" data-testid="tab-sales">
             <IonIcon aria-hidden="true" icon={cart} />
             <IonLabel>Sales</IonLabel>
+          </IonTabButton>
+        )}
+        {businessSetupComplete && hasPermission('sales.create') && (
+          <IonTabButton tab="pos" href="/pos" data-testid="tab-pos">
+            <IonIcon aria-hidden="true" icon={calculatorOutline} />
+            <IonLabel>POS</IonLabel>
           </IonTabButton>
         )}
         {businessSetupComplete && hasPermission('inventory.view') && (
