@@ -39,7 +39,7 @@ function urgencyLevel(days: number): 'Low' | 'Medium' | 'High' {
 }
 
 export default function ReorderPage() {
-  const { state, currentUser, hasPermission, addRestockRequest } = useBusiness();
+  const { state, currentUser, hasPermission, addRestockRequest, createStockTransfer } = useBusiness();
   const [present] = useIonToast();
 
   const [days, setDays] = useState(30);
@@ -48,8 +48,11 @@ export default function ReorderPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [requested, setRequested] = useState<Record<string, boolean>>({});
+  const [transferred, setTransferred] = useState<Record<string, boolean>>({});
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const canRequest = hasPermission('restockRequests.create');
+  const canTransfer = hasPermission('transfers.create');
 
   const load = async (windowDays: number) => {
     setLoading(true);
@@ -110,6 +113,60 @@ export default function ReorderPage() {
     if (bySku) return bySku.id;
     const byName = state.products.find((p) => p.name === item.name);
     return byName ? byName.id : null;
+  };
+
+  /**
+   * BizPilot transfers are warehouse→store only, so a needy store is
+   * replenished by pulling from a warehouse that supplies it. Resolve the
+   * destination store (by branch name) and a warehouse on an active supply
+   * route to it. Returns null when that route isn't set up.
+   */
+  const resolveReplenishment = (item: MagentoReorderItem) => {
+    const store = state.locations.find(
+      (l) => l.type === 'store' && l.isActive && l.name === item.branch_name
+    );
+    if (!store) return null;
+    const route = (state.locationSupplyRoutes ?? []).find(
+      (r) => r.isActive && r.toLocationId === store.id
+    );
+    if (!route) return null;
+    const warehouse = state.locations.find(
+      (l) => l.id === route.fromLocationId && l.type === 'warehouse'
+    );
+    const productId = findProductId(item);
+    if (!warehouse || !productId) return null;
+    return { warehouse, store, productId };
+  };
+
+  const doTransfer = async (item: MagentoReorderItem) => {
+    const key = `${item.sku}|${item.source_code}`;
+    const plan = resolveReplenishment(item);
+    if (!plan || !currentUser) {
+      present({ message: 'No warehouse supply route to this branch — set one up in Inventory.', duration: 2800, color: 'medium' });
+      return;
+    }
+    setBusyKey(key);
+    try {
+      const result = await createStockTransfer({
+        fromWarehouseId: plan.warehouse.id,
+        toStoreId: plan.store.id,
+        items: [{ productId: plan.productId, quantity: item.suggested_reorder }],
+        initiatedBy: currentUser.userId,
+        note: `Reorder feed: replenish ${item.branch_name} (${item.days_of_cover}d cover, ${item.units_sold} sold/${feed?.period_days}d).`,
+      });
+      present({
+        message: result.ok
+          ? `Transfer created: ${item.suggested_reorder} × ${item.name} → ${plan.store.name} from ${plan.warehouse.name}.`
+          : result.message || 'Could not create the transfer.',
+        duration: 3000,
+        color: result.ok ? 'success' : 'danger',
+      });
+      if (result.ok) {
+        setTransferred((prev) => ({ ...prev, [key]: true }));
+      }
+    } finally {
+      setBusyKey(null);
+    }
   };
 
   const requestRestock = (item: MagentoReorderItem) => {
@@ -199,6 +256,8 @@ export default function ReorderPage() {
                 const transfer = transferHints[key];
                 const productId = findProductId(item);
                 const already = requested[key];
+                const replenish = item.needs_reorder ? resolveReplenishment(item) : null;
+                const didTransfer = transferred[key];
                 return (
                   <div
                     key={key}
@@ -242,7 +301,7 @@ export default function ReorderPage() {
                       <IonChip color="tertiary" outline style={{ alignSelf: 'flex-start' }}>
                         <IonIcon icon={swapHorizontalOutline} />
                         <span>
-                          Transfer option: move {transfer.quantity} from {transfer.fromBranch}
+                          {transfer.fromBranch} has ~{transfer.quantity} sparable — rebalance option
                         </span>
                       </IonChip>
                     )}
@@ -262,6 +321,19 @@ export default function ReorderPage() {
                           >
                             <IonIcon slot="start" icon={cartOutline} />
                             {already ? 'Requested' : productId ? 'Request restock' : 'No matching product'}
+                          </IonButton>
+                        )}
+                        {canTransfer && replenish && (
+                          <IonButton
+                            size="small"
+                            color="tertiary"
+                            fill={didTransfer ? 'outline' : 'solid'}
+                            disabled={didTransfer || busyKey === key}
+                            data-testid={`transfer-${item.sku}-${item.source_code}`}
+                            onClick={() => doTransfer(item)}
+                          >
+                            <IonIcon slot="start" icon={swapHorizontalOutline} />
+                            {didTransfer ? 'Transfer created' : `Transfer from ${replenish.warehouse.name}`}
                           </IonButton>
                         )}
                       </div>
