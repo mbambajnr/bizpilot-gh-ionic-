@@ -22,7 +22,7 @@ import {
 } from '@ionic/react';
 import { useEffect, useMemo, useState } from 'react';
 import { useHistory, useLocation } from 'react-router-dom';
-import { chevronDownCircleOutline, documentText } from 'ionicons/icons';
+import { calculatorOutline, chevronDownCircleOutline, documentText } from 'ionicons/icons';
 
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
@@ -302,7 +302,7 @@ const SalesPage: React.FC = () => {
       return;
     }
 
-    setCustomerId(sourceSale.customerId);
+    setCustomerId(sourceSale.customerId ?? '');
     setSaleItems(sourceSale.items.map(i => ({ productId: i.productId, quantity: i.quantity })));
     setPaymentMethod(sourceSale.paymentMethod);
     setPaidAmountInput(String(sourceSale.paidAmount));
@@ -436,13 +436,19 @@ const SalesPage: React.FC = () => {
       <IonHeader translucent={true}>
         <IonToolbar>
           <IonTitle>Sales</IonTitle>
-          {canUseDocumentPack ? (
-            <IonButtons slot="end">
+          <IonButtons slot="end">
+            {canCreateSales ? (
+              <IonButton routerLink="/pos" aria-label="Open point of sale">
+                <IonIcon slot="start" icon={calculatorOutline} />
+                POS
+              </IonButton>
+            ) : null}
+            {canUseDocumentPack ? (
               <IonButton onClick={() => history.push('/export/batch')}>
                 <IonIcon slot="icon-only" icon={documentText} />
               </IonButton>
-            </IonButtons>
-          ) : null}
+            ) : null}
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>

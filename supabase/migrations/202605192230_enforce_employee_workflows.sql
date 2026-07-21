@@ -70,7 +70,7 @@ begin
   where
     account_status = 'active'
     and password_hash is not null
-    and password_hash = crypt(trim(credential_password), password_hash)
+    and password_hash = extensions.crypt(trim(credential_password), password_hash)
     and (
       lower(email) = lower(trim(credential_identifier))
       or lower(username) = lower(trim(credential_identifier))

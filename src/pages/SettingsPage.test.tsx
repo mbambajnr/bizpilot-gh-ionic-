@@ -1,6 +1,6 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { seedState } from '../data/seedBusiness';
 import SettingsPage from './SettingsPage';
@@ -69,6 +69,12 @@ function buildContext(permissionMap: Record<string, boolean>, overrides: Record<
 }
 
 describe('SettingsPage', () => {
+  afterEach(() => {
+    cleanup();
+    document.querySelectorAll('ion-modal, ion-toast, ion-alert, ion-popover').forEach((element) => element.remove());
+    document.body.className = '';
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -241,7 +247,8 @@ describe('SettingsPage', () => {
 
     render(<SettingsPage />);
 
-    fireEvent.click(await screen.findByLabelText('Expand Team accounts'));
+    const teamAccounts = await screen.findByTestId('team-accounts-section');
+    fireEvent.click(within(teamAccounts).getByText('Expand'));
     fireEvent.click(await screen.findByText('Add Employee'));
 
     expect(await screen.findByText('Add Employee Account')).toBeInTheDocument();
@@ -257,7 +264,9 @@ describe('SettingsPage', () => {
 
     render(<SettingsPage />);
 
-    expect(await screen.findByText('Locations')).toBeInTheDocument();
+    const locations = await screen.findByTestId('locations-section');
+    expect(within(locations).getByText('Locations')).toBeInTheDocument();
+    fireEvent.click(within(locations).getByText('Expand'));
     expect(screen.getByText('Create store')).toBeInTheDocument();
     expect(screen.getByText('Create warehouse')).toBeInTheDocument();
     expect(screen.getByText('Create Store')).toBeInTheDocument();
@@ -273,7 +282,8 @@ describe('SettingsPage', () => {
 
     render(<SettingsPage />);
 
-    fireEvent.click(await screen.findByLabelText('Expand Team accounts'));
+    const teamAccounts = await screen.findByTestId('team-accounts-section');
+    fireEvent.click(within(teamAccounts).getByText('Expand'));
 
     expect(await screen.findByText('Add a new employee')).toBeInTheDocument();
     expect(screen.getByText('Create a fresh BisaPilot login and assign the employee a role in one step.')).toBeInTheDocument();
@@ -290,6 +300,7 @@ describe('SettingsPage', () => {
     render(<SettingsPage />);
 
     expect(await screen.findByText('Security')).toBeInTheDocument();
+    expect(screen.queryByText('System Admin Dashboard')).not.toBeInTheDocument();
     expect(screen.queryByText('Cloud integrity')).not.toBeInTheDocument();
     expect(screen.queryByText('Business owner identity')).not.toBeInTheDocument();
     expect(screen.queryByText('Team accounts')).not.toBeInTheDocument();

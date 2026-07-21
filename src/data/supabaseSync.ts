@@ -1,6 +1,6 @@
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
 import type { UserAccessProfile } from '../authz/types';
-import type { AccountsPayable, ActivityLogEntry, AppNotification, BusinessLocation, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, BusinessProfile, Payment, Quotation, RestockRequest, StockMovement, StockTransfer, Purchase } from './seedBusiness';
+import type { AccountsPayable, ActivityLogEntry, AppNotification, BusinessLocation, LocationSupplyRoute, Product, ProductCategory, Customer, CustomerLedgerEntry, CreditNote, CustomerRefund, Sale, Expense, BusinessProfile, Payment, Quotation, RestockRequest, StockMovement, StockTransfer, Purchase, Vendor } from './seedBusiness';
 
 let lastSupabaseSyncErrorMessage: string | null = null;
 
@@ -80,7 +80,9 @@ async function syncEmployeeWorkflow(user: UserAccessProfile, workflowType: strin
     });
 
     if (error) {
-      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(error.message));
+      setLastSupabaseSyncErrorMessage(/failed to fetch|network|connection/i.test(error.message)
+        ? 'Supabase sync failed before the request could complete.'
+        : formatSupabaseSyncErrorMessage(error.message));
       console.error(`[SupabaseSync] Error syncing employee ${workflowType}:`, error.message);
       return false;
     }
@@ -142,10 +144,95 @@ export async function syncProduct(businessId: string, product: Product) {
     cost: product.cost,
     reorder_level: product.reorderLevel,
     inventory_id: product.inventoryId,
-    image_url: product.image,
+    image: product.image,
     // The database now enforces that any category_id must belong to this same business_id.
     category_id: product.categoryId ?? null,
   });
+}
+
+export type InventoryImportBatchCommand = {
+  businessId: string;
+  user: UserAccessProfile;
+  products: Product[];
+  stockMovements: StockMovement[];
+  locations?: BusinessLocation[];
+};
+
+export async function syncInventoryImportBatch(input: InventoryImportBatchCommand) {
+  if (!hasSupabaseConfig) return true;
+  try {
+    const isEmployeeCommand = Boolean(input.user.businessId);
+    if (isEmployeeCommand && input.user.businessId !== input.businessId) {
+      setLastSupabaseSyncErrorMessage('Your employee session does not belong to this workspace.');
+      return false;
+    }
+    if (isEmployeeCommand && !input.user.employeeSessionSecret) {
+      setLastSupabaseSyncErrorMessage('Confirm your employee password before importing inventory.');
+      return false;
+    }
+    const employeeIdentifier = input.user.username?.trim() || input.user.email.trim();
+    if (isEmployeeCommand && !employeeIdentifier) {
+      setLastSupabaseSyncErrorMessage('Your employee account does not have a valid sign-in identifier.');
+      return false;
+    }
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.rpc('import_inventory_batch', {
+      credential_identifier: isEmployeeCommand ? employeeIdentifier : null,
+      credential_password: isEmployeeCommand ? input.user.employeeSessionSecret : null,
+      batch_payload: {
+        business_id: input.businessId,
+        locations: (input.locations ?? []).map((location) => ({
+          id: location.id,
+          location_code: location.locationCode ?? null,
+          name: location.name,
+          type: location.type,
+          address: location.address ?? null,
+          manager_name: location.managerName ?? null,
+          is_default: location.isDefault,
+          is_active: location.isActive,
+        })),
+        products: input.products.map((product) => ({
+          id: product.id,
+          inventory_id: product.inventoryId,
+          name: product.name,
+          unit: product.unit,
+          price: product.price,
+          cost: product.cost,
+          reorder_level: product.reorderLevel,
+          image: product.image,
+          category_id: product.categoryId ?? null,
+        })),
+        stock_movements: input.stockMovements.map((movement) => ({
+          id: movement.id,
+          movement_number: movement.movementNumber,
+          product_id: movement.productId,
+          movement_type: movement.type,
+          quantity_delta: movement.quantityDelta,
+          quantity_after: movement.quantityAfter,
+          reference_number: movement.referenceNumber ?? null,
+          note: movement.note,
+          created_at: movement.createdAt,
+          location_id: movement.locationId ?? null,
+          source_type: movement.sourceType ?? null,
+          source_id: movement.sourceId ?? null,
+          from_warehouse_id: movement.fromWarehouseId ?? null,
+          to_store_id: movement.toStoreId ?? null,
+          performed_by: movement.performedBy ?? null,
+        })),
+      },
+    });
+    if (error) {
+      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(error.message));
+      console.error('[SupabaseSync] Error importing inventory batch:', error.message);
+      return false;
+    }
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Supabase sync failed before the inventory batch could complete.');
+    console.error('[SupabaseSync] Fatal inventory batch error:', err);
+    return false;
+  }
 }
 
 export async function syncProductCategory(businessId: string, category: ProductCategory) {
@@ -275,8 +362,6 @@ export async function rotateEmployeePassword(user: UserAccessProfile, currentPas
 
   try {
     const supabase = getSupabaseClient();
-    // TODO(security): This RPC still depends on plaintext credential comparison.
-    // Keep it only until employee sign-in moves to hashed verification or Supabase Auth.
     const { data, error } = await supabase.rpc('rotate_employee_credential_password', {
       credential_identifier: user.username ?? user.email,
       current_password: currentPassword.trim(),
@@ -314,6 +399,51 @@ export async function syncSupplyRoute(businessId: string, route: LocationSupplyR
   });
 }
 
+export async function syncVendor(businessId: string, vendor: Vendor) {
+  return upsertEntity('vendors', {
+    id: vendor.id,
+    business_id: businessId,
+    vendor_code: vendor.vendorCode,
+    name: vendor.name,
+    contact_email: vendor.contactEmail ?? null,
+    location: vendor.location,
+    status: vendor.status,
+    created_at: vendor.createdAt,
+    updated_at: vendor.updatedAt,
+  });
+}
+
+export async function syncEmployeeVendor(user: UserAccessProfile, vendor: Vendor) {
+  if (!hasSupabaseConfig) return true;
+  const credentialPassword = user.employeeSessionSecret;
+  if (!user.businessId || !credentialPassword) {
+    setLastSupabaseSyncErrorMessage('Employee vendor sync requires a fresh cloud employee sign-in.');
+    return false;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.rpc('sync_employee_vendor', {
+      credential_identifier: user.username ?? user.email,
+      credential_password: credentialPassword,
+      vendor_payload: vendor,
+    });
+
+    if (error) {
+      setLastSupabaseSyncErrorMessage(formatSupabaseSyncErrorMessage(error.message));
+      console.error('[SupabaseSync] Error syncing employee vendor:', error.message);
+      return false;
+    }
+
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Supabase sync failed before the request could complete.');
+    console.error('[SupabaseSync] Fatal error in employee vendor sync:', err);
+    return false;
+  }
+}
+
 export async function syncPurchase(businessId: string, purchase: Purchase) {
   if (!hasSupabaseConfig) return true;
 
@@ -333,6 +463,18 @@ export async function syncPurchase(businessId: string, purchase: Purchase) {
     declined_at: purchase.declinedAt ?? null,
     decline_note: purchase.declineNote ?? null,
     received_warehouse_id: purchase.receivedWarehouseId ?? null,
+    receipts: purchase.receipts ?? [],
+    supplier_invoice_number: purchase.supplierInvoiceNumber ?? null,
+    supplier_invoice_amount: purchase.supplierInvoiceAmount ?? null,
+    supplier_invoice_date: purchase.supplierInvoiceDate ?? null,
+    supplier_invoice_recorded_by: purchase.supplierInvoiceRecordedBy ?? null,
+    supplier_invoice_recorded_at: purchase.supplierInvoiceRecordedAt ?? null,
+    three_way_match_status: purchase.threeWayMatchStatus ?? 'pending',
+    three_way_match_variance: purchase.threeWayMatchVariance ?? null,
+    expected_delivery_date: purchase.expectedDeliveryDate ?? null,
+    payment_terms: purchase.paymentTerms ?? null,
+    internal_notes: purchase.internalNotes ?? null,
+    procurement_documents: purchase.documents ?? [],
     created_at: purchase.createdAt,
     updated_at: purchase.updatedAt,
   });
@@ -393,28 +535,51 @@ export async function syncEmployeePurchase(user: UserAccessProfile, purchase: Pu
 
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.rpc('sync_employee_purchase', {
+    const purchasePayload = {
+      id: purchase.id,
+      purchaseCode: purchase.purchaseCode,
+      vendorId: purchase.vendorId,
+      vendorCode: purchase.vendorCode,
+      items: purchase.items,
+      totalAmount: purchase.totalAmount,
+      status: purchase.status,
+      createdBy: purchase.createdBy,
+      submittedAt: purchase.submittedAt ?? null,
+      approvedBy: purchase.approvedBy ?? null,
+      approvedAt: purchase.approvedAt ?? null,
+      declinedBy: purchase.declinedBy ?? null,
+      declinedAt: purchase.declinedAt ?? null,
+      declineNote: purchase.declineNote ?? null,
+      receivedWarehouseId: purchase.receivedWarehouseId ?? null,
+      receipts: purchase.receipts ?? [],
+      supplierInvoiceNumber: purchase.supplierInvoiceNumber ?? null,
+      supplierInvoiceAmount: purchase.supplierInvoiceAmount ?? null,
+      supplierInvoiceDate: purchase.supplierInvoiceDate ?? null,
+      supplierInvoiceRecordedBy: purchase.supplierInvoiceRecordedBy ?? null,
+      supplierInvoiceRecordedAt: purchase.supplierInvoiceRecordedAt ?? null,
+      threeWayMatchStatus: purchase.threeWayMatchStatus ?? 'pending',
+      threeWayMatchVariance: purchase.threeWayMatchVariance ?? null,
+      expectedDeliveryDate: purchase.expectedDeliveryDate ?? null,
+      paymentTerms: purchase.paymentTerms ?? null,
+      internalNotes: purchase.internalNotes ?? null,
+      documents: purchase.documents ?? [],
+      createdAt: purchase.createdAt,
+      updatedAt: purchase.updatedAt,
+    };
+    const isControlUpdate =
+      purchase.status === 'partiallyReceived' ||
+      Boolean(purchase.receipts?.length) ||
+      Boolean(purchase.supplierInvoiceNumber);
+    const hasProcurementMetadata = Boolean(purchase.expectedDeliveryDate || purchase.paymentTerms || purchase.internalNotes || purchase.documents?.length);
+    const rpcName = isControlUpdate
+      ? 'sync_employee_procurement_control'
+      : hasProcurementMetadata
+        ? 'sync_employee_purchase_metadata'
+        : 'sync_employee_purchase';
+    const { error } = await supabase.rpc(rpcName, {
       credential_identifier: user.username ?? user.email,
       credential_password: credentialPassword,
-      purchase_payload: {
-        id: purchase.id,
-        purchaseCode: purchase.purchaseCode,
-        vendorId: purchase.vendorId,
-        vendorCode: purchase.vendorCode,
-        items: purchase.items,
-        totalAmount: purchase.totalAmount,
-        status: purchase.status,
-        createdBy: purchase.createdBy,
-        submittedAt: purchase.submittedAt ?? null,
-        approvedBy: purchase.approvedBy ?? null,
-        approvedAt: purchase.approvedAt ?? null,
-        declinedBy: purchase.declinedBy ?? null,
-        declinedAt: purchase.declinedAt ?? null,
-        declineNote: purchase.declineNote ?? null,
-        receivedWarehouseId: purchase.receivedWarehouseId ?? null,
-        createdAt: purchase.createdAt,
-        updatedAt: purchase.updatedAt,
-      },
+      purchase_payload: purchasePayload,
     });
 
     if (error) {
@@ -570,6 +735,94 @@ export async function syncPaymentForUser(businessId: string, user: UserAccessPro
   return syncPayment(businessId, payment);
 }
 
+export async function syncReceivablePaymentCommand(input: {
+  businessId: string;
+  user: UserAccessProfile;
+  sale: Sale;
+  payment: Payment;
+  ledgerEntry: CustomerLedgerEntry;
+  activity: ActivityLogEntry;
+  notification: AppNotification;
+}) {
+  if (!hasSupabaseConfig) return true;
+  try {
+    const { error } = await getSupabaseClient().rpc('record_receivable_payment_command', {
+      credential_identifier: input.user.employeeSessionSecret ? input.user.username ?? input.user.email : '',
+      credential_password: input.user.employeeSessionSecret ?? '',
+      workflow_payload: {
+        businessId: input.businessId,
+        saleId: input.sale.id,
+        paymentId: input.payment.id,
+        paymentCode: input.payment.paymentCode,
+        amount: input.payment.amount,
+        method: input.payment.method,
+        reference: input.payment.reference,
+        createdAt: input.payment.createdAt,
+        ledgerEntryNumber: input.ledgerEntry.entryNumber,
+        activityId: input.activity.id,
+        activityNumber: input.activity.activityNumber,
+        notificationId: input.notification.id,
+      },
+    });
+    if (error) {
+      setLastSupabaseSyncErrorMessage(/failed to fetch|network|connection/i.test(error.message)
+        ? 'Supabase sync failed before the request could complete.'
+        : formatSupabaseSyncErrorMessage(error.message));
+      console.error('[SupabaseSync] Error recording receivable payment command:', error.message);
+      return false;
+    }
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Supabase sync failed before the request could complete.');
+    console.error('[SupabaseSync] Fatal error recording receivable payment command:', err);
+    return false;
+  }
+}
+
+export async function syncSalesReturnCommand(input: {
+  businessId: string;
+  user: UserAccessProfile;
+  sale: Sale;
+  creditNote: CreditNote;
+  refund?: CustomerRefund;
+  stockMovements: StockMovement[];
+  ledgerEntries: CustomerLedgerEntry[];
+  activities: ActivityLogEntry[];
+  notification: AppNotification;
+}) {
+  if (!hasSupabaseConfig) return true;
+  try {
+    const { error } = await getSupabaseClient().rpc('record_sales_return_command', {
+      credential_identifier: input.user.employeeSessionSecret ? input.user.username ?? input.user.email : '',
+      credential_password: input.user.employeeSessionSecret ?? '',
+      workflow_payload: {
+        businessId: input.businessId,
+        saleId: input.sale.id,
+        creditNote: input.creditNote,
+        refund: input.refund,
+        stockMovements: input.stockMovements,
+        ledgerEntries: input.ledgerEntries,
+        activities: input.activities,
+        notification: input.notification,
+      },
+    });
+    if (error) {
+      setLastSupabaseSyncErrorMessage(/failed to fetch|network|connection/i.test(error.message)
+        ? 'Supabase sync failed before the request could complete.'
+        : formatSupabaseSyncErrorMessage(error.message));
+      console.error('[SupabaseSync] Error recording sales return command:', error.message);
+      return false;
+    }
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Supabase sync failed before the request could complete.');
+    console.error('[SupabaseSync] Fatal error recording sales return command:', err);
+    return false;
+  }
+}
+
 export async function syncStockTransfer(businessId: string, transfer: StockTransfer) {
   const transferOk = await upsertEntity('stock_transfers', {
     id: transfer.id,
@@ -694,7 +947,9 @@ export async function syncQuotation(businessId: string, quotation: Quotation) {
     id: quotation.id,
     business_id: businessId,
     quotation_number: quotation.quotationNumber,
-    customer_id: quotation.customerId,
+    customer_id: quotation.customerId ?? null,
+    prospect_details: quotation.prospect ?? null,
+    prospect_converted_at: quotation.prospectConvertedAt ?? null,
     total_amount: quotation.totalAmount,
     subtotal_amount: quotation.subtotalAmount ?? null,
     tax_amount: quotation.taxAmount ?? null,
@@ -709,6 +964,7 @@ export async function syncQuotation(businessId: string, quotation: Quotation) {
     converted_invoice_id: quotation.convertedInvoiceId ?? null,
     customer_type: quotation.customerType ?? null,
     customer_type_snapshot: quotation.customerTypeSnapshot ?? null,
+    client_purchase_orders: quotation.clientPurchaseOrders ?? [],
     created_at: quotation.createdAt,
   });
 
@@ -755,6 +1011,45 @@ export async function syncQuotation(businessId: string, quotation: Quotation) {
   }
 }
 
+export async function syncQuotationForUser(businessId: string, user: UserAccessProfile, quotation: Quotation) {
+  if (!hasSupabaseConfig) return true;
+  if (!user.businessId) {
+    return syncQuotation(businessId, quotation);
+  }
+  if (!user.employeeSessionSecret) {
+    setLastSupabaseSyncErrorMessage('Sign in again to synchronize the queued quotation.');
+    return false;
+  }
+  if (user.businessId !== businessId) {
+    setLastSupabaseSyncErrorMessage('Your employee session does not belong to this workspace.');
+    return false;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.rpc('sync_employee_quotation', {
+      credential_identifier: user.username ?? user.email,
+      credential_password: user.employeeSessionSecret,
+      quotation_payload: quotation,
+    });
+
+    if (error) {
+      setLastSupabaseSyncErrorMessage(/failed to fetch|network|connection/i.test(error.message)
+        ? 'Supabase sync failed before the request could complete.'
+        : formatSupabaseSyncErrorMessage(error.message));
+      console.error('[SupabaseSync] Error syncing employee quotation:', error.message);
+      return false;
+    }
+
+    setLastSupabaseSyncErrorMessage(null);
+    return true;
+  } catch (err) {
+    setLastSupabaseSyncErrorMessage('Supabase sync failed before the request could complete.');
+    console.error('[SupabaseSync] Fatal error syncing employee quotation:', err);
+    return false;
+  }
+}
+
 export async function syncSale(businessId: string, sale: Sale) {
   // Map to the exact schema defined in public.invoices
   // Note: We now include the full 'items' JSONB for multi-item fidelity.
@@ -763,8 +1058,11 @@ export async function syncSale(businessId: string, sale: Sale) {
     business_id: businessId,
     invoice_number: sale.invoiceNumber,
     receipt_number: sale.receiptId,
-    customer_id: sale.customerId,
+    customer_id: sale.customerId ?? null,
+    customer_snapshot: sale.customerSnapshot ?? null,
     quotation_id: sale.quotationId,
+    client_po_number: sale.clientPoNumber ?? null,
+    client_po_document: sale.clientPoDocument ?? null,
     product_id: sale.productId, 
     quantity: sale.quantity,     
     items: sale.items,           // Full multi-item JSONB persistence

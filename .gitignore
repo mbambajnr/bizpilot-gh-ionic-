@@ -11,6 +11,9 @@
 # production
 /dist
 /out
+/enterprise-web/.next
+/enterprise-web/node_modules
+/enterprise-web/public
 /BisaPilot*.mp4
 
 # accidental nested repos / local worktrees

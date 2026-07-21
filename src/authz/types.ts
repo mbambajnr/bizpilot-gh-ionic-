@@ -25,6 +25,7 @@ export type AppPermission =
   | 'inventory.edit'
   | 'inventory.adjust'
   | 'inventory.restock'
+  | 'inventory.value.view'
   | 'customers.view'
   | 'customers.create'
   | 'customers.edit'

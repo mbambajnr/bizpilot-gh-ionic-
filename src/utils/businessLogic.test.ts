@@ -11,7 +11,9 @@ import {
 import {
   addCustomerToState,
   addProductToState,
+  adjustStockInState,
   addQuotationToState,
+  addQuotationClientPoInState,
   addSaleToState,
   approveStockTransferInState,
   buildTaxSnapshot,
@@ -24,8 +26,10 @@ import {
   createBusinessLocationInState,
   createProductCategoryInState,
   createSupplyRouteInState,
+  createSalesReturnInState,
   dispatchStockTransferInState,
   getBusinessLaunchState,
+  importProductsToState,
   approvePayableInState,
   approvePurchaseInState,
   cancelPurchaseInState,
@@ -33,10 +37,18 @@ import {
   isBusinessWorkspaceLive,
   launchBusinessWorkspaceInState,
   recordPayablePaymentInState,
+  recordPurchaseArrivalInState,
+  recordSalePaymentInState,
+  recordSupplierInvoiceInState,
+  registerQuotationProspectInState,
   receivePurchaseInWarehouseInState,
+  completePurchaseInspectionInState,
   receiveStockTransferInState,
   restoreBusinessState,
+  selectPurchaseReceivedQuantity,
+  selectPurchaseDeliveredQuantity,
   reverseSaleInState,
+  removeQuotationClientPoInState,
   setBusinessTaxSettingsInState,
   setCustomerClassificationEnabledInState,
   setInventoryCategoriesEnabledInState,
@@ -52,6 +64,49 @@ import {
 } from './businessLogic';
 
 describe('businessLogic', () => {
+  it('records reasoned location stock adjustments without allowing negative stock', () => {
+    const locationId = seedState.locations[0].id;
+    const productId = seedState.products[0].id;
+    const before = selectProductQuantityOnHand(seedState, productId, locationId);
+    const adjusted = adjustStockInState(seedState, { productId, locationId, quantityDelta: 3, reason: 'Cycle count correction', performedBy: 'u-warehouse' });
+    expect(adjusted.ok).toBe(true);
+    if (!adjusted.ok || !adjusted.data) throw new Error('Expected the stock adjustment to succeed.');
+    expect(selectProductQuantityOnHand(adjusted.data, productId, locationId)).toBe(before + 3);
+    expect(adjusted.data.stockMovements[0]).toMatchObject({ type: 'adjustment', quantityDelta: 3, performedBy: 'u-warehouse', note: 'Cycle count correction' });
+    const invalid = adjustStockInState(seedState, { productId, locationId, quantityDelta: -(before + 1), reason: 'Cycle count correction', performedBy: 'u-warehouse' });
+    expect(invalid.ok).toBe(false);
+    if (invalid.ok) throw new Error('Expected the negative stock adjustment to fail.');
+    expect(invalid.message).toContain('negative');
+  });
+  it('imports a large inventory batch in one state transition with opening stock', () => {
+    const inputs = Array.from({ length: 1_000 }, (_, index) => ({
+      name: `Imported item ${index + 1}`,
+      inventoryId: `BULK-${String(index + 1).padStart(4, '0')}`,
+      unit: 'units',
+      price: 20,
+      cost: 12,
+      quantity: index % 3,
+      reorderLevel: 5,
+    }));
+    const result = importProductsToState(seedState, inputs);
+    expect(result.ok).toBe(true);
+    if (!result.ok || !result.data) throw new Error('Expected bulk import to succeed.');
+    expect(result.data.products).toHaveLength(1_000);
+    expect(result.data.stockMovements).toHaveLength(666);
+    expect(result.data.data.products).toHaveLength(seedState.products.length + 1_000);
+    expect(result.data.products.every((product) => /^[0-9a-f-]{36}$/.test(product.id))).toBe(true);
+  });
+
+  it('allows repeated product descriptions when each row has a distinct inventory id', () => {
+    const result = importProductsToState(seedState, [
+      { name: 'Bulk duplicate', inventoryId: 'BULK-DUP', unit: 'units', price: 10, cost: 5, quantity: 1, reorderLevel: 2 },
+      { name: 'Bulk duplicate', inventoryId: 'BULK-DUP-2', unit: 'units', price: 10, cost: 5, quantity: 1, reorderLevel: 2 },
+    ]);
+    expect(result.ok).toBe(true);
+    if (!result.ok || !result.data) throw new Error('Expected duplicate descriptions with unique inventory ids to import.');
+    expect(result.data.products).toHaveLength(2);
+    expect(seedState.products.some((product) => product.inventoryId === 'BULK-DUP')).toBe(false);
+  });
   it('derives the business launch state from setup completeness and required branding', () => {
     expect(getBusinessLaunchState(seedState.businessProfile)).toBe('setupIncomplete');
 
@@ -219,7 +274,7 @@ describe('businessLogic', () => {
     const transferred = createStockTransferInState(withRoute.data, {
       fromWarehouseId: warehouse.id,
       toStoreId: store.id,
-      initiatedBy: 'u-admin',
+      initiatedBy: 'u-warehouse',
       items: [{ productId: product.id, quantity: 6 }],
     });
 
@@ -292,30 +347,54 @@ describe('businessLogic', () => {
     const created = createStockTransferInState(seedState, {
       fromWarehouseId: '00000000-0000-4000-8000-000000000002',
       toStoreId: '00000000-0000-4000-8000-000000000001',
-      initiatedBy: 'u-admin',
+      initiatedBy: 'u-warehouse',
       items: [{ productId: 'p1', quantity: 3 }],
     });
     expect(created.ok).toBe(true);
     if (!created.ok || !created.data) return;
     const transferId = created.data.stockTransfers[0].id;
 
+    const selfApproval = approveStockTransferInState(created.data, {
+      transferId,
+      performedBy: 'u-warehouse',
+    });
+    expect(selfApproval.ok).toBe(false);
+
     const approved = approveStockTransferInState(created.data, {
       transferId,
-      performedBy: 'u-admin',
+      performedBy: 'u-gm',
     });
     expect(approved.ok).toBe(true);
     if (!approved.ok || !approved.data) return;
 
+    const approverDispatch = dispatchStockTransferInState(approved.data, {
+      transferId,
+      performedBy: 'u-gm',
+    });
+    expect(approverDispatch.ok).toBe(false);
+
+    const prematureReceipt = receiveStockTransferInState(approved.data, {
+      transferId,
+      performedBy: 'u-sales',
+    });
+    expect(prematureReceipt.ok).toBe(false);
+
     const dispatched = dispatchStockTransferInState(approved.data, {
       transferId,
-      performedBy: 'u-admin',
+      performedBy: 'u-warehouse',
     });
     expect(dispatched.ok).toBe(true);
     if (!dispatched.ok || !dispatched.data) return;
 
+    const dispatcherReceipt = receiveStockTransferInState(dispatched.data, {
+      transferId,
+      performedBy: 'u-warehouse',
+    });
+    expect(dispatcherReceipt.ok).toBe(false);
+
     const received = receiveStockTransferInState(dispatched.data, {
       transferId,
-      performedBy: 'u-sales',
+      performedBy: 'u-store',
     });
     expect(received.ok).toBe(true);
     if (!received.ok || !received.data) return;
@@ -586,6 +665,51 @@ describe('businessLogic', () => {
       const recordedSale = result.data.sales[0];
       expect(selectSalePaymentStatus(recordedSale)).toBe('Partial');
       expect(selectSaleBalanceRemaining(recordedSale)).toBe(2);
+    }
+  });
+
+  it('rejects duplicate sale lines when their combined quantity exceeds stock', () => {
+    const result = addSaleToState(seedState, {
+      customerId: 'c1',
+      items: [
+        { productId: 'p2', quantity: 5 },
+        { productId: 'p2', quantity: 4 },
+      ],
+      paymentMethod: 'Cash',
+      paidAmount: 0,
+    });
+
+    expect(result).toEqual({ ok: false, message: 'Not enough stock for Paracetamol 500mg.' });
+  });
+
+  it('deducts a sale from the explicitly selected location', () => {
+    const warehouseId = '00000000-0000-4000-8000-000000000002';
+    const stateWithWarehouseStock = {
+      ...seedState,
+      stockMovements: [{
+        id: 'warehouse-opening-p2',
+        movementNumber: 'MOV-TEST-WH',
+        productId: 'p2',
+        locationId: warehouseId,
+        type: 'opening' as const,
+        quantityDelta: 5,
+        quantityAfter: 5,
+        createdAt: new Date().toISOString(),
+        note: 'Warehouse test stock',
+      }, ...seedState.stockMovements],
+    };
+
+    const result = addSaleToState(stateWithWarehouseStock, {
+      customerId: 'c1',
+      locationId: warehouseId,
+      items: [{ productId: 'p2', quantity: 1 }],
+      paymentMethod: 'Cash',
+      paidAmount: 42,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok && result.data) {
+      expect(result.data.stockMovements[0].locationId).toBe(warehouseId);
     }
   });
 
@@ -1361,6 +1485,130 @@ describe('businessLogic', () => {
     }
   });
 
+  it('creates a prospect quotation without registering a customer', () => {
+    const result = addQuotationToState(seedState, {
+      prospect: {
+        name: 'Northstar Hotels',
+        contactName: 'Adjoa Mensah',
+        phone: '024 000 1122',
+        email: 'SALES@NORTHSTAR.EXAMPLE',
+        location: 'Airport City',
+      },
+      items: [{ productId: 'p1', quantity: 2 }],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok && result.data) {
+      expect(result.data.customers).toHaveLength(seedState.customers.length);
+      expect(result.data.quotations[0]).toMatchObject({
+        customerId: undefined,
+        customerName: 'Northstar Hotels',
+        clientId: 'PROSPECT',
+        customerType: 'prospect',
+        prospect: {
+          contactName: 'Adjoa Mensah',
+          phone: '024 000 1122',
+          email: 'sales@northstar.example',
+        },
+      });
+    }
+  });
+
+  it('requires a prospect contact channel and allows invoice conversion with a customer snapshot', () => {
+    const invalid = addQuotationToState(seedState, {
+      prospect: { name: 'Northstar Hotels' },
+      items: [{ productId: 'p1', quantity: 1 }],
+    });
+    expect(invalid.ok).toBe(false);
+
+    const quoted = addQuotationToState(seedState, {
+      prospect: { name: 'Northstar Hotels', phone: '0240001122' },
+      items: [{ productId: 'p1', quantity: 1 }],
+    });
+    if (!quoted.ok || !quoted.data) throw new Error('Expected prospect quotation creation to succeed.');
+
+    const conversion = convertQuotationToSalesState(quoted.data, {
+      quotationId: quoted.data.quotations[0].id,
+      paymentMethod: 'Cash',
+      amountPaid: 0,
+    });
+    expect(conversion.ok).toBe(true);
+    if (conversion.ok && conversion.data) {
+      const sale = conversion.data.data.sales[0];
+      expect(sale.customerId).toBeUndefined();
+      expect(sale.customerSnapshot).toMatchObject({
+        name: 'Northstar Hotels',
+        phone: '0240001122',
+        source: 'prospect',
+      });
+      expect(conversion.data.receipts[0]).toMatchObject({
+        customerName: 'Northstar Hotels',
+        clientId: 'UNREGISTERED',
+      });
+    }
+  });
+
+  it('registers a prospect, preserves its snapshot, and enables invoice conversion', () => {
+    const quoted = addQuotationToState(seedState, {
+      prospect: { name: 'Northstar Hotels', phone: '0240001122', notes: 'RFQ-44' },
+      items: [{ productId: 'p1', quantity: 1 }],
+    });
+    if (!quoted.ok || !quoted.data) throw new Error('Expected prospect quotation creation to succeed.');
+
+    const registered = registerQuotationProspectInState(quoted.data, {
+      quotationId: quoted.data.quotations[0].id,
+    });
+    expect(registered.ok).toBe(true);
+    if (!registered.ok || !registered.data) throw new Error('Expected prospect registration to succeed.');
+
+    expect(registered.data.customer.name).toBe('Northstar Hotels');
+    expect(registered.data.quotation).toMatchObject({
+      customerId: registered.data.customer.id,
+      clientId: registered.data.customer.clientId,
+      customerType: 'registered',
+      prospect: { notes: 'RFQ-44' },
+    });
+    expect(registered.data.quotation.prospectConvertedAt).toBeTruthy();
+
+    const conversion = convertQuotationToSalesState(registered.data.data, {
+      quotationId: registered.data.quotation.id,
+      paymentMethod: 'Cash',
+      amountPaid: 0,
+    });
+    expect(conversion.ok).toBe(true);
+  });
+
+  it('links prospect-originated invoices back to the customer when the prospect is registered later', () => {
+    const quoted = addQuotationToState(seedState, {
+      prospect: { name: 'Northstar Hotels', phone: '0240001122', notes: 'RFQ-44' },
+      items: [{ productId: 'p1', quantity: 1 }],
+    });
+    if (!quoted.ok || !quoted.data) throw new Error('Expected prospect quotation creation to succeed.');
+
+    const converted = convertQuotationToSalesState(quoted.data, {
+      quotationId: quoted.data.quotations[0].id,
+      paymentMethod: 'Cash',
+      amountPaid: 10,
+    });
+    if (!converted.ok || !converted.data) throw new Error('Expected prospect quotation conversion to succeed.');
+
+    const prospectInvoice = converted.data.data.sales[0];
+    expect(prospectInvoice.customerId).toBeUndefined();
+    expect(prospectInvoice.customerSnapshot?.source).toBe('prospect');
+
+    const registered = registerQuotationProspectInState(converted.data.data, {
+      quotationId: converted.data.data.quotations[0].id,
+    });
+    expect(registered.ok).toBe(true);
+    if (!registered.ok || !registered.data) throw new Error('Expected prospect registration to succeed.');
+
+    const linkedInvoice = registered.data.data.sales.find((sale) => sale.id === prospectInvoice.id);
+    const registeredCustomerId = registered.data.customer.id;
+    expect(linkedInvoice?.customerId).toBe(registered.data.customer.id);
+    expect(linkedInvoice?.customerSnapshot).toMatchObject({ name: 'Northstar Hotels', source: 'prospect' });
+    expect(registered.data.data.customerLedgerEntries.some((entry) => entry.customerId === registeredCustomerId && entry.relatedSaleId === prospectInvoice.id)).toBe(true);
+  });
+
   it('captures quotation customer type snapshot from the selected customer when classification is enabled', () => {
     const result = addQuotationToState(
       {
@@ -1501,6 +1749,51 @@ describe('businessLogic', () => {
       expect(converted.data.data.sales[0].quotationId).toBe(quotationId);
       expect(converted.data.data.sales[0].customerTypeSnapshot).toBeUndefined();
     }
+  });
+
+  it('attaches client PO evidence to a quotation and carries it onto the converted invoice', () => {
+    const withQuotation = addQuotationToState(seedState, {
+      customerId: 'c1',
+      items: [{ productId: 'p1', quantity: 1 }],
+    });
+    expect(withQuotation.ok).toBe(true);
+    if (!withQuotation.ok || !withQuotation.data) throw new Error('Expected quotation creation to succeed.');
+
+    const quotationId = withQuotation.data.quotations[0].id;
+    const withPo = addQuotationClientPoInState(withQuotation.data, {
+      quotationId,
+      poNumber: 'PO-ACME-2026-008',
+      name: 'Approved PO.pdf',
+      storagePath: `${seedState.businessProfile.id}/${quotationId}/approved-po.pdf`,
+      mimeType: 'application/pdf',
+      size: 2048,
+      uploadedBy: 'u-sales',
+    });
+    expect(withPo.ok).toBe(true);
+    if (!withPo.ok || !withPo.data) throw new Error('Expected client PO attachment to succeed.');
+
+    const poDocument = withPo.data.quotations[0].clientPurchaseOrders?.[0];
+    expect(poDocument).toMatchObject({ poNumber: 'PO-ACME-2026-008', name: 'Approved PO.pdf' });
+
+    const converted = convertQuotationToSalesState(withPo.data, {
+      quotationId,
+      paymentMethod: 'Bank Account',
+      amountPaid: 0,
+      clientPoDocumentId: poDocument?.id,
+    });
+    expect(converted.ok).toBe(true);
+    if (!converted.ok || !converted.data) throw new Error('Expected quotation conversion to succeed.');
+    expect(converted.data.data.sales[0].clientPoNumber).toBe('PO-ACME-2026-008');
+    expect(converted.data.data.sales[0].clientPoDocument).toMatchObject({ id: poDocument?.id, storagePath: poDocument?.storagePath });
+    expect(converted.data.data.sales[0].paidAmount).toBe(0);
+    expect(selectSalePaymentStatus(converted.data.data.sales[0])).toBe('Unpaid');
+
+    const removal = removeQuotationClientPoInState(converted.data.data, {
+      quotationId,
+      documentId: poDocument!.id,
+      removedBy: 'u-sales',
+    });
+    expect(removal.ok).toBe(false);
   });
 
   it('captures converted quotation sale customer type snapshot from the selected customer when classification is enabled', () => {
@@ -2133,22 +2426,13 @@ describe('businessLogic', () => {
       notification.actionUrl === '/accounting?segment=payables'
     )).toBe(true);
 
-    const approvedPayable = approvePayableInState(approved.data, {
+    const blockedPayable = approvePayableInState(approved.data, {
       payableId: payable!.id,
       approvedBy: 'u-gm',
     });
-    expect(approvedPayable.ok).toBe(true);
-    if (!approvedPayable.ok || !approvedPayable.data) {
-      return;
-    }
-    expect(approvedPayable.data.notifications.some((notification) =>
-      notification.title === 'Payable approved for settlement' &&
-      notification.recipientRoles?.includes('Accountant') &&
-      notification.referenceNumber === payable!.payableCode &&
-      notification.actionUrl === '/accounting?segment=payables&action=payment'
-    )).toBe(true);
+    expect(blockedPayable.ok).toBe(false);
 
-    const received = receivePurchaseInWarehouseInState(approvedPayable.data, {
+    const received = receivePurchaseInWarehouseInState(approved.data, {
       purchaseId: draft.id,
       warehouseId: '00000000-0000-4000-8000-000000000002',
       performedBy: 'u-warehouse',
@@ -2169,7 +2453,31 @@ describe('businessLogic', () => {
       selectProductQuantityOnHand(seedState, 'p1', '00000000-0000-4000-8000-000000000002')
     );
 
-    const partialPayment = recordPayablePaymentInState(received.data, {
+    const invoiced = recordSupplierInvoiceInState(received.data, {
+      purchaseId: draft.id,
+      invoiceNumber: 'SUP-INV-1004',
+      invoiceAmount: 85,
+      invoiceDate: '2026-07-15',
+      recordedBy: 'u-accountant',
+    });
+    expect(invoiced.ok).toBe(true);
+    if (!invoiced.ok || !invoiced.data) return;
+    expect(invoiced.data.purchases.find((entry) => entry.id === draft.id)?.threeWayMatchStatus).toBe('matched');
+
+    const approvedPayable = approvePayableInState(invoiced.data, {
+      payableId: payable!.id,
+      approvedBy: 'u-gm',
+    });
+    expect(approvedPayable.ok).toBe(true);
+    if (!approvedPayable.ok || !approvedPayable.data) return;
+    expect(approvedPayable.data.notifications.some((notification) =>
+      notification.title === 'Payable approved for settlement' &&
+      notification.recipientRoles?.includes('Accountant') &&
+      notification.referenceNumber === payable!.payableCode &&
+      notification.actionUrl === '/accounting?segment=payables&action=payment'
+    )).toBe(true);
+
+    const partialPayment = recordPayablePaymentInState(approvedPayable.data, {
       payableId: payable!.id,
       amount: 35,
       method: 'bank',
@@ -2218,6 +2526,66 @@ describe('businessLogic', () => {
         notification.referenceNumber === payable!.payableCode
       )).toBe(true);
     }
+  });
+
+  it('records partial and final customer payments with ledger and audit evidence', () => {
+    const created = addSaleToState(seedState, {
+      customerId: seedState.customers[0].id,
+      items: [{ productId: seedState.products[0].id, quantity: 1 }],
+      paymentMethod: 'Bank Account',
+      paidAmount: 0,
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok || !created.data) return;
+
+    const sale = created.data.sales[0];
+    const originalBalance = selectSaleBalanceRemaining(sale);
+    const partialAmount = Number((originalBalance / 2).toFixed(2));
+    const partial = recordSalePaymentInState(created.data, {
+      saleId: sale.id,
+      amount: partialAmount,
+      method: 'mobileMoney',
+      reference: 'MOMO-RECEIPT-1',
+      recordedBy: 'u-accountant',
+    });
+    expect(partial.ok).toBe(true);
+    if (!partial.ok || !partial.data) return;
+
+    const partiallyPaidSale = partial.data.sales.find((entry) => entry.id === sale.id)!;
+    expect(partiallyPaidSale.paidAmount).toBe(partialAmount);
+    expect(partiallyPaidSale.paymentMethod).toBe('Mobile Money');
+    expect(selectSaleBalanceRemaining(partiallyPaidSale)).toBe(Number((originalBalance - partialAmount).toFixed(2)));
+    expect(partial.data.payments[0]).toMatchObject({ sourceType: 'invoice', sourceId: sale.id, amount: partialAmount, reference: 'MOMO-RECEIPT-1' });
+    expect(partial.data.customerLedgerEntries[0]).toMatchObject({ type: 'payment_received', relatedSaleId: sale.id, amountDelta: -partialAmount });
+    expect(partial.data.activityLogEntries[0]).toMatchObject({ actionType: 'payment_recorded', entityId: sale.id });
+    expect(partial.data.notifications[0]).toMatchObject({ title: 'Customer payment recorded', actionUrl: `/sales/${sale.id}` });
+
+    const overpayment = recordSalePaymentInState(partial.data, {
+      saleId: sale.id,
+      amount: originalBalance,
+      method: 'cash',
+      recordedBy: 'u-accountant',
+    });
+    expect(overpayment.ok).toBe(false);
+
+    const remaining = selectSaleBalanceRemaining(partiallyPaidSale);
+    const settled = recordSalePaymentInState(partial.data, {
+      saleId: sale.id,
+      amount: remaining,
+      method: 'bank',
+      reference: 'BANK-SETTLED-1',
+      recordedBy: 'u-accountant',
+    });
+    expect(settled.ok).toBe(true);
+    if (!settled.ok || !settled.data) return;
+    expect(selectSaleBalanceRemaining(settled.data.sales.find((entry) => entry.id === sale.id)!)).toBe(0);
+    expect(settled.data.notifications[0].title).toBe('Customer invoice settled');
+
+    const reversed = reverseSaleInState(created.data, { saleId: sale.id, reason: 'Test reversal', actor: 'u-admin' });
+    expect(reversed.ok).toBe(true);
+    if (!reversed.ok || !reversed.data) return;
+    const blocked = recordSalePaymentInState(reversed.data.data, { saleId: sale.id, amount: 1, method: 'cash', recordedBy: 'u-accountant' });
+    expect(blocked.ok).toBe(false);
   });
 
   it('prevents receiving cancelled or unapproved purchases and blocks duplicate receipt', () => {
@@ -2292,6 +2660,149 @@ describe('businessLogic', () => {
     expect(secondReceipt.ok).toBe(false);
   });
 
+  it('keeps partial receipts open as backorders and matches only after final receipt', () => {
+    const draft = createPurchaseDraftInState(seedState, {
+      vendorId: seedState.vendors[0].id,
+      createdBy: 'u-purchase',
+      items: [{ productId: 'p1', quantity: 10, unitCost: 15 }],
+    });
+    if (!draft.ok || !draft.data) return;
+    const purchaseId = draft.data.purchases[0].id;
+    const submitted = submitPurchaseInState(draft.data, { purchaseId, performedBy: 'u-purchase' });
+    if (!submitted.ok || !submitted.data) return;
+    const approved = approvePurchaseInState(submitted.data, { purchaseId, performedBy: 'u-gm' });
+    if (!approved.ok || !approved.data) return;
+
+    const invoiced = recordSupplierInvoiceInState(approved.data, {
+      purchaseId,
+      invoiceNumber: 'SUP-2001',
+      invoiceAmount: 150,
+      invoiceDate: '2026-07-15',
+      recordedBy: 'u-accountant',
+    });
+    if (!invoiced.ok || !invoiced.data) return;
+    expect(invoiced.data.purchases[0].threeWayMatchStatus).toBe('pending');
+
+    const partial = receivePurchaseInWarehouseInState(invoiced.data, {
+      purchaseId,
+      warehouseId: '00000000-0000-4000-8000-000000000002',
+      performedBy: 'u-warehouse',
+      receivedItems: [{ productId: 'p1', quantity: 6 }],
+    });
+    expect(partial.ok).toBe(true);
+    if (!partial.ok || !partial.data) return;
+    const partialPurchase = partial.data.purchases[0];
+    expect(partialPurchase.status).toBe('partiallyReceived');
+    expect(selectPurchaseReceivedQuantity(partialPurchase, 'p1')).toBe(6);
+    expect(partialPurchase.threeWayMatchStatus).toBe('pending');
+
+    const excessive = receivePurchaseInWarehouseInState(partial.data, {
+      purchaseId,
+      warehouseId: '00000000-0000-4000-8000-000000000002',
+      performedBy: 'u-warehouse',
+      receivedItems: [{ productId: 'p1', quantity: 5 }],
+    });
+    expect(excessive.ok).toBe(false);
+
+    const finalReceipt = receivePurchaseInWarehouseInState(partial.data, {
+      purchaseId,
+      warehouseId: '00000000-0000-4000-8000-000000000002',
+      performedBy: 'u-warehouse',
+      receivedItems: [{ productId: 'p1', quantity: 4 }],
+    });
+    expect(finalReceipt.ok).toBe(true);
+    if (!finalReceipt.ok || !finalReceipt.data) return;
+    const completedPurchase = finalReceipt.data.purchases[0];
+    expect(completedPurchase.status).toBe('receivedToWarehouse');
+    expect(completedPurchase.receipts).toHaveLength(2);
+    expect(selectPurchaseReceivedQuantity(completedPurchase, 'p1')).toBe(10);
+    expect(completedPurchase.threeWayMatchStatus).toBe('matched');
+  });
+
+  it('holds dock arrivals outside available stock until inspection and put-away', () => {
+    const draft = createPurchaseDraftInState(seedState, {
+      vendorId: seedState.vendors[0].id,
+      createdBy: 'u-purchase',
+      items: [{ productId: 'p1', quantity: 10, unitCost: 15 }],
+    });
+    if (!draft.ok || !draft.data) return;
+    const purchaseId = draft.data.purchases[0].id;
+    const submitted = submitPurchaseInState(draft.data, { purchaseId, performedBy: 'u-purchase' });
+    if (!submitted.ok || !submitted.data) return;
+    const approved = approvePurchaseInState(submitted.data, { purchaseId, performedBy: 'u-gm' });
+    if (!approved.ok || !approved.data) return;
+    const warehouseId = '00000000-0000-4000-8000-000000000002';
+    const before = selectProductQuantityOnHand(approved.data, 'p1', warehouseId);
+
+    const arrival = recordPurchaseArrivalInState(approved.data, {
+      purchaseId,
+      warehouseId,
+      performedBy: 'u-warehouse',
+      deliveryNoteNumber: 'DN-1001',
+      carrier: 'Truck GT-100',
+      receivedItems: [{ productId: 'p1', quantity: 10 }],
+    });
+    expect(arrival.ok).toBe(true);
+    if (!arrival.ok || !arrival.data) return;
+    const arrivedPurchase = arrival.data.purchases.find((purchase) => purchase.id === purchaseId)!;
+    const receipt = arrivedPurchase.receipts![0];
+    expect(arrivedPurchase.status).toBe('arrivedPendingInspection');
+    expect(receipt).toMatchObject({ status: 'pendingInspection', deliveryNoteNumber: 'DN-1001', carrier: 'Truck GT-100' });
+    expect(selectPurchaseDeliveredQuantity(arrivedPurchase, 'p1')).toBe(10);
+    expect(selectPurchaseReceivedQuantity(arrivedPurchase, 'p1')).toBe(0);
+    expect(selectProductQuantityOnHand(arrival.data, 'p1', warehouseId)).toBe(before);
+
+    const unreconciled = completePurchaseInspectionInState(arrival.data, {
+      purchaseId,
+      receiptId: receipt.id,
+      inspectedBy: 'u-warehouse',
+      items: [{ productId: 'p1', acceptedQuantity: 7, quarantinedQuantity: 1, rejectedQuantity: 1 }],
+    });
+    expect(unreconciled.ok).toBe(false);
+
+    const inspected = completePurchaseInspectionInState(arrival.data, {
+      purchaseId,
+      receiptId: receipt.id,
+      inspectedBy: 'u-warehouse',
+      inspectionNote: 'Two damaged packs held for supplier action.',
+      items: [{ productId: 'p1', acceptedQuantity: 8, quarantinedQuantity: 1, rejectedQuantity: 1 }],
+    });
+    expect(inspected.ok).toBe(true);
+    if (!inspected.ok || !inspected.data) return;
+    const inspectedPurchase = inspected.data.purchases.find((purchase) => purchase.id === purchaseId)!;
+    expect(inspectedPurchase.status).toBe('partiallyReceived');
+    expect(inspectedPurchase.receipts![0].status).toBe('exception');
+    expect(selectPurchaseReceivedQuantity(inspectedPurchase, 'p1')).toBe(8);
+    expect(selectProductQuantityOnHand(inspected.data, 'p1', warehouseId)).toBe(before + 8);
+    expect(inspected.data.notifications.some((notification) => notification.title === 'Supplier receipt exception')).toBe(true);
+  });
+
+  it('flags supplier invoice value variance and blocks payable approval', () => {
+    const purchase = {
+      ...seedState.purchases[0],
+      status: 'receivedToWarehouse' as const,
+      receipts: [{
+        id: 'receipt-1',
+        warehouseId: '00000000-0000-4000-8000-000000000002',
+        receivedBy: 'u-warehouse',
+        receivedAt: '2026-07-15T10:00:00.000Z',
+        items: seedState.purchases[0].items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+      }],
+    };
+    const state = { ...seedState, purchases: [purchase] };
+    const invoiced = recordSupplierInvoiceInState(state, {
+      purchaseId: purchase.id,
+      invoiceNumber: 'SUP-VARIANCE',
+      invoiceAmount: purchase.totalAmount + 10,
+      invoiceDate: '2026-07-15',
+      recordedBy: 'u-accountant',
+    });
+    expect(invoiced.ok).toBe(true);
+    if (!invoiced.ok || !invoiced.data) return;
+    expect(invoiced.data.purchases[0].threeWayMatchStatus).toBe('variance');
+    expect(invoiced.data.purchases[0].threeWayMatchVariance).toBe(10);
+  });
+
   it('updates a sale payment reference without changing the sale balance', () => {
     const saleResult = addSaleToState(seedState, {
       customerId: seedState.customers[0].id,
@@ -2319,6 +2830,55 @@ describe('businessLogic', () => {
     const updatedSale = updateResult.data.sales.find((sale) => sale.id === createdSale.id);
     expect(updatedSale?.paymentReference).toBe('BANK-DEP-001');
     expect(updatedSale ? selectSaleBalanceRemaining(updatedSale) : undefined).toBe(originalBalance);
+  });
+
+  it('posts a partial return with credit note, refund, ledger evidence, and saleable stock restoration', () => {
+    const sale = seedState.sales.find((entry) => entry.id === 's1')!;
+    const beforeStock = selectProductQuantityOnHand(seedState, 'p4', seedState.locations[0].id);
+    const result = createSalesReturnInState(seedState, {
+      saleId: sale.id,
+      items: [{ productId: 'p4', quantity: 2, disposition: 'restock', locationId: seedState.locations[0].id }],
+      reason: 'Customer returned two sealed tins.',
+      refundMethod: 'mobileMoney',
+      refundReference: 'MM-RFD-2048',
+      processedBy: 'u-sales',
+      approvedBy: 'u-admin',
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || !result.data) return;
+    expect(result.data.creditNote).toMatchObject({ invoiceNumber: sale.invoiceNumber, totalAmount: 56, receivableCreditAmount: 56 });
+    expect(result.data.refund).toMatchObject({ amount: 56, method: 'mobileMoney', reference: 'MM-RFD-2048' });
+    expect(result.data.stockMovements[0]).toMatchObject({ type: 'return', quantityDelta: 2, sourceType: 'credit_note' });
+    expect(selectProductQuantityOnHand(result.data.data, 'p4', seedState.locations[0].id)).toBe(beforeStock + 2);
+    expect(result.data.ledgerEntries.map((entry) => entry.type)).toEqual(['credit_note', 'refund']);
+    expect(result.data.activities.map((entry) => entry.actionType)).toEqual(['credit_note_issued', 'customer_refunded']);
+  });
+
+  it('enforces cumulative return quantities and keeps damaged stock out of saleable inventory', () => {
+    const sale = seedState.sales.find((entry) => entry.id === 's2')!;
+    const beforeStock = selectProductQuantityOnHand(seedState, 'p1', seedState.locations[0].id);
+    const first = createSalesReturnInState(seedState, {
+      saleId: sale.id,
+      items: [{ productId: 'p1', quantity: 3, disposition: 'damaged' }],
+      reason: 'Packaging was damaged in transit.',
+      processedBy: 'u-sales',
+      approvedBy: 'u-admin',
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok || !first.data) return;
+    expect(first.data.stockMovements).toHaveLength(0);
+    expect(selectProductQuantityOnHand(first.data.data, 'p1', seedState.locations[0].id)).toBe(beforeStock);
+
+    const excessive = createSalesReturnInState(first.data.data, {
+      saleId: sale.id,
+      items: [{ productId: 'p1', quantity: 2, disposition: 'restock' }],
+      reason: 'Attempt to return more than remains.',
+      processedBy: 'u-sales',
+      approvedBy: 'u-admin',
+    });
+    expect(excessive.ok).toBe(false);
+    if (!excessive.ok) expect(excessive.message).toContain('1 returnable');
   });
 
   it('dashboard derivations are correct', () => {

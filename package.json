@@ -1,27 +1,45 @@
 {
   "name": "bizpilot-gh-ionic",
   "private": true,
+  "workspaces": [
+    "enterprise-web"
+  ],
   "version": "0.0.1",
   "type": "module",
-  "description": "Mobile-first Ghana SME operations demo built with Ionic React.",
+  "description": "BizPilot enterprise web and Ionic mobile workspace.",
   "scripts": {
-    "dev": "concurrently -n EMAIL,WEB -c cyan,green \"npm run dev:email\" \"npm run dev:web\"",
-    "dev:web": "vite --host 127.0.0.1",
-    "dev:email": "node --env-file=.env.server server/index.mjs",
-    "build": "tsc && vite build",
-    "start": "node --env-file=.env.server server/index.mjs",
-    "serve:web": "npm run build && npm run start",
-    "preview": "vite preview",
-    "test.e2e": "start-server-and-test 'npm run dev' http://127.0.0.1:5173 'npm run cypress:run'",
+    "dev": "npm run dev:web",
+    "dev:web": "concurrently -n API,NEXT -c cyan,green \"npm run dev:api\" \"npm run dev:next\"",
+    "dev:next": "npm run dev --workspace=bizpilot-enterprise-web",
+    "dev:api": "node --env-file=.env.server server/index.mjs",
+    "dev:mobile": "concurrently -n API,IONIC -c cyan,magenta \"npm run dev:api\" \"npm run dev:ionic\"",
+    "dev:ionic": "vite --host 127.0.0.1",
+    "build": "npm run build:web",
+    "build:web": "npm run build --workspace=bizpilot-enterprise-web",
+    "build:mobile": "tsc && vite build",
+    "start": "npm run start:web",
+    "start:web": "concurrently -n API,NEXT -c cyan,green \"npm run start:api\" \"npm run start:next\"",
+    "start:next": "npm run start --workspace=bizpilot-enterprise-web",
+    "start:api": "node --env-file=.env.server server/index.mjs",
+    "serve:web": "npm run build:web && npm run start:web",
+    "preview:mobile": "vite preview",
+    "mobile:sync": "npm run build:mobile && npx cap sync",
+    "mobile:ios": "npm run mobile:sync && npx cap open ios",
+    "mobile:android": "npm run mobile:sync && npx cap open android",
+    "test.e2e": "npm run test.e2e:mobile",
+    "test.e2e:mobile": "start-server-and-test 'npm run dev:mobile' http://127.0.0.1:5173 'npm run cypress:run'",
     "test.unit": "vitest",
-    "lint": "eslint",
+    "lint": "npm run lint:web",
+    "lint:web": "npm run lint --workspace=bizpilot-enterprise-web",
+    "typecheck:web": "npm run typecheck --workspace=bizpilot-enterprise-web",
     "cypress:run": "cypress run",
     "cypress:open": "cypress open"
   },
   "dependencies": {
-    "@capacitor/cli": "^8.3.0",
-    "@capacitor/core": "^8.3.0",
-    "@capacitor/ios": "^8.3.0",
+    "@capacitor/android": "8.4.2",
+    "@capacitor/cli": "8.4.2",
+    "@capacitor/core": "8.4.2",
+    "@capacitor/ios": "8.4.2",
     "@ionic/react": "^8.5.0",
     "@ionic/react-router": "^8.5.0",
     "@supabase/supabase-js": "^2.103.2",
@@ -32,8 +50,8 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "nodemailer": "^8.0.5",
-    "react": "19.0.0",
-    "react-dom": "19.0.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
     "react-router": "^5.3.4",
     "react-router-dom": "^5.3.4"
   },
@@ -42,8 +60,8 @@
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^16.2.0",
     "@testing-library/user-event": "^14.4.3",
-    "@types/react": "19.0.10",
-    "@types/react-dom": "19.0.4",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-legacy": "^5.0.0",
     "@vitejs/plugin-react": "^4.0.1",
     "concurrently": "^9.2.1",
@@ -62,5 +80,11 @@
     "vitest": "^0.34.6"
   },
   "author": "mbambajnr",
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "overrides": {
+    "postcss": "8.5.10",
+    "next@16.2.10": {
+      "postcss": "8.5.10"
+    }
+  }
 }

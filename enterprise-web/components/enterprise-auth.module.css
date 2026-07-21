@@ -1,0 +1,47 @@
+.shell { min-height: 100vh; display: grid; grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.1fr); background: #f4f6f5; color: #17201d; font-family: "Avenir Next", Avenir, sans-serif; }
+.shell * { box-sizing: border-box; }
+.brandPanel { min-height: 100vh; display: flex; flex-direction: column; padding: 42px clamp(34px, 5vw, 76px); color: #f5f8f6; background: #10362e; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand > span:last-child, .brand strong, .brand small { display: block; }
+.brand strong { font: 700 23px/1 Charter, "Bitstream Charter", Georgia, serif; }
+.brand small { margin-top: 4px; color: #a9beb7; font-size: 10px; text-transform: uppercase; }
+.mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 5px; background: #f1c766; color: #10362e; font: 700 14px Charter, Georgia, serif; }
+.promise { max-width: 580px; margin: auto 0; padding: 80px 0 54px; }
+.eyebrow { margin: 0 0 13px; color: #2c8060; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.brandPanel .eyebrow { color: #f1c766; }
+.promise h1 { max-width: 560px; margin: 0; font: 700 clamp(42px, 5vw, 68px)/1.02 Charter, "Bitstream Charter", Georgia, serif; }
+.promise > p:last-child { max-width: 540px; margin: 25px 0 0; color: #bfd0ca; font-size: 17px; line-height: 1.7; }
+.assurances { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid #31564d; }
+.assurances span { position: relative; min-width: 0; padding: 23px 20px 0 0; }
+.assurances svg { color: #f1c766; }
+.assurances b, .assurances small { display: block; }
+.assurances b { margin-top: 11px; font-size: 12px; }
+.assurances small { margin-top: 4px; color: #9db5ad; font-size: 11px; line-height: 1.45; }
+.formPanel { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 58px clamp(34px, 8vw, 130px) 30px; background: #ffffff; }
+.formWrap { width: 100%; max-width: 520px; margin: auto; }
+.formWrap header { margin-bottom: 32px; }
+.secureIcon { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 24px; border: 1px solid #cbd9d4; border-radius: 6px; color: #215d4c; background: #edf4f1; }
+.formWrap h2 { margin: 0; font: 700 38px/1.08 Charter, "Bitstream Charter", Georgia, serif; }
+.formWrap header > p:last-child { max-width: 480px; margin: 13px 0 0; color: #68736f; font-size: 14px; line-height: 1.6; }
+.tabs { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 27px; border-bottom: 1px solid #dbe2df; }
+.tabs button { min-height: 45px; border: 0; border-bottom: 2px solid transparent; color: #68736f; background: transparent; font: 700 13px "Avenir Next", Avenir, sans-serif; cursor: pointer; }
+.tabs button[aria-selected="true"] { border-bottom-color: #1d634f; color: #174a3c; }
+.formWrap form { display: grid; gap: 20px; }
+.formWrap label { display: grid; gap: 8px; color: #34423d; font-size: 12px; font-weight: 700; }
+.formWrap input { width: 100%; min-height: 50px; padding: 0 14px; border: 1px solid #cfd8d5; border-radius: 5px; outline: none; color: #17201d; background: #fbfcfb; font: 500 14px "Avenir Next", Avenir, sans-serif; }
+.formWrap input:focus { border-color: #26715a; box-shadow: 0 0 0 3px rgba(38, 113, 90, 0.11); }
+.passwordField { position: relative; display: block; }
+.passwordField input { padding-right: 48px; }
+.passwordField button { position: absolute; inset: 0 5px 0 auto; width: 42px; border: 0; color: #61706b; background: transparent; cursor: pointer; }
+.primary { min-height: 51px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; margin-top: 5px; border: 1px solid #174a3c; border-radius: 5px; color: #ffffff; background: #174a3c; font: 700 14px "Avenir Next", Avenir, sans-serif; cursor: pointer; }
+.primary:hover { background: #103b30; }
+.primary:disabled, .reset:disabled { cursor: wait; opacity: 0.62; }
+.reset { min-height: 35px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; color: #4e5f59; background: transparent; font: 600 12px "Avenir Next", Avenir, sans-serif; cursor: pointer; }
+.error, .success, .connection { margin: 0; padding: 12px 13px; border: 1px solid #ead0cb; border-radius: 5px; color: #81443b; background: #fff6f4; font-size: 12px; line-height: 1.5; }
+.success { border-color: #bfdbcf; color: #236247; background: #f0f8f4; }
+.connection { border-color: #e6d49f; color: #69531a; background: #fff9e9; }
+.connection b { display: block; margin-bottom: 2px; }
+.formPanel footer { margin-top: 40px; color: #89928f; font-size: 10px; text-align: center; text-transform: uppercase; }
+.formPanel footer span { margin: 0 7px; color: #c29a45; }
+@media (max-width: 900px) { .shell { grid-template-columns: 1fr; } .brandPanel { min-height: auto; padding: 28px; } .promise { padding: 70px 0 45px; } .promise h1 { font-size: 45px; } .assurances { display: none; } .formPanel { min-height: auto; padding: 48px 26px 28px; } }
+@media (max-width: 540px) { .promise { padding: 55px 0 20px; } .promise h1 { font-size: 37px; } .promise > p:last-child { font-size: 14px; } .formPanel { padding: 38px 20px 24px; } .formWrap h2 { font-size: 32px; } }

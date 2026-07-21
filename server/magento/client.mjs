@@ -40,7 +40,7 @@ async function magentoRequest(path, options = {}) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Magento did not respond within 15 seconds.');
     }
-    throw error;
+    throw new Error(`Magento service is not reachable at ${config.baseUrl}. Check that the Magento server is running and the base URL is correct.`);
   } finally {
     clearTimeout(timeout);
   }
@@ -103,7 +103,7 @@ export async function fetchMagentoCatalog() {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Magento did not respond within 15 seconds.');
     }
-    throw error;
+    throw new Error(`Magento service is not reachable at ${config.baseUrl}. Check that the Magento server is running and the base URL is correct.`);
   } finally {
     clearTimeout(timeout);
   }
@@ -163,6 +163,46 @@ export async function fetchMagentoReorder(days) {
     throw new Error('Magento returned an invalid reorder payload.');
   }
   return payload;
+}
+
+/**
+ * Recent Magento orders for the enterprise activity feed. Keep the response
+ * deliberately narrow so payment details and raw Magento extension data never
+ * cross the BizPilot server boundary.
+ */
+export async function fetchMagentoActivity(limit = 8) {
+  const config = getConfig();
+  if (!config.baseUrl || !config.accessToken) {
+    throw new Error('Magento integration is not configured on the BizPilot server.');
+  }
+
+  const pageSize = Math.min(Math.max(Number(limit) || 8, 1), 20);
+  const query = new URLSearchParams({
+    'searchCriteria[pageSize]': String(pageSize),
+    'searchCriteria[currentPage]': '1',
+    'searchCriteria[sortOrders][0][field]': 'created_at',
+    'searchCriteria[sortOrders][0][direction]': 'DESC',
+  });
+  const payload = await magentoRequest(`/V1/orders?${query.toString()}`);
+
+  if (!payload || !Array.isArray(payload.items)) {
+    throw new Error('Magento returned an invalid order activity payload.');
+  }
+
+  return {
+    generated_at: new Date().toISOString(),
+    total_count: Number(payload.total_count) || payload.items.length,
+    orders: payload.items.map((order) => ({
+      id: Number(order.entity_id) || 0,
+      order_number: String(order.increment_id || ''),
+      status: String(order.status || 'unknown'),
+      created_at: String(order.created_at || ''),
+      total: Number(order.grand_total) || 0,
+      currency: String(order.order_currency_code || 'GHS'),
+      item_count: Number(order.total_item_count) || 0,
+      customer_name: [order.customer_firstname, order.customer_lastname].filter(Boolean).join(' ') || 'Guest customer',
+    })),
+  };
 }
 
 /** Poll a Mobile Money sale's payment status (register polls until settled). */

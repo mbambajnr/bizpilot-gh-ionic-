@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { publicEnv } from './publicEnv';
 
 /**
  * Where the BizPilot server lives.
@@ -9,10 +10,16 @@ import { supabase } from './supabase';
  * - Packaged mobile app (Capacitor): there is no proxy and no same origin —
  *   set VITE_API_BASE_URL to the hosted server URL (https) at build time.
  */
-const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '') ?? '';
+const viteApiBase = publicEnv.viteApiBaseUrl?.replace(/\/+$/, '') ?? '';
+const nextApiBase = publicEnv.nextApiBaseUrl?.replace(/\/+$/, '') ?? '';
 
 export function apiUrl(path: string): string {
-  return `${apiBase}${path}`;
+  if (nextApiBase) {
+    const proxyPath = path.startsWith('/api/') ? path.slice(4) : path;
+    return `${nextApiBase}${proxyPath}`;
+  }
+
+  return `${viteApiBase}${path}`;
 }
 
 /**

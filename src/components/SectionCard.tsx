@@ -3,6 +3,7 @@ import { chevronDownOutline, chevronUpOutline } from 'ionicons/icons';
 import { useState } from 'react';
 
 type SectionCardProps = {
+  id?: string;
   title: string;
   subtitle: string;
   children: React.ReactNode;
@@ -15,6 +16,7 @@ type SectionCardProps = {
 };
 
 const SectionCard: React.FC<SectionCardProps> = ({
+  id,
   title,
   subtitle,
   children,
@@ -29,6 +31,7 @@ const SectionCard: React.FC<SectionCardProps> = ({
 
   return (
     <section
+      id={id}
       className={`section-card${collapsible ? ' section-card-collapsible' : ''}${collapsible && !isExpanded ? ' is-collapsed' : ''}${highlighted ? ' section-card-highlighted' : ''}${className ? ` ${className}` : ''}`}
       data-testid={dataTestId}
     >

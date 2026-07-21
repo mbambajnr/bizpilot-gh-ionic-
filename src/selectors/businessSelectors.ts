@@ -205,7 +205,7 @@ export function selectCustomerClassificationBreakdown(state: BusinessState) {
 
 export function selectSaleBalanceRemaining(sale: Sale) {
   const receivableAmount = sale.netReceivableAmount ?? sale.totalAmount;
-  return sale.status === 'Reversed' ? 0 : Math.max(0, receivableAmount - sale.paidAmount);
+  return sale.status === 'Reversed' ? 0 : Math.max(0, receivableAmount - (sale.creditedAmount ?? 0) - sale.paidAmount);
 }
 
 export function selectSalePaymentStatus(sale: Sale): SalePaymentStatus {
@@ -345,6 +345,14 @@ export function selectStockMovementDisplay(movement: StockMovement): StatusDispl
     };
   }
 
+  if (movement.type === 'return') {
+    return {
+      label: 'Customer return restocked',
+      helper: 'Saleable quantity restored through a credit note',
+      tone: 'success',
+    };
+  }
+
   if (movement.type === 'transfer') {
     return movement.quantityDelta < 0
       ? {
@@ -440,7 +448,7 @@ export function selectProcurementWorklist(state: BusinessState): ProcurementWork
 
 export function selectWarehouseWorklist(state: BusinessState): WarehouseWorklistSummary {
   return {
-    approvedPurchasesAwaitingReceiptCount: state.purchases.filter((purchase) => purchase.status === 'approved').length,
+    approvedPurchasesAwaitingReceiptCount: state.purchases.filter((purchase) => ['approved', 'arrivedPendingInspection', 'partiallyReceived'].includes(purchase.status)).length,
     transfersAwaitingDispatchCount: state.stockTransfers.filter((transfer) => transfer.status === 'approved').length,
     transfersAwaitingReceiptCount: state.stockTransfers.filter((transfer) => transfer.status === 'dispatched').length,
   };
@@ -677,6 +685,24 @@ export function selectLedgerEntryDisplay(entry: CustomerLedgerEntry): LedgerEntr
       label: 'Payment received',
       helper: 'Customer balance reduced by this payment',
       tone: 'success',
+      amountLabel: 'Payment',
+    };
+  }
+
+  if (entry.type === 'credit_note') {
+    return {
+      label: 'Credit note issued',
+      helper: 'Customer balance reduced by returned invoice value',
+      tone: 'success',
+      amountLabel: 'Adjustment',
+    };
+  }
+
+  if (entry.type === 'refund') {
+    return {
+      label: 'Customer refund paid',
+      helper: 'Refund cleared the customer credit created by a return',
+      tone: 'medium',
       amountLabel: 'Payment',
     };
   }

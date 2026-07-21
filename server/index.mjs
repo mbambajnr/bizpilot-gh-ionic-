@@ -9,6 +9,7 @@ import {
 import { createBusinessEmailService } from './email/createBusinessEmailService.mjs';
 import {
   createMagentoPosOrder,
+  fetchMagentoActivity,
   fetchMagentoCatalog,
   fetchMagentoReorder,
   fetchMagentoStock,
@@ -333,6 +334,21 @@ const server = http.createServer(async (request, response) => {
       json(response, 200, { ok: true, reorder });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Magento reorder feed failed.';
+      json(response, 502, { ok: false, message });
+    }
+    return;
+  }
+
+  if (request.method === 'GET' && request.url.startsWith('/api/magento/activity')) {
+    if (!(await requireUser(request, response))) {
+      return;
+    }
+    try {
+      const limitParam = new URL(request.url, 'http://internal').searchParams.get('limit');
+      const activity = await fetchMagentoActivity(limitParam ? Number(limitParam) : undefined);
+      json(response, 200, { ok: true, activity });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Magento order activity is unavailable.';
       json(response, 502, { ok: false, message });
     }
     return;

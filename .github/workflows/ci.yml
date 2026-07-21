@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - staging
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test.unit -- --run
+
+      - name: Check enterprise web
+        run: npm run lint:web && npm run typecheck:web
+
+      - name: Build enterprise web
+        run: npm run build:web
+
+      - name: Build Ionic mobile assets
+        run: npm run build:mobile
+
+      - name: Upload mobile assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: bizpilot-mobile-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 14

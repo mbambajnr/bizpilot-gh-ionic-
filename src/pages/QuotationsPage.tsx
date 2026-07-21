@@ -12,8 +12,11 @@ import {
   IonToast,
   IonToolbar,
   IonSearchbar,
+  IonSegment,
+  IonSegmentButton,
   IonRefresher,
   IonRefresherContent,
+  IonTextarea,
   IonToggle,
 } from '@ionic/react';
 import { chevronDownCircleOutline } from 'ionicons/icons';
@@ -45,15 +48,23 @@ const createDraftLine = (productId = ''): DraftLine => ({
 
 const QuotationsPage: React.FC = () => {
   const history = useHistory();
-  const { state, addQuotation, convertQuotationToSale, hasPermission } = useBusiness();
+  const { state, addQuotation, registerQuotationProspect, convertQuotationToSale, hasPermission } = useBusiness();
   const isCustomerClassificationEnabled = state.businessProfile.customerClassificationEnabled;
   const canCreateQuotations = hasPermission('quotations.create');
   const canConvertQuotations = hasPermission('quotations.convert');
+  const canRegisterCustomers = hasPermission('customers.create');
   const activeCustomers = useMemo(
     () => state.customers.filter((customer) => customer.status !== 'terminated'),
     [state.customers]
   );
   const [customerId, setCustomerId] = useState(activeCustomers[0]?.id ?? '');
+  const [partyMode, setPartyMode] = useState<'registered' | 'prospect'>(activeCustomers.length ? 'registered' : 'prospect');
+  const [prospectName, setProspectName] = useState('');
+  const [prospectContactName, setProspectContactName] = useState('');
+  const [prospectPhone, setProspectPhone] = useState('');
+  const [prospectEmail, setProspectEmail] = useState('');
+  const [prospectLocation, setProspectLocation] = useState('');
+  const [prospectNotes, setProspectNotes] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([createDraftLine(state.products[0]?.id ?? '')]);
   const [formMessage, setFormMessage] = useState('');
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -110,8 +121,8 @@ const QuotationsPage: React.FC = () => {
   }, [state.products]);
 
   const selectedCustomer = useMemo(
-    () => activeCustomers.find((customer) => customer.id === customerId) ?? null,
-    [activeCustomers, customerId]
+    () => partyMode === 'registered' ? activeCustomers.find((customer) => customer.id === customerId) ?? null : null,
+    [activeCustomers, customerId, partyMode]
   );
 
   useEffect(() => {
@@ -212,7 +223,15 @@ const QuotationsPage: React.FC = () => {
     }
 
     const result = addQuotation({
-      customerId,
+      customerId: partyMode === 'registered' ? customerId : undefined,
+      prospect: partyMode === 'prospect' ? {
+        name: prospectName,
+        contactName: prospectContactName,
+        phone: prospectPhone,
+        email: prospectEmail,
+        location: prospectLocation,
+        notes: prospectNotes,
+      } : undefined,
       items: lines
         .filter((line) => line.productId)
         .map((line) => ({
@@ -239,6 +258,22 @@ const QuotationsPage: React.FC = () => {
     setQuotationTaxExempt(false);
     setQuotationTaxExemptionReason('');
     setApplyWithholdingTax(state.businessProfile.withholdingTaxEnabled);
+    setProspectName('');
+    setProspectContactName('');
+    setProspectPhone('');
+    setProspectEmail('');
+    setProspectLocation('');
+    setProspectNotes('');
+  };
+
+  const handleRegisterProspect = (quotationId: string) => {
+    const result = registerQuotationProspect({ quotationId });
+    if (!result.ok) {
+      setFormMessage(result.message);
+      return;
+    }
+    setConversionMessage(`Prospect registered as ${result.clientId}. The quotation is ready for invoicing.`);
+    setShowConversionToast(true);
   };
 
   const handleStartConversion = (quotationId: string) => {
@@ -314,15 +349,19 @@ const QuotationsPage: React.FC = () => {
                 title="This role cannot create new quotations."
                 message="Quotation history is still available below, but an admin must grant quotation creation before this employee can draft new quotes."
               />
-            ) : activeCustomers.length === 0 || state.products.length === 0 ? (
+            ) : state.products.length === 0 ? (
               <EmptyState
                 eyebrow="Quotation setup"
-                title="Add customers and products first"
-                message="Quotations need at least one active customer and one product so the app can calculate pricing correctly."
+                title="Add products first"
+                message="Quotations need at least one product so the app can calculate pricing correctly."
               />
             ) : (
               <div className="form-grid">
-                <div className="picker-container">
+                <IonSegment value={partyMode} onIonChange={(event) => setPartyMode(event.detail.value as 'registered' | 'prospect')}>
+                  <IonSegmentButton value="registered" disabled={!activeCustomers.length}><IonLabel>Registered</IonLabel></IonSegmentButton>
+                  <IonSegmentButton value="prospect"><IonLabel>New prospect</IonLabel></IonSegmentButton>
+                </IonSegment>
+                {partyMode === 'registered' ? <div className="picker-container">
                     <p className="muted-label">Client</p>
                     <IonButton 
                         expand="block" 
@@ -336,7 +375,14 @@ const QuotationsPage: React.FC = () => {
                         Customer type: {selectCustomerTypeDisplayLabel(selectedCustomer.customerType)}
                       </p>
                     ) : null}
-                </div>
+                </div> : <div className="form-grid">
+                  <IonItem lines="none" className="app-item"><IonLabel position="stacked">Business or client name</IonLabel><IonInput value={prospectName} onIonInput={(event) => setProspectName(event.detail.value ?? '')} /></IonItem>
+                  <IonItem lines="none" className="app-item"><IonLabel position="stacked">Contact person (optional)</IonLabel><IonInput value={prospectContactName} onIonInput={(event) => setProspectContactName(event.detail.value ?? '')} /></IonItem>
+                  <IonItem lines="none" className="app-item"><IonLabel position="stacked">Phone</IonLabel><IonInput type="tel" value={prospectPhone} onIonInput={(event) => setProspectPhone(event.detail.value ?? '')} /></IonItem>
+                  <IonItem lines="none" className="app-item"><IonLabel position="stacked">Email</IonLabel><IonInput type="email" value={prospectEmail} onIonInput={(event) => setProspectEmail(event.detail.value ?? '')} /></IonItem>
+                  <IonItem lines="none" className="app-item"><IonLabel position="stacked">Location (optional)</IonLabel><IonInput value={prospectLocation} onIonInput={(event) => setProspectLocation(event.detail.value ?? '')} /></IonItem>
+                  <IonItem lines="none" className="app-item"><IonLabel position="stacked">Request notes (optional)</IonLabel><IonTextarea value={prospectNotes} autoGrow={true} onIonInput={(event) => setProspectNotes(event.detail.value ?? '')} /></IonItem>
+                </div>}
 
                 <SearchablePicker
                     isOpen={showCustomerPicker}
@@ -475,7 +521,7 @@ const QuotationsPage: React.FC = () => {
                 <div className="sale-summary">
                   <div>
                     <p className="muted-label">Client</p>
-                    <h3>{selectedCustomer?.name ?? 'Choose client'}</h3>
+                    <h3>{partyMode === 'prospect' ? prospectName || 'Enter prospect' : selectedCustomer?.name ?? 'Choose client'}</h3>
                   </div>
                   <div>
                     <p className="muted-label">Grand total</p>
@@ -580,7 +626,11 @@ const QuotationsPage: React.FC = () => {
                       ))}
 
                       <div className="dual-stat">
-                        {quotation.status === 'Draft' && canConvertQuotations && (
+                        {quotation.customerType === 'prospect' && canRegisterCustomers ? (
+                          <IonButton expand="block" onClick={() => handleRegisterProspect(quotation.id)}>
+                            Register customer
+                          </IonButton>
+                        ) : quotation.status === 'Draft' && canConvertQuotations && (
                           <IonButton expand="block" onClick={() => handleStartConversion(quotation.id)}>
                             Convert to Invoice
                           </IonButton>

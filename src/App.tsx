@@ -17,7 +17,21 @@ import {
   setupIonicReact,
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import { calculatorOutline, cart, cubeOutline, documentText, grid, home, notificationsOutline, people, settings, wallet } from 'ionicons/icons';
+import {
+  briefcaseOutline,
+  calculatorOutline,
+  cart,
+  cloudDoneOutline,
+  cubeOutline,
+  documentText,
+  grid,
+  home,
+  logOutOutline,
+  notificationsOutline,
+  people,
+  settings,
+  wallet,
+} from 'ionicons/icons';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { BusinessProvider, useBusiness } from './context/BusinessContext';
@@ -167,6 +181,14 @@ function LazyRoute({ children }: { children: ReactNode }) {
   return <Suspense fallback={<RouteLoadingScreen />}>{children}</Suspense>;
 }
 
+function NativeEnterpriseRoute({ href }: { href: string }) {
+  useEffect(() => {
+    window.location.replace(href);
+  }, [href]);
+
+  return <div className="enterprise-native-route-loading">Opening enterprise workspace...</div>;
+}
+
 function PublicShell() {
   return (
     <IonRouterOutlet>
@@ -189,8 +211,8 @@ function AppShell() {
   const history = useHistory();
   const location = useLocation();
   const [showNotifications, setShowNotifications] = useState(false);
-  const { state, currentUser, hasPermission } = useBusiness();
-  const { user } = useAuth();
+  const { state, currentUser, hasPermission, backendStatus } = useBusiness();
+  const { user, signOut } = useAuth();
   const businessLaunchState = getBusinessLaunchState(state.businessProfile);
   const businessSetupComplete = isBusinessWorkspaceLive(state.businessProfile);
   const mustChangeEmployeePassword =
@@ -269,9 +291,90 @@ function AppShell() {
     )
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
   const unreadNotificationCount = userNotifications.filter((notification) => !notification.readByUserIds.includes(currentUser.userId)).length;
+  const isEnterpriseWeb = '__BIZPILOT_PUBLIC_ENV__' in globalThis;
+  const currentEnterpriseHref = `${location.pathname}${location.search}${location.hash}`;
+
+  const handleEnterpriseRouteClick = (
+    event: { preventDefault: () => void; stopPropagation: () => void },
+    href: string
+  ) => {
+    if (!isEnterpriseWeb) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    window.location.assign(href);
+  };
+
+  const handleEnterpriseSignOut = async () => {
+    await signOut();
+    history.replace('/auth');
+  };
 
   return (
     <IonTabs>
+      <div className="enterprise-workflow-chrome" aria-label="BizPilot Enterprise workspace">
+        <div className="enterprise-workflow-rail-background" aria-hidden="true" />
+        <div className="enterprise-workflow-brand">
+          <span className="enterprise-workflow-mark">BP</span>
+          <span>
+            <strong>BizPilot</strong>
+            <small>Enterprise</small>
+          </span>
+        </div>
+        <div className="enterprise-workflow-context">
+          <IonIcon icon={briefcaseOutline} />
+          <span>
+            <small>Workspace</small>
+            <strong>{state.businessProfile.businessName || 'Business workspace'}</strong>
+          </span>
+        </div>
+        <div className="enterprise-workflow-topbar">
+          <div>
+            <small>{currentUser.roleLabel || currentUser.role}</small>
+            <strong>{state.businessProfile.businessName || 'Business workspace'}</strong>
+          </div>
+          <span className={`enterprise-backend enterprise-backend--${backendStatus.source}`}>
+            <IonIcon icon={cloudDoneOutline} />
+            {backendStatus.source === 'supabase' ? 'Cloud connected' : 'Local workspace'}
+          </span>
+        </div>
+        <div className="enterprise-workflow-user">
+          <span className="enterprise-workflow-avatar">
+            {currentUser.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
+          </span>
+          <span>
+            <strong>{currentUser.name}</strong>
+            <small>{currentUser.roleLabel || currentUser.role}</small>
+          </span>
+          <button type="button" onClick={() => void handleEnterpriseSignOut()} title="Sign out" aria-label="Sign out">
+            <IonIcon icon={logOutOutline} />
+          </button>
+        </div>
+        <div className="enterprise-workflow-footer">
+          {canViewSettings ? (
+            <button
+              type="button"
+              className={location.pathname === '/settings' ? 'is-active' : ''}
+              onClick={(event) => {
+                if (isEnterpriseWeb) {
+                  handleEnterpriseRouteClick(event, '/settings');
+                } else {
+                  history.push('/settings');
+                }
+              }}
+            >
+              <IonIcon icon={settings} />
+              <span>Settings</span>
+            </button>
+          ) : null}
+          <button type="button" onClick={() => void handleEnterpriseSignOut()}>
+            <IonIcon icon={logOutOutline} />
+            <span>Sign out</span>
+          </button>
+        </div>
+      </div>
       {businessSetupComplete && location.pathname === '/dashboard' ? (
         <>
           <IonButton
@@ -342,46 +445,100 @@ function AppShell() {
       ) : null}
       <IonRouterOutlet>
         <Route exact path="/dashboard">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : canAccessDashboard ? <LazyRoute><DashboardPage /></LazyRoute> : <UnauthorizedPage />}
+          {isEnterpriseWeb
+            ? <NativeEnterpriseRoute href="/dashboard" />
+            : !businessSetupComplete
+              ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} />
+              : canAccessDashboard
+                ? <LazyRoute><DashboardPage /></LazyRoute>
+                : <UnauthorizedPage />}
         </Route>
         <Route exact path="/sales">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('sales.view') ? <LazyRoute><SalesPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete
+            ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} />
+            : hasPermission('sales.view')
+              ? isEnterpriseWeb
+                ? <NativeEnterpriseRoute href={currentEnterpriseHref} />
+                : <LazyRoute><SalesPage /></LazyRoute>
+              : <UnauthorizedPage />}
         </Route>
         <Route exact path="/pos">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('sales.create') ? <LazyRoute><PosPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete
+            ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} />
+            : hasPermission('sales.create')
+              ? isEnterpriseWeb
+                ? <NativeEnterpriseRoute href={currentEnterpriseHref} />
+                : <LazyRoute><PosPage /></LazyRoute>
+              : <UnauthorizedPage />}
         </Route>
         <Route exact path="/sales/:saleId">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('invoices.view') ? <LazyRoute><InvoiceDetailPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete
+            ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} />
+            : hasPermission('invoices.view')
+              ? isEnterpriseWeb
+                ? <NativeEnterpriseRoute href={currentEnterpriseHref} />
+                : <LazyRoute><InvoiceDetailPage /></LazyRoute>
+              : <UnauthorizedPage />}
         </Route>
         <Route exact path="/sales/:saleId/waybill">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('invoices.view') ? <LazyRoute><WaybillPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('invoices.view') ? isEnterpriseWeb ? <NativeEnterpriseRoute href={currentEnterpriseHref} /> : <LazyRoute><WaybillPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/inventory">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('inventory.view') ? <LazyRoute><InventoryPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete
+            ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} />
+            : hasPermission('inventory.view')
+              ? isEnterpriseWeb
+                ? <NativeEnterpriseRoute href={currentEnterpriseHref} />
+                : <LazyRoute><InventoryPage /></LazyRoute>
+              : <UnauthorizedPage />}
         </Route>
         <Route exact path="/reorder">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('inventory.view') ? <LazyRoute><ReorderPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('inventory.view') ? isEnterpriseWeb ? <NativeEnterpriseRoute href={currentEnterpriseHref} /> : <LazyRoute><ReorderPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/vendors">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : (hasPermission('vendors.view') || hasPermission('vendors.manage')) ? <LazyRoute><VendorsPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete
+            ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} />
+            : hasPermission('vendors.view') || hasPermission('vendors.manage')
+              ? isEnterpriseWeb
+                ? <NativeEnterpriseRoute href={currentEnterpriseHref} />
+                : <LazyRoute><VendorsPage /></LazyRoute>
+              : <UnauthorizedPage />}
         </Route>
         <Route exact path="/customers">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('customers.view') ? <LazyRoute><CustomersPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete
+            ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} />
+            : hasPermission('customers.view')
+              ? isEnterpriseWeb
+                ? <NativeEnterpriseRoute href={currentEnterpriseHref} />
+                : <LazyRoute><CustomersPage /></LazyRoute>
+              : <UnauthorizedPage />}
         </Route>
         <Route exact path="/quotations">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('quotations.view') ? <LazyRoute><QuotationsPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('quotations.view') ? isEnterpriseWeb ? <NativeEnterpriseRoute href={currentEnterpriseHref} /> : <LazyRoute><QuotationsPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/quotations/:quotationId">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('quotations.view') ? <LazyRoute><QuotationDetailPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('quotations.view') ? isEnterpriseWeb ? <NativeEnterpriseRoute href={currentEnterpriseHref} /> : <LazyRoute><QuotationDetailPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/accounting">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : hasPermission('accounting.access') ? <LazyRoute><AccountingPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete
+            ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} />
+            : hasPermission('accounting.access')
+              ? isEnterpriseWeb
+                ? <NativeEnterpriseRoute href={currentEnterpriseHref} />
+                : <LazyRoute><AccountingPage /></LazyRoute>
+              : <UnauthorizedPage />}
         </Route>
         <Route exact path="/settings">
-          {canViewSettings ? (!businessSetupComplete && !canManageSetup ? <SetupRequiredPage canManageSetup={false} isReadyToLaunch={false} /> : <LazyRoute><SettingsPage /></LazyRoute>) : <UnauthorizedPage />}
+          {canViewSettings
+            ? isEnterpriseWeb
+              ? <NativeEnterpriseRoute href={currentEnterpriseHref} />
+              : !businessSetupComplete && !canManageSetup
+                ? <SetupRequiredPage canManageSetup={false} isReadyToLaunch={false} />
+                : <LazyRoute><SettingsPage /></LazyRoute>
+            : <UnauthorizedPage />}
         </Route>
         <Route exact path="/export/batch">
-          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : canUseDocumentPack ? <LazyRoute><BatchExportPage /></LazyRoute> : <UnauthorizedPage />}
+          {!businessSetupComplete ? <SetupRequiredPage canManageSetup={canManageSetup} isReadyToLaunch={businessLaunchState === 'readyToLaunch'} /> : canUseDocumentPack ? isEnterpriseWeb ? <NativeEnterpriseRoute href={currentEnterpriseHref} /> : <LazyRoute><BatchExportPage /></LazyRoute> : <UnauthorizedPage />}
         </Route>
         <Route exact path="/">
           <Redirect to={defaultRoute} />
@@ -389,55 +546,80 @@ function AppShell() {
       </IonRouterOutlet>
       <IonTabBar slot="bottom">
         {businessSetupComplete && canAccessDashboard && (
-          <IonTabButton tab="dashboard" href="/dashboard" data-testid="tab-dashboard">
+          <IonTabButton
+            tab="dashboard"
+            href="/dashboard"
+            data-testid="tab-dashboard"
+            onClick={(event) => handleEnterpriseRouteClick(event, '/dashboard')}
+          >
             <IonIcon aria-hidden="true" icon={home} />
             <IonLabel>Dashboard</IonLabel>
           </IonTabButton>
         )}
         {businessSetupComplete && hasPermission('sales.view') && (
-          <IonTabButton tab="sales" href="/sales" data-testid="tab-sales">
+          <IonTabButton
+            tab="sales"
+            href="/sales"
+            data-testid="tab-sales"
+            onClick={(event) => handleEnterpriseRouteClick(event, '/sales')}
+          >
             <IonIcon aria-hidden="true" icon={cart} />
             <IonLabel>Sales</IonLabel>
           </IonTabButton>
         )}
         {businessSetupComplete && hasPermission('sales.create') && (
-          <IonTabButton tab="pos" href="/pos" data-testid="tab-pos">
+          <IonTabButton
+            tab="pos"
+            href="/pos"
+            data-testid="tab-pos"
+            onClick={(event) => handleEnterpriseRouteClick(event, '/pos')}
+          >
             <IonIcon aria-hidden="true" icon={calculatorOutline} />
             <IonLabel>POS</IonLabel>
           </IonTabButton>
         )}
         {businessSetupComplete && hasPermission('inventory.view') && (
-          <IonTabButton tab="inventory" href="/inventory" data-testid="tab-inventory">
+          <IonTabButton
+            tab="inventory"
+            href="/inventory"
+            data-testid="tab-inventory"
+            onClick={(event) => handleEnterpriseRouteClick(event, '/inventory')}
+          >
             <IonIcon aria-hidden="true" icon={grid} />
             <IonLabel>Inventory</IonLabel>
           </IonTabButton>
         )}
         {businessSetupComplete && (hasPermission('vendors.view') || hasPermission('vendors.manage')) && (
-          <IonTabButton tab="vendors" href="/vendors" data-testid="tab-vendors">
+          <IonTabButton tab="vendors" href="/vendors" data-testid="tab-vendors" onClick={(event) => handleEnterpriseRouteClick(event, '/vendors')}>
             <IonIcon aria-hidden="true" icon={cubeOutline} />
             <IonLabel>Vendors</IonLabel>
           </IonTabButton>
         )}
         {businessSetupComplete && hasPermission('customers.view') && (
-          <IonTabButton tab="customers" href="/customers" data-testid="tab-customers">
+          <IonTabButton tab="customers" href="/customers" data-testid="tab-customers" onClick={(event) => handleEnterpriseRouteClick(event, '/customers')}>
             <IonIcon aria-hidden="true" icon={people} />
             <IonLabel>Customers</IonLabel>
           </IonTabButton>
         )}
         {businessSetupComplete && hasPermission('quotations.view') && (
-          <IonTabButton tab="quotations" href="/quotations" data-testid="tab-quotations">
+          <IonTabButton tab="quotations" href="/quotations" data-testid="tab-quotations" onClick={(event) => handleEnterpriseRouteClick(event, '/quotations')}>
             <IonIcon aria-hidden="true" icon={documentText} />
             <IonLabel>Quotations</IonLabel>
           </IonTabButton>
         )}
         {businessSetupComplete && hasPermission('accounting.access') && (
-          <IonTabButton tab="accounting" href="/accounting" data-testid="tab-accounting">
+          <IonTabButton tab="accounting" href="/accounting" data-testid="tab-accounting" onClick={(event) => handleEnterpriseRouteClick(event, '/accounting')}>
             <IonIcon aria-hidden="true" icon={wallet} />
             <IonLabel>Accounting</IonLabel>
           </IonTabButton>
         )}
         {(businessSetupComplete || canManageSetup) && canViewSettings && (
-          <IonTabButton tab="settings" href="/settings" data-testid="tab-settings">
+          <IonTabButton
+            tab="settings"
+            href="/settings"
+            data-testid="tab-settings"
+            onClick={(event) => handleEnterpriseRouteClick(event, '/settings')}
+          >
             <IonIcon aria-hidden="true" icon={settings} />
             <IonLabel>Settings</IonLabel>
           </IonTabButton>

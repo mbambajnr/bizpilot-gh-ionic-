@@ -46,6 +46,15 @@ const AuthPage: React.FC = () => {
 
   const isSignUp = mode === 'sign-up';
 
+  function openDashboard() {
+    if (globalThis.__BIZPILOT_PUBLIC_ENV__?.apiBaseUrl) {
+      window.location.assign('/dashboard');
+      return;
+    }
+
+    history.push('/dashboard');
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormMessage('');
@@ -85,12 +94,12 @@ const AuthPage: React.FC = () => {
         }
 
         window.setTimeout(() => {
-          history.push('/dashboard');
+          openDashboard();
         }, 900);
         return;
       }
 
-      history.push('/dashboard');
+      openDashboard();
     } else {
       setFormMessage(result.message ?? '');
     }

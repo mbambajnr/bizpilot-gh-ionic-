@@ -1,7 +1,11 @@
 import {
   IonBadge,
+  IonButton,
+  IonButtons,
   IonContent,
   IonHeader,
+  IonIcon,
+  IonModal,
   IonPage,
   IonSegment,
   IonSegmentButton,
@@ -14,14 +18,18 @@ import {
 } from '@ionic/react';
 import { useState } from 'react';
 import { useHistory } from 'react-router-dom';
-import { chevronDownCircleOutline } from 'ionicons/icons';
+import { chevronDownCircleOutline, closeOutline } from 'ionicons/icons';
 
 import EmptyState from '../components/EmptyState';
 import SectionCard from '../components/SectionCard';
 import RevenueChart from '../components/RevenueChart';
 import StatCard from '../components/StatCard';
 import { useBusiness } from '../context/BusinessContext';
+import { ROLE_LABELS } from '../authz/defaults';
+import type { AppPermission, AppRole } from '../authz/types';
+import { hasSupabaseConfig } from '../lib/supabase';
 import { formatCurrency, formatRelativeDate } from '../utils/format';
+import { getBusinessLaunchState } from '../utils/businessLogic';
 import {
   type RevenueTrendPoint,
   selectAccountsPayableWorklist,
@@ -42,6 +50,7 @@ import {
 
 type TrendPeriod = 'weekly' | 'monthly' | 'annual';
 type WorklistCueTone = 'success' | 'warning' | 'danger';
+type AdminUserListKind = 'active' | 'temporary' | 'deactivated';
 
 type WorklistItemProps = {
   title: string;
@@ -53,6 +62,50 @@ type WorklistItemProps = {
 };
 
 const HIGH_BALANCE_THRESHOLD = 1000;
+
+type RoleDashboardProfile = {
+  headline: string;
+  copy: string;
+  focus: string[];
+};
+
+const ROLE_DASHBOARD_PROFILES: Record<AppRole, RoleDashboardProfile> = {
+  Admin: {
+    headline: 'System control without operational noise.',
+    copy: 'Keep users, permissions, business setup, and branding tight while the operations team runs the business workflows.',
+    focus: ['Users', 'Roles', 'Settings'],
+  },
+  GeneralManager: {
+    headline: 'Approvals, exceptions, and performance in one view.',
+    copy: 'Review the queues that need authority, track business health, and keep handoffs moving across procurement, warehouse, sales, and finance.',
+    focus: ['Approvals', 'Reports', 'Exceptions'],
+  },
+  SalesManager: {
+    headline: 'Sales momentum and customer follow-up.',
+    copy: 'Stay close to today’s selling activity, open quotations, customer balances, and the stock requests that protect revenue.',
+    focus: ['Sales', 'Customers', 'Quotes'],
+  },
+  Accountant: {
+    headline: 'Finance actions, payables, and collections.',
+    copy: 'Track supplier liabilities, record settlements, monitor receivables, and keep daily payment records clean.',
+    focus: ['Payables', 'Payments', 'Expenses'],
+  },
+  WarehouseManager: {
+    headline: 'Warehouse receipts, dispatch, and stock control.',
+    copy: 'Receive approved supplier stock, manage warehouse-to-store movement, and keep restock requests moving through the right channel.',
+    focus: ['Receipts', 'Transfers', 'Stock'],
+  },
+  StoreManager: {
+    headline: 'Store selling, shelf readiness, and restock requests.',
+    copy: 'Run store sales and customer work while requesting warehouse replenishment when shelves need support.',
+    focus: ['Sales', 'Store stock', 'Restock'],
+  },
+  PurchaseManager: {
+    headline: 'Supplier setup and purchase preparation.',
+    copy: 'Keep vendor records and purchase drafts ready for General Manager approval, then let warehouse and accounting complete the handoff.',
+    focus: ['Vendors', 'Drafts', 'Procurement'],
+  },
+};
 
 const WorklistItem: React.FC<WorklistItemProps> = ({ title, count, helper, onClick, dataTestId, cues = [] }) => (
   <button
@@ -83,7 +136,8 @@ const WorklistItem: React.FC<WorklistItemProps> = ({ title, count, helper, onCli
 const DashboardPage: React.FC = () => {
   const history = useHistory();
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('weekly');
-  const { state, priorityQuestions, backendStatus, hasPermission } = useBusiness();
+  const [selectedAdminUserList, setSelectedAdminUserList] = useState<AdminUserListKind | null>(null);
+  const { state, priorityQuestions, backendStatus, currentUser, hasPermission } = useBusiness();
   const metrics = selectDashboardMetrics(state);
   const customerClassificationBreakdown = selectCustomerClassificationBreakdown(state);
   const trendPoints: RevenueTrendPoint[] =
@@ -138,6 +192,131 @@ const DashboardPage: React.FC = () => {
   const canSeeSalesMetrics = hasPermission('reports.sales.view') || canSeeSales || canSeeAdminOverview;
   const canSeeFinancialMetrics = hasPermission('reports.financial.view') || canSeeAccounting || canSeeAdminOverview;
   const canSeeDashboardMetrics = hasPermission('reports.dashboard.view') || canSeeAdminOverview;
+  const businessLaunchState = getBusinessLaunchState(state.businessProfile);
+  const dashboardUser =
+    currentUser ??
+    state.users.find((user) => user.userId === state.currentUserId) ??
+    state.users.find((user) => (user.accountStatus ?? 'active') !== 'deactivated') ??
+    {
+      userId: 'dashboard-viewer',
+      name: 'Dashboard Viewer',
+      email: '',
+      role: 'Admin' as AppRole,
+      grantedPermissions: [],
+      revokedPermissions: [],
+    };
+  const roleProfile = ROLE_DASHBOARD_PROFILES[dashboardUser.role];
+  const roleLabel = dashboardUser.roleLabel?.trim() || ROLE_LABELS[dashboardUser.role];
+  const canSeeSystemAdminDashboard = dashboardUser.role === 'Admin' && canSeeAdminOverview;
+  const activeUsers = state.users.filter((profile) => (profile.accountStatus ?? 'active') === 'active');
+  const deactivatedUsers = state.users.filter((profile) => (profile.accountStatus ?? 'active') === 'deactivated');
+  const usersWithPasswordChangeRequired = state.users.filter((profile) => profile.passwordChangeRequired);
+  const adminUserListMeta = selectedAdminUserList
+    ? {
+        active: {
+          title: 'Active users',
+          subtitle: 'Employees who can currently access the workspace.',
+          users: activeUsers,
+          empty: 'No active users are currently on this workspace.',
+        },
+        temporary: {
+          title: 'Temporary passwords',
+          subtitle: 'Employees who still need to replace their admin-issued temporary password.',
+          users: usersWithPasswordChangeRequired,
+          empty: 'No users currently need a temporary password change.',
+        },
+        deactivated: {
+          title: 'Deactivated users',
+          subtitle: 'Accounts preserved for audit history but blocked from active use.',
+          users: deactivatedUsers,
+          empty: 'No users have been deactivated.',
+        },
+      }[selectedAdminUserList]
+    : null;
+  const usersWithCustomPermissions = state.users.filter((profile) =>
+    profile.grantedPermissions.length > 0 || profile.revokedPermissions.length > 0
+  );
+  const sensitiveOverridePermissions: AppPermission[] = [
+    'permissions.manage',
+    'users.manage',
+    'purchases.approve',
+    'payables.approve',
+    'payables.pay',
+    'transfers.approve',
+    'inventory.adjust',
+    'business.edit',
+  ];
+  const usersWithSensitiveOverrides = usersWithCustomPermissions.filter((profile) =>
+    profile.grantedPermissions.some((permission) => sensitiveOverridePermissions.includes(permission))
+  );
+  const setupReadinessItems = [
+    { label: 'Business profile saved', done: businessLaunchState !== 'setupIncomplete' },
+    { label: 'Workspace launched', done: businessLaunchState === 'live' },
+    { label: 'Brand identity uploaded', done: Boolean(state.businessProfile.logoUrl?.trim()) },
+    { label: 'Locations configured', done: state.locations.length > 0 },
+    { label: 'Team roles assigned', done: state.users.length > 1 },
+  ];
+  const securityReadinessItems = [
+    { label: 'RBAC documented', done: true },
+    { label: 'CI test/build workflow added', done: true },
+    { label: 'Audit trail enabled', done: true },
+    { label: 'Incident response policy', done: false },
+    { label: 'Retention policy', done: false },
+    { label: 'External pen test', done: false },
+  ];
+  const completedSetupItems = setupReadinessItems.filter((item) => item.done).length;
+  const completedSecurityItems = securityReadinessItems.filter((item) => item.done).length;
+  const roleActions = [
+    {
+      label: 'Manage Access',
+      value: 'Settings',
+      helper: 'Users, roles, and sensitive setup',
+      route: '/settings',
+      allowed: hasPermission('users.manage') || hasPermission('permissions.manage') || hasPermission('business.edit'),
+    },
+    {
+      label: 'Review Purchases',
+      value: String(pendingApprovalPurchases),
+      helper: pendingApprovalPurchases > 0 ? 'Purchases waiting for approval' : 'No approval queue',
+      route: '/inventory?section=procurement',
+      allowed: dashboardUser.role === 'GeneralManager' && hasPermission('purchases.approve'),
+    },
+    {
+      label: 'Create Sale',
+      value: String(metrics.salesTodayCount),
+      helper: 'Open today’s sales desk',
+      route: '/sales',
+      allowed: hasPermission('sales.create'),
+    },
+    {
+      label: 'Settle Payables',
+      value: formatCurrency(openPayablesBalance, currency),
+      helper: openPayables > 0 ? `${openPayables} supplier bill${openPayables === 1 ? '' : 's'} open` : 'No supplier settlement due',
+      route: '/accounting?segment=payables&action=payment',
+      allowed: hasPermission('payables.pay'),
+    },
+    {
+      label: 'Receive Stock',
+      value: String(awaitingReceiptPurchases),
+      helper: awaitingReceiptPurchases > 0 ? 'Approved purchases awaiting receipt' : 'No receipt queue',
+      route: '/inventory?section=receipts',
+      allowed: hasPermission('purchases.receive'),
+    },
+    {
+      label: 'Request Restock',
+      value: String(state.restockRequests.filter((request) => request.status === 'Pending').length),
+      helper: 'Ask warehouse for replenishment',
+      route: '/inventory?section=restock',
+      allowed: hasPermission('restockRequests.create') && !hasPermission('purchases.create'),
+    },
+    {
+      label: 'Prepare Purchase',
+      value: String(draftPurchases),
+      helper: draftPurchases > 0 ? 'Drafts in progress' : 'Start a purchase draft',
+      route: '/inventory?section=procurement',
+      allowed: hasPermission('purchases.create') && dashboardUser.role === 'PurchaseManager',
+    },
+  ].filter((action) => action.allowed);
 
   const handleRefresh = (event: CustomEvent) => {
     setTimeout(() => {
@@ -163,11 +342,16 @@ const DashboardPage: React.FC = () => {
           <section className="hero-card glass-surface">
             <div className="analytics-headline">
               <div>
-                <p className="eyebrow">Business overview</p>
-                <h1>Pulse of your operations.</h1>
+                <p className="eyebrow">{roleLabel}</p>
+                <h1>{roleProfile.headline}</h1>
                 <p className="hero-copy">
-                  Real-time metrics calculated from your secure local-first transaction history.
+                  {roleProfile.copy}
                 </p>
+                <div className="role-focus-row" aria-label={`${roleLabel} focus areas`}>
+                  {roleProfile.focus.map((item) => (
+                    <span className="status-pill" key={item}>{item}</span>
+                  ))}
+                </div>
               </div>
               <div className="status-pulse-wrap">
                 <div className="pulse-dot"></div>
@@ -186,11 +370,171 @@ const DashboardPage: React.FC = () => {
                 <IonBadge color="secondary" mode="ios">Cloud Active</IonBadge>
               )}
               <IonText color="medium">
-                Last activity {lastActivity ? formatRelativeDate(lastActivity.createdAt) : 'Ready'}
+                {canSeeSystemAdminDashboard ? 'System governance' : `Last activity ${lastActivity ? formatRelativeDate(lastActivity.createdAt) : 'Ready'}`}
               </IonText>
             </div>
+            {roleActions.length > 0 && !canSeeSystemAdminDashboard ? (
+              <div className="role-action-grid">
+                {roleActions.slice(0, 3).map((action) => (
+                  <button
+                    type="button"
+                    className="role-action-card"
+                    key={action.label}
+                    onClick={() => history.push(action.route)}
+                  >
+                    <span>{action.label}</span>
+                    <strong>{action.value}</strong>
+                    <p>{action.helper}</p>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </section>
 
+          {canSeeSystemAdminDashboard ? (
+            <SectionCard
+              title="System Admin Dashboard"
+              subtitle="Govern access, security readiness, and workspace health without stepping into day-to-day operations."
+              className="system-admin-dashboard-card"
+              dataTestId="system-admin-dashboard"
+            >
+              <div className="admin-portal-grid">
+                <div className="admin-portal-panel">
+                  <div className="admin-portal-panel-head">
+                    <span className="status-pill success">Security</span>
+                    <strong>Account health</strong>
+                  </div>
+                  <div className="admin-portal-metrics">
+                    <button
+                      type="button"
+                      className="admin-portal-metric-button"
+                      onClick={() => setSelectedAdminUserList('active')}
+                      data-testid="admin-active-users-metric"
+                    >
+                      <h3>{activeUsers.length}</h3>
+                      <p>Active users</p>
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-portal-metric-button"
+                      onClick={() => setSelectedAdminUserList('temporary')}
+                      data-testid="admin-temporary-passwords-metric"
+                    >
+                      <h3>{usersWithPasswordChangeRequired.length}</h3>
+                      <p>Temporary passwords</p>
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-portal-metric-button"
+                      onClick={() => setSelectedAdminUserList('deactivated')}
+                      data-testid="admin-deactivated-users-metric"
+                    >
+                      <h3>{deactivatedUsers.length}</h3>
+                      <p>Deactivated</p>
+                    </button>
+                  </div>
+                  <p className="diagnostic-detail">
+                    {usersWithPasswordChangeRequired.length > 0
+                      ? 'Some employees still need to replace their admin-issued temporary password.'
+                      : 'No employee is currently flagged for required password change.'}
+                  </p>
+                </div>
+
+                <div className="admin-portal-panel">
+                  <div className="admin-portal-panel-head">
+                    <span className={`status-pill ${usersWithSensitiveOverrides.length > 0 ? 'warning' : 'success'}`}>
+                      Access
+                    </span>
+                    <strong>Access review</strong>
+                  </div>
+                  <div className="admin-portal-metrics">
+                    <div>
+                      <h3>{usersWithCustomPermissions.length}</h3>
+                      <p>Custom profiles</p>
+                    </div>
+                    <div>
+                      <h3>{usersWithSensitiveOverrides.length}</h3>
+                      <p>Risk flags</p>
+                    </div>
+                  </div>
+                  <p className="diagnostic-detail">
+                    {usersWithSensitiveOverrides.length > 0
+                      ? 'Review users with sensitive permission overrides before handing over production access.'
+                      : 'No sensitive custom permission grants are currently flagged.'}
+                  </p>
+                </div>
+
+                <div className="admin-portal-panel">
+                  <div className="admin-portal-panel-head">
+                    <span className={`status-pill ${backendStatus.source === 'supabase' ? 'success' : 'warning'}`}>
+                      System
+                    </span>
+                    <strong>Workspace health</strong>
+                  </div>
+                  <div className="admin-portal-metrics">
+                    <div>
+                      <h3>{hasSupabaseConfig ? 'Ready' : 'Local'}</h3>
+                      <p>Backend config</p>
+                    </div>
+                    <div>
+                      <h3>{backendStatus.source === 'supabase' ? 'Cloud' : 'Local'}</h3>
+                      <p>Current source</p>
+                    </div>
+                  </div>
+                  <p className="diagnostic-detail">{backendStatus.detail}</p>
+                </div>
+
+                <div className="admin-portal-panel">
+                  <div className="admin-portal-panel-head">
+                    <span className="status-pill warning">Readiness</span>
+                    <strong>Vendor security</strong>
+                  </div>
+                  <div className="admin-portal-metrics">
+                    <div>
+                      <h3>{completedSecurityItems}/{securityReadinessItems.length}</h3>
+                      <p>Security pack</p>
+                    </div>
+                    <div>
+                      <h3>{completedSetupItems}/{setupReadinessItems.length}</h3>
+                      <p>Setup checks</p>
+                    </div>
+                  </div>
+                  <p className="diagnostic-detail">
+                    Incident response, retention policy, and external pen test remain the next enterprise-readiness gaps.
+                  </p>
+                </div>
+              </div>
+
+              <div className="admin-readiness-grid">
+                <div>
+                  <strong>Setup readiness</strong>
+                  <div className="launch-checklist">
+                    {setupReadinessItems.map((item) => (
+                      <div key={item.label} className="launch-checklist-item">
+                        <span className={`status-dot ${item.done ? 'done' : 'pending'}`} />
+                        <span>{item.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <strong>Security readiness</strong>
+                  <div className="launch-checklist">
+                    {securityReadinessItems.map((item) => (
+                      <div key={item.label} className="launch-checklist-item">
+                        <span className={`status-dot ${item.done ? 'done' : 'pending'}`} />
+                        <span>{item.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+            </SectionCard>
+          ) : null}
+
+          {!canSeeSystemAdminDashboard ? (
+            <>
           <section className="stats-grid">
             {(hasPermission('sales.view') || hasPermission('reports.sales.view') || canSeeAdminOverview) ? (
               <StatCard 
@@ -1069,8 +1413,59 @@ const DashboardPage: React.FC = () => {
               </div>
             </SectionCard>
           ) : null}
+            </>
+          ) : null}
         </div>
       </IonContent>
+      <IonModal isOpen={Boolean(adminUserListMeta)} onDidDismiss={() => setSelectedAdminUserList(null)}>
+        <IonPage>
+          <IonHeader className="ion-no-border">
+            <IonToolbar>
+              <IonTitle>{adminUserListMeta?.title ?? 'Users'}</IonTitle>
+              <IonButtons slot="end">
+                <IonButton onClick={() => setSelectedAdminUserList(null)} aria-label="Close user list">
+                  <IonIcon slot="icon-only" icon={closeOutline} />
+                </IonButton>
+              </IonButtons>
+            </IonToolbar>
+          </IonHeader>
+          <IonContent fullscreen={true}>
+            <div className="page-shell admin-user-modal-shell">
+              <SectionCard
+                title={adminUserListMeta?.title ?? 'Users'}
+                subtitle={adminUserListMeta?.subtitle ?? 'Workspace user accounts.'}
+              >
+                {adminUserListMeta && adminUserListMeta.users.length > 0 ? (
+                  <div className="list-block">
+                    {adminUserListMeta.users.map((userProfile) => (
+                      <div className="list-row admin-user-list-row" key={userProfile.userId}>
+                        <div>
+                          <strong>{userProfile.name}</strong>
+                          <p>{userProfile.email}</p>
+                          <p className="code-label">{userProfile.roleLabel || ROLE_LABELS[userProfile.role]}</p>
+                        </div>
+                        <div className="right-meta">
+                          <IonBadge color={(userProfile.accountStatus ?? 'active') === 'deactivated' ? 'medium' : 'success'}>
+                            {(userProfile.accountStatus ?? 'active') === 'deactivated' ? 'Deactivated' : 'Active'}
+                          </IonBadge>
+                          {userProfile.passwordChangeRequired ? <IonBadge color="warning">Password change</IonBadge> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="list-row">
+                    <div>
+                      <strong>No users found</strong>
+                      <p>{adminUserListMeta?.empty ?? 'No users match this account status.'}</p>
+                    </div>
+                  </div>
+                )}
+              </SectionCard>
+            </div>
+          </IonContent>
+        </IonPage>
+      </IonModal>
     </IonPage>
   );
 };

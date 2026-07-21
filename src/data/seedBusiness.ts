@@ -5,7 +5,7 @@ export type PaymentMethod = 'Cash' | 'Mobile Money' | 'Bank Account';
 export type PaymentChannel = 'cash' | 'bank' | 'mobileMoney' | 'creditCard';
 export type SaleStatus = 'Completed' | 'Reversed';
 export type CustomerType = 'B2C' | 'B2B';
-export type QuotationCustomerType = 'registered' | 'walkIn';
+export type QuotationCustomerType = 'registered' | 'walkIn' | 'prospect';
 export type TaxPreset = 'ghana-standard';
 export type TaxMode = 'exclusive' | 'inclusive';
 
@@ -155,16 +155,39 @@ export type SaleLineItem = {
   total: number;
 };
 
+export type InvoiceCustomerSnapshot = {
+  name: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  location?: string;
+  source: 'registered' | 'prospect';
+};
+
+export type ClientPurchaseOrderDocument = {
+  id: string;
+  poNumber: string;
+  name: string;
+  url?: string;
+  storagePath?: string;
+  mimeType?: string;
+  size?: number;
+  uploadedBy: string;
+  uploadedAt: string;
+};
+
 export type Sale = {
   id: string;
   invoiceNumber: string;
   receiptId: string;
-  customerId: string;
+  customerId?: string;
+  customerSnapshot?: InvoiceCustomerSnapshot;
   items: SaleLineItem[];
   productId: string; // Legacy: first item
   quantity: number; // Legacy: sum of quantities
   paymentMethod: PaymentMethod;
   paidAmount: number;
+  creditedAmount?: number;
   subtotalAmount?: number;
   taxAmount?: number;
   withholdingTaxAmount?: number;
@@ -173,6 +196,8 @@ export type Sale = {
   createdAt: string;
   status: SaleStatus;
   quotationId?: string;
+  clientPoNumber?: string;
+  clientPoDocument?: ClientPurchaseOrderDocument;
   reversalReason?: string;
   reversedAt?: string;
   reversedBy?: string;
@@ -182,6 +207,53 @@ export type Sale = {
   customerTypeSnapshot?: CustomerType;
   taxSnapshot?: TaxSnapshot;
   withholdingTaxSnapshot?: WithholdingTaxSnapshot;
+};
+
+export type ReturnDisposition = 'restock' | 'damaged' | 'quarantine' | 'writeOff';
+
+export type CreditNoteItem = {
+  productId: string;
+  productName: string;
+  inventoryId: string;
+  quantity: number;
+  unitPrice: number;
+  subtotalAmount: number;
+  creditAmount: number;
+  disposition: ReturnDisposition;
+  locationId?: string;
+};
+
+export type CreditNote = {
+  id: string;
+  creditNoteNumber: string;
+  saleId: string;
+  invoiceNumber: string;
+  customerId: string;
+  items: CreditNoteItem[];
+  subtotalAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  receivableCreditAmount: number;
+  reason: string;
+  status: 'issued';
+  issuedBy: string;
+  approvedBy: string;
+  createdAt: string;
+};
+
+export type CustomerRefund = {
+  id: string;
+  refundNumber: string;
+  creditNoteId: string;
+  saleId: string;
+  customerId: string;
+  amount: number;
+  method: PaymentChannel;
+  reference?: string;
+  status: 'completed';
+  processedBy: string;
+  approvedBy: string;
+  createdAt: string;
 };
 
 export type SaleAuditEvent = {
@@ -204,10 +276,19 @@ export type QuotationLine = {
   total: number;
 };
 
+export type QuotationProspect = {
+  name: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  location?: string;
+  notes?: string;
+};
+
 export type Quotation = {
   id: string;
   quotationNumber: string;
-  customerId: string;
+  customerId?: string;
   customerName: string;
   clientId: string;
   createdAt: string;
@@ -224,7 +305,10 @@ export type Quotation = {
   convertedInvoiceId?: string;
   relatedSaleIds?: string[];
   customerType?: QuotationCustomerType;
+  prospect?: QuotationProspect;
+  prospectConvertedAt?: string;
   customerTypeSnapshot?: CustomerType;
+  clientPurchaseOrders?: ClientPurchaseOrderDocument[];
   taxSnapshot?: TaxSnapshot;
   withholdingTaxSnapshot?: WithholdingTaxSnapshot;
 };
@@ -234,7 +318,7 @@ export type StockMovement = {
   movementNumber: string;
   productId: string;
   locationId?: string;
-  type: 'opening' | 'sale' | 'reversal' | 'restock' | 'transfer' | 'purchase' | 'adjustment';
+  type: 'opening' | 'sale' | 'reversal' | 'return' | 'restock' | 'transfer' | 'purchase' | 'adjustment';
   quantityDelta: number;
   quantityAfter: number;
   createdAt: string;
@@ -243,7 +327,7 @@ export type StockMovement = {
   toLocationId?: string;
   relatedSaleId?: string;
   referenceNumber?: string;
-  sourceType?: 'purchase' | 'transfer' | 'sale' | 'adjustment';
+  sourceType?: 'purchase' | 'transfer' | 'sale' | 'credit_note' | 'adjustment';
   sourceId?: string;
   vendorId?: string;
   vendorCode?: string;
@@ -280,9 +364,49 @@ export type PurchaseStatus =
   | 'submitted'
   | 'adminReviewed'
   | 'approved'
+  | 'arrivedPendingInspection'
+  | 'partiallyReceived'
   | 'receivedToWarehouse'
   | 'declined'
   | 'cancelled';
+
+export type PurchaseReceipt = {
+  id: string;
+  receiptNumber?: string;
+  status?: 'pendingInspection' | 'accepted' | 'exception';
+  warehouseId: string;
+  receivedBy: string;
+  receivedAt: string;
+  deliveryNoteNumber?: string;
+  carrier?: string;
+  inspectedBy?: string;
+  inspectedAt?: string;
+  inspectionNote?: string;
+  items: Array<{
+    productId: string;
+    quantity: number;
+    acceptedQuantity?: number;
+    quarantinedQuantity?: number;
+    rejectedQuantity?: number;
+    inspectionNote?: string;
+  }>;
+};
+
+export type ThreeWayMatchStatus = 'pending' | 'matched' | 'variance';
+
+export type ProcurementDocumentCategory = 'supplierQuote' | 'purchaseOrder' | 'supplierInvoice' | 'deliveryNote' | 'other';
+
+export type ProcurementDocument = {
+  id: string;
+  category: ProcurementDocumentCategory;
+  name: string;
+  url?: string;
+  storagePath?: string;
+  mimeType?: string;
+  size?: number;
+  uploadedBy: string;
+  uploadedAt: string;
+};
 
 export type Purchase = {
   id: string;
@@ -300,6 +424,18 @@ export type Purchase = {
   declinedAt?: string;
   declineNote?: string;
   receivedWarehouseId?: string;
+  receipts?: PurchaseReceipt[];
+  supplierInvoiceNumber?: string;
+  supplierInvoiceAmount?: number;
+  supplierInvoiceDate?: string;
+  supplierInvoiceRecordedBy?: string;
+  supplierInvoiceRecordedAt?: string;
+  threeWayMatchStatus?: ThreeWayMatchStatus;
+  threeWayMatchVariance?: number;
+  expectedDeliveryDate?: string;
+  paymentTerms?: string;
+  internalNotes?: string;
+  documents?: ProcurementDocument[];
   createdAt: string;
   updatedAt: string;
 };
@@ -375,7 +511,7 @@ export type CustomerLedgerEntry = {
   id: string;
   entryNumber: string;
   customerId: string;
-  type: 'opening_balance' | 'sale_charge' | 'payment_received' | 'reversal';
+  type: 'opening_balance' | 'sale_charge' | 'payment_received' | 'credit_note' | 'refund' | 'reversal';
   amountDelta: number;
   createdAt: string;
   relatedSaleId?: string;
@@ -387,15 +523,19 @@ export type CustomerLedgerEntry = {
 export type ActivityLogEntry = {
   id: string;
   activityNumber: string;
-  entityType: 'sale' | 'quotation' | 'product' | 'customer' | 'business';
+  entityType: 'sale' | 'credit_note' | 'quotation' | 'product' | 'customer' | 'business';
   entityId: string;
   actionType:
     | 'product_created'
+    | 'stock_adjusted'
     | 'customer_created'
     | 'customer_updated'
     | 'customer_terminated'
     | 'customer_reactivated'
     | 'quotation_created'
+    | 'quotation_prospect_registered'
+    | 'quotation_client_po_added'
+    | 'quotation_client_po_removed'
     | 'quotation_converted'
     | 'invoice_created'
     | 'receipt_issued'
@@ -410,10 +550,22 @@ export type ActivityLogEntry = {
     | 'purchase_approved'
     | 'purchase_declined'
     | 'purchase_cancelled'
+    | 'purchase_partially_received'
     | 'purchase_received'
+    | 'purchase_arrival_recorded'
+    | 'purchase_inspection_completed'
+    | 'purchase_receipt_exception'
+    | 'supplier_invoice_recorded'
+    | 'three_way_match_completed'
+    | 'purchase_details_updated'
+    | 'purchase_document_added'
+    | 'purchase_document_removed'
     | 'payable_created'
     | 'payable_approved'
     | 'payable_paid'
+    | 'payment_recorded'
+    | 'credit_note_issued'
+    | 'customer_refunded'
     | 'restock_fulfilled'
     | 'stock_transferred'
     | 'transfer_created'
@@ -449,7 +601,7 @@ export type AppNotification = {
   recipientUserIds?: string[];
   recipientRoles?: Array<UserAccessProfile['role']>;
   readByUserIds: string[];
-  entityType: 'purchase' | 'payable' | 'business';
+  entityType: 'purchase' | 'payable' | 'sale' | 'credit_note' | 'business';
   entityId: string;
   referenceNumber?: string;
   actionUrl?: string;
@@ -468,6 +620,8 @@ export type BusinessState = {
   stockTransfers: StockTransfer[];
   payments: Payment[];
   sales: Sale[];
+  creditNotes: CreditNote[];
+  customerRefunds: CustomerRefund[];
   quotations: Quotation[];
   stockMovements: StockMovement[];
   customerLedgerEntries: CustomerLedgerEntry[];
@@ -676,6 +830,8 @@ export const seedState: BusinessState = {
       status: 'Completed',
     },
   ],
+  creditNotes: [],
+  customerRefunds: [],
   quotations: [],
   stockMovements: [
     { id: 'sm-001', movementNumber: 'SMV-001', productId: 'p1', locationId: '00000000-0000-4000-8000-000000000001', type: 'opening', quantityDelta: 16, quantityAfter: 16, createdAt: isoDaysAgoAt(7, 9, 0), sourceType: 'adjustment', sourceId: 'opening-stock', performedBy: 'u-admin', note: 'Opening stock loaded', referenceNumber: 'OPENING' },

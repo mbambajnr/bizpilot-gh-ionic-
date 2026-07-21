@@ -171,6 +171,96 @@ describe('supabaseSync', () => {
     );
   });
 
+  it('sends bulk inventory through the atomic import RPC with the live product image column', async () => {
+    const { syncInventoryImportBatch } = await import('./supabaseSync');
+    const ok = await syncInventoryImportBatch({
+      businessId: '00000000-0000-4000-8000-000000000001',
+      user: { userId: 'owner-1', name: 'Owner', email: 'owner@example.com', role: 'GeneralManager', grantedPermissions: [], revokedPermissions: [] },
+      products: [{
+        id: '00000000-0000-4000-8000-000000000010',
+        inventoryId: 'BULK-001',
+        name: 'Bulk item',
+        unit: 'units',
+        price: 20,
+        cost: 12,
+        reorderLevel: 5,
+        image: 'data:image/svg+xml;base64,test',
+      }],
+      stockMovements: [],
+      locations: [{
+        id: '00000000-0000-4000-8000-000000000020',
+        locationCode: 'ST-0001',
+        name: 'Main Store',
+        type: 'store',
+        isDefault: true,
+        isActive: true,
+      }],
+    });
+
+    expect(ok).toBe(true);
+    expect(mockRpc).toHaveBeenCalledWith('import_inventory_batch', expect.objectContaining({
+      batch_payload: expect.objectContaining({
+        locations: [expect.objectContaining({
+          id: '00000000-0000-4000-8000-000000000020',
+          location_code: 'ST-0001',
+          name: 'Main Store',
+        })],
+        products: [expect.objectContaining({ image: 'data:image/svg+xml;base64,test' })],
+      }),
+    }));
+  });
+
+  it('authenticates employee inventory imports with the employee identifier and one-time password', async () => {
+    const { syncInventoryImportBatch } = await import('./supabaseSync');
+    const businessId = '00000000-0000-4000-8000-000000000001';
+    const ok = await syncInventoryImportBatch({
+      businessId,
+      user: {
+        userId: 'manager-1',
+        businessId,
+        name: 'General Manager',
+        email: 'manager@example.com',
+        username: 'manager',
+        role: 'GeneralManager',
+        employeeSessionSecret: 'confirmed-password',
+        grantedPermissions: [],
+        revokedPermissions: [],
+      },
+      products: [],
+      stockMovements: [],
+    });
+
+    expect(ok).toBe(true);
+    expect(mockRpc).toHaveBeenCalledWith('import_inventory_batch', expect.objectContaining({
+      credential_identifier: 'manager',
+      credential_password: 'confirmed-password',
+    }));
+  });
+
+  it('stops a restored employee session before it can fall through to owner authorization', async () => {
+    const { getLastSupabaseSyncErrorMessage, syncInventoryImportBatch } = await import('./supabaseSync');
+    const businessId = '00000000-0000-4000-8000-000000000001';
+    const ok = await syncInventoryImportBatch({
+      businessId,
+      user: {
+        userId: 'manager-1',
+        businessId,
+        name: 'General Manager',
+        email: 'manager@example.com',
+        username: 'manager',
+        role: 'GeneralManager',
+        grantedPermissions: [],
+        revokedPermissions: [],
+      },
+      products: [],
+      stockMovements: [],
+    });
+
+    expect(ok).toBe(false);
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(getLastSupabaseSyncErrorMessage()).toBe('Confirm your employee password before importing inventory.');
+  });
+
   it('syncs app notifications and notification reads', async () => {
     const { syncAppNotification, syncAppNotificationRead } = await import('./supabaseSync');
 
@@ -252,5 +342,58 @@ describe('supabaseSync', () => {
       }),
     });
     expect(mockFrom).not.toHaveBeenCalledWith('payments');
+  });
+
+  it('posts receivable evidence through one atomic command for employee sessions', async () => {
+    const { syncReceivablePaymentCommand } = await import('./supabaseSync');
+    const ok = await syncReceivablePaymentCommand({
+      businessId: '00000000-0000-4000-8000-000000000001',
+      user: {
+        userId: 'accountant-1', businessId: '00000000-0000-4000-8000-000000000001', name: 'Accountant',
+        email: 'accountant@example.com', username: 'accountant', role: 'Accountant',
+        grantedPermissions: [], revokedPermissions: [], employeeSessionSecret: 'employee-secret',
+      },
+      sale: {
+        id: '00000000-0000-4000-8000-000000000010', invoiceNumber: 'INV-100', receiptId: 'RCP-100',
+        customerId: '00000000-0000-4000-8000-000000000020', items: [], productId: '00000000-0000-4000-8000-000000000030',
+        quantity: 1, paymentMethod: 'Bank Account', paidAmount: 25, totalAmount: 100,
+        createdAt: '2026-07-16T09:00:00.000Z', status: 'Completed',
+      },
+      payment: {
+        id: '00000000-0000-4000-8000-000000000040', paymentCode: 'PAY-100', sourceType: 'invoice',
+        sourceId: '00000000-0000-4000-8000-000000000010', amount: 25, method: 'bank',
+        reference: 'BANK-100', recordedBy: 'accountant-1', createdAt: '2026-07-16T10:00:00.000Z',
+      },
+      ledgerEntry: {
+        id: 'led-local', entryNumber: 'LED-100', customerId: '00000000-0000-4000-8000-000000000020',
+        type: 'payment_received', amountDelta: -25, createdAt: '2026-07-16T10:00:00.000Z',
+        relatedSaleId: '00000000-0000-4000-8000-000000000010', note: 'Payment received',
+      },
+      activity: {
+        id: 'act-100', activityNumber: 'ACT-100', entityType: 'sale', entityId: '00000000-0000-4000-8000-000000000010',
+        actionType: 'payment_recorded', title: 'Customer payment recorded', detail: 'Payment received', status: 'success',
+        createdAt: '2026-07-16T10:00:00.000Z',
+      },
+      notification: {
+        id: 'note-100', title: 'Customer payment recorded', message: 'Payment received', createdAt: '2026-07-16T10:00:00.000Z',
+        recipientRoles: ['Accountant'], readByUserIds: [], entityType: 'sale', entityId: '00000000-0000-4000-8000-000000000010',
+      },
+    });
+
+    expect(ok).toBe(true);
+    expect(mockRpc).toHaveBeenCalledWith('record_receivable_payment_command', {
+      credential_identifier: 'accountant',
+      credential_password: 'employee-secret',
+      workflow_payload: expect.objectContaining({
+        businessId: '00000000-0000-4000-8000-000000000001',
+        saleId: '00000000-0000-4000-8000-000000000010',
+        paymentId: '00000000-0000-4000-8000-000000000040',
+        paymentCode: 'PAY-100',
+        ledgerEntryNumber: 'LED-100',
+        activityNumber: 'ACT-100',
+        notificationId: 'note-100',
+      }),
+    });
+    expect(mockFrom).not.toHaveBeenCalled();
   });
 });

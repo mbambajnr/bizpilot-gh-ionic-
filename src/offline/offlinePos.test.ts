@@ -14,7 +14,8 @@ vi.mock('../data/supabaseSync', () => ({
   rotateEmployeePassword: vi.fn(),
   ...Object.fromEntries(
     [
-      'syncProduct', 'syncProductCategory', 'syncBusinessLocation', 'syncSupplyRoute', 'syncCustomer',
+      'syncProduct', 'syncProductCategory', 'syncBusinessLocation', 'syncSupplyRoute', 'syncVendor',
+      'syncEmployeeVendor', 'syncCustomer',
       'syncSale', 'syncQuotation', 'syncPurchase', 'syncEmployeePurchase', 'syncEmployeeCredential',
       'syncBusinessProfile', 'syncActivityLogEntry', 'syncAppNotification', 'syncAppNotificationRead',
       'syncExpenseForUser', 'syncStockMovementForUser', 'syncAccountsPayableForUser', 'syncPaymentForUser',

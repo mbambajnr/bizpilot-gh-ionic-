@@ -1,6 +1,6 @@
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
 import type { AppPermission, AppRole, UserAccessProfile } from '../authz/types';
-import type { AccountsPayable, ActivityLogEntry, AppNotification, BusinessLocation, BusinessState, LocationSupplyRoute, Product, ProductCategory, Customer, Sale, Expense, Payment, RestockRequest, StockMovement, StockTransfer, TaxSnapshot, WithholdingTaxSnapshot, Purchase } from './seedBusiness';
+import type { AccountsPayable, ActivityLogEntry, AppNotification, BusinessLocation, BusinessState, LocationSupplyRoute, Product, ProductCategory, Customer, CreditNote, CustomerRefund, Sale, Expense, Payment, Quotation, RestockRequest, StockMovement, StockTransfer, TaxSnapshot, WithholdingTaxSnapshot, Purchase, Vendor } from './seedBusiness';
 
 type BusinessLocationRow = {
   id: string;
@@ -29,6 +29,17 @@ type LocationSupplyRouteRow = {
   from_location_id: string;
   to_location_id: string;
   is_active: boolean;
+};
+
+type VendorRow = {
+  id: string;
+  vendor_code: string;
+  name: string;
+  contact_email: string | null;
+  location: string;
+  status: Vendor['status'];
+  created_at: string;
+  updated_at: string;
 };
 
 type CustomerRow = {
@@ -69,7 +80,9 @@ type QuotationItemRow = {
 type QuotationRow = {
   id: string;
   quotation_number: string;
-  customer_id: string;
+  customer_id: string | null;
+  prospect_details: Quotation['prospect'] | null;
+  prospect_converted_at: string | null;
   total_amount: number;
   subtotal_amount: number | null;
   tax_amount: number | null;
@@ -85,6 +98,7 @@ type QuotationRow = {
   customer_type: 'registered' | 'walkIn' | null;
   created_at: string;
   customer_type_snapshot: 'B2B' | 'B2C' | null;
+  client_purchase_orders: Quotation['clientPurchaseOrders'] | null;
   quotation_items: QuotationItemRow[] | null;
 };
 
@@ -110,6 +124,22 @@ type StockMovementRow = {
   performed_by: string | null;
   note: string;
   created_at: string;
+};
+
+type CreditNoteRow = {
+  id: string; credit_note_number: string; invoice_id: string; invoice_number: string; customer_id: string;
+  subtotal_amount: number; tax_amount: number; total_amount: number; receivable_credit_amount: number;
+  reason: string; status: CreditNote['status']; issued_by: string; approved_by: string; created_at: string;
+  credit_note_items: Array<{
+    product_id: string; product_name: string; inventory_id: string; quantity: number; unit_price: number;
+    subtotal_amount: number; credit_amount: number; disposition: CreditNote['items'][number]['disposition']; location_id: string | null;
+  }> | null;
+};
+
+type CustomerRefundRow = {
+  id: string; refund_number: string; credit_note_id: string; invoice_id: string; customer_id: string; amount: number;
+  method: CustomerRefund['method']; reference: string | null; status: CustomerRefund['status']; processed_by: string;
+  approved_by: string; created_at: string;
 };
 
 type EmployeeCredentialRow = {
@@ -155,6 +185,18 @@ type PurchaseRow = {
   declined_at: string | null;
   decline_note: string | null;
   received_warehouse_id: string | null;
+  receipts: Purchase['receipts'] | null;
+  supplier_invoice_number: string | null;
+  supplier_invoice_amount: number | null;
+  supplier_invoice_date: string | null;
+  supplier_invoice_recorded_by: string | null;
+  supplier_invoice_recorded_at: string | null;
+  three_way_match_status: Purchase['threeWayMatchStatus'] | null;
+  three_way_match_variance: number | null;
+  expected_delivery_date: string | null;
+  payment_terms: string | null;
+  internal_notes: string | null;
+  procurement_documents: Purchase['documents'] | null;
   created_at: string;
   updated_at: string;
   purchase_items: PurchaseItemRow[] | null;
@@ -290,6 +332,7 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       { data: supplyRoutes },
       { data: productCategories },
       { data: customers },
+      { data: vendors },
       { data: quotations },
       { data: invoices },
       { data: purchases },
@@ -301,16 +344,19 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       { data: accountsPayable },
       { data: payments },
       { data: stockTransfers },
-      { data: restockRequests }
+      { data: restockRequests },
+      { data: creditNotes },
+      { data: customerRefunds }
     ] = await Promise.all([
       supabase.from('business_locations').select('*').eq('business_id', businessId).order('is_default', { ascending: false }).order('name', { ascending: true }),
       supabase.from('products').select('*').eq('business_id', businessId),
       supabase.from('location_supply_routes').select('*').eq('business_id', businessId),
       supabase.from('product_categories').select('*').eq('business_id', businessId).order('sort_order', { ascending: true }).order('name', { ascending: true }),
       supabase.from('customers').select('*').eq('business_id', businessId),
+      supabase.from('vendors').select('*').eq('business_id', businessId).order('name', { ascending: true }),
       supabase
         .from('quotations')
-        .select('id, quotation_number, customer_id, total_amount, subtotal_amount, tax_amount, tax_snapshot, withholding_tax_amount, net_receivable_amount, withholding_tax_snapshot, status, valid_until, rejection_reason, converted_at, converted_invoice_id, customer_type, created_at, customer_type_snapshot, quotation_items(product_id, quantity, unit_price, line_total, products(id, name, inventory_id))')
+        .select('id, quotation_number, customer_id, prospect_details, prospect_converted_at, total_amount, subtotal_amount, tax_amount, tax_snapshot, withholding_tax_amount, net_receivable_amount, withholding_tax_snapshot, status, valid_until, rejection_reason, converted_at, converted_invoice_id, customer_type, created_at, customer_type_snapshot, client_purchase_orders, quotation_items(product_id, quantity, unit_price, line_total, products(id, name, inventory_id))')
         .eq('business_id', businessId)
         .order('created_at', { ascending: false }),
       supabase.from('invoices').select('*').eq('business_id', businessId),
@@ -335,7 +381,9 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
         .select('*, stock_transfer_items(product_id, product_name, quantity)')
         .eq('business_id', businessId)
         .order('created_at', { ascending: false }),
-      supabase.from('restock_requests').select('*').eq('business_id', businessId).order('created_at', { ascending: false })
+      supabase.from('restock_requests').select('*').eq('business_id', businessId).order('created_at', { ascending: false }),
+      supabase.from('credit_notes').select('*, credit_note_items(*)').eq('business_id', businessId).order('created_at', { ascending: false }),
+      supabase.from('customer_refunds').select('*').eq('business_id', businessId).order('created_at', { ascending: false })
     ]);
 
     const mappedLocations: BusinessLocation[] = ((locations || []) as BusinessLocationRow[]).map((location) => ({
@@ -365,7 +413,7 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       price: p.price,
       cost: p.cost,
       reorderLevel: p.reorder_level,
-      image: p.image_url || '',
+      image: p.image || p.image_url || '',
       categoryId: p.category_id || undefined,
     }));
 
@@ -395,17 +443,28 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       terminationReason: c.termination_reason || undefined,
     }));
 
+    const mappedVendors: Vendor[] = ((vendors || []) as VendorRow[]).map((vendor) => ({
+      id: vendor.id,
+      vendorCode: vendor.vendor_code,
+      name: vendor.name,
+      contactEmail: vendor.contact_email ?? undefined,
+      location: vendor.location,
+      status: vendor.status,
+      createdAt: vendor.created_at,
+      updatedAt: vendor.updated_at,
+    }));
+
     const customerMap = new Map(mappedCustomers.map((customer) => [customer.id, customer]));
 
     const mappedQuotations = ((quotations || []) as QuotationRow[]).map((quotation) => {
-      const customer = customerMap.get(quotation.customer_id);
+      const customer = quotation.customer_id ? customerMap.get(quotation.customer_id) : undefined;
 
       return {
         id: quotation.id,
         quotationNumber: quotation.quotation_number,
-        customerId: quotation.customer_id,
-        customerName: customer?.name ?? 'Unknown customer',
-        clientId: customer?.clientId ?? 'Unknown client',
+        customerId: quotation.customer_id ?? undefined,
+        customerName: customer?.name ?? quotation.prospect_details?.name ?? 'Unknown customer',
+        clientId: customer?.clientId ?? (quotation.prospect_details ? 'PROSPECT' : 'Unknown client'),
         createdAt: quotation.created_at,
         validUntil: quotation.valid_until ?? undefined,
         subtotalAmount: quotation.subtotal_amount ?? undefined,
@@ -418,7 +477,10 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
         convertedAt: quotation.converted_at || undefined,
         convertedInvoiceId: quotation.converted_invoice_id || undefined,
         customerType: quotation.customer_type || undefined,
+        prospect: quotation.prospect_details || undefined,
+        prospectConvertedAt: quotation.prospect_converted_at || undefined,
         customerTypeSnapshot: quotation.customer_type_snapshot || undefined,
+        clientPurchaseOrders: quotation.client_purchase_orders ?? [],
         taxSnapshot: quotation.tax_snapshot || undefined,
         withholdingTaxSnapshot: quotation.withholding_tax_snapshot || undefined,
         items: (quotation.quotation_items || []).map((item) => {
@@ -439,13 +501,17 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       id: s.id,
       invoiceNumber: s.invoice_number,
       receiptId: s.receipt_number,
-      customerId: s.customer_id,
+      customerId: s.customer_id || undefined,
+      customerSnapshot: s.customer_snapshot || undefined,
+      clientPoNumber: s.client_po_number || undefined,
+      clientPoDocument: s.client_po_document || undefined,
       items: s.items || [], // Multi-item JSONB
       productId: s.product_id, // Legacy fallback
       quantity: s.quantity,     // Legacy fallback
       paymentMethod: mapPaymentMethod(s.payment_method),
       paymentReference: s.payment_reference || undefined,
       paidAmount: s.paid_amount,
+      creditedAmount: s.credited_amount ?? 0,
       subtotalAmount: s.subtotal_amount ?? undefined,
       taxAmount: s.tax_amount ?? undefined,
       withholdingTaxAmount: s.withholding_tax_amount ?? undefined,
@@ -460,6 +526,23 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       reversalReason: s.reversal_reason || undefined,
       reversedAt: s.reversed_at || undefined,
       reversedBy: s.reversed_by || undefined
+    }));
+
+    const mappedCreditNotes: CreditNote[] = ((creditNotes || []) as CreditNoteRow[]).map((note) => ({
+      id: note.id, creditNoteNumber: note.credit_note_number, saleId: note.invoice_id, invoiceNumber: note.invoice_number,
+      customerId: note.customer_id, subtotalAmount: note.subtotal_amount, taxAmount: note.tax_amount, totalAmount: note.total_amount,
+      receivableCreditAmount: note.receivable_credit_amount, reason: note.reason, status: note.status, issuedBy: note.issued_by,
+      approvedBy: note.approved_by, createdAt: note.created_at,
+      items: (note.credit_note_items ?? []).map((item) => ({
+        productId: item.product_id, productName: item.product_name, inventoryId: item.inventory_id, quantity: item.quantity,
+        unitPrice: item.unit_price, subtotalAmount: item.subtotal_amount, creditAmount: item.credit_amount,
+        disposition: item.disposition, locationId: item.location_id ?? undefined,
+      })),
+    }));
+    const mappedCustomerRefunds: CustomerRefund[] = ((customerRefunds || []) as CustomerRefundRow[]).map((refund) => ({
+      id: refund.id, refundNumber: refund.refund_number, creditNoteId: refund.credit_note_id, saleId: refund.invoice_id,
+      customerId: refund.customer_id, amount: refund.amount, method: refund.method, reference: refund.reference ?? undefined,
+      status: refund.status, processedBy: refund.processed_by, approvedBy: refund.approved_by, createdAt: refund.created_at,
     }));
 
     const mappedStockMovements: StockMovement[] = ((stockMovements || []) as StockMovementRow[]).map((movement) => ({
@@ -509,6 +592,28 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       declinedAt: purchase.declined_at ?? undefined,
       declineNote: purchase.decline_note ?? undefined,
       receivedWarehouseId: purchase.received_warehouse_id ?? undefined,
+      receipts: (purchase.receipts ?? []).map((receipt, receiptIndex) => ({
+        ...receipt,
+        receiptNumber: receipt.receiptNumber ?? `GRN-${purchase.purchase_code}-${String(receiptIndex + 1).padStart(2, '0')}`,
+        status: receipt.status ?? 'accepted',
+        items: receipt.items.map((item) => ({
+          ...item,
+          acceptedQuantity: item.acceptedQuantity ?? item.quantity,
+          quarantinedQuantity: item.quarantinedQuantity ?? 0,
+          rejectedQuantity: item.rejectedQuantity ?? 0,
+        })),
+      })),
+      supplierInvoiceNumber: purchase.supplier_invoice_number ?? undefined,
+      supplierInvoiceAmount: purchase.supplier_invoice_amount ?? undefined,
+      supplierInvoiceDate: purchase.supplier_invoice_date ?? undefined,
+      supplierInvoiceRecordedBy: purchase.supplier_invoice_recorded_by ?? undefined,
+      supplierInvoiceRecordedAt: purchase.supplier_invoice_recorded_at ?? undefined,
+      threeWayMatchStatus: purchase.three_way_match_status ?? 'pending',
+      threeWayMatchVariance: purchase.three_way_match_variance ?? undefined,
+      expectedDeliveryDate: purchase.expected_delivery_date ?? undefined,
+      paymentTerms: purchase.payment_terms ?? undefined,
+      internalNotes: purchase.internal_notes ?? undefined,
+      documents: purchase.procurement_documents ?? [],
       createdAt: purchase.created_at,
       updatedAt: purchase.updated_at,
     }));
@@ -652,8 +757,11 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       locationSupplyRoutes: mappedSupplyRoutes,
       productCategories: mappedProductCategories,
       customers: mappedCustomers,
+      vendors: mappedVendors,
       quotations: mappedQuotations,
       sales: mappedSales,
+      creditNotes: mappedCreditNotes,
+      customerRefunds: mappedCustomerRefunds,
       purchases: mappedPurchases,
       accountsPayable: mappedAccountsPayable,
       payments: mappedPayments,

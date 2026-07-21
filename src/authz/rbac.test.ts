@@ -19,6 +19,7 @@ describe('RBAC Logic', () => {
     expect(hasPermission(admin, 'permissions.manage')).toBe(true);
     expect(hasPermission(admin, 'business.edit')).toBe(true);
     expect(hasPermission(admin, 'branding.manage')).toBe(true);
+    expect(hasPermission(admin, 'inventory.value.view')).toBe(true);
     expect(hasPermission(admin, 'inventory.create')).toBe(false);
     expect(hasPermission(admin, 'accounting.access')).toBe(false);
     expect(hasPermission(admin, 'purchases.approve')).toBe(false);
@@ -38,6 +39,7 @@ describe('RBAC Logic', () => {
     };
 
     expect(hasPermission(generalManager, 'reports.financial.view')).toBe(true);
+    expect(hasPermission(generalManager, 'inventory.value.view')).toBe(true);
     expect(hasPermission(generalManager, 'purchases.approve')).toBe(true);
     expect(hasPermission(generalManager, 'payables.approve')).toBe(true);
     expect(hasPermission(generalManager, 'transfers.approve')).toBe(true);
@@ -66,6 +68,7 @@ describe('RBAC Logic', () => {
     expect(hasPermission(sales, 'sales.create')).toBe(true);
     expect(hasPermission(sales, 'inventory.view')).toBe(true);
     // Blocked by default
+    expect(hasPermission(sales, 'inventory.value.view')).toBe(false);
     expect(hasPermission(sales, 'inventory.create')).toBe(false);
     expect(hasPermission(sales, 'sales.reverse')).toBe(false);
     expect(hasPermission(sales, 'accounting.access')).toBe(false);
@@ -82,6 +85,7 @@ describe('RBAC Logic', () => {
     };
     
     expect(hasPermission(accountant, 'accounting.access')).toBe(true);
+    expect(hasPermission(accountant, 'inventory.value.view')).toBe(true);
     expect(hasPermission(accountant, 'customers.ledger.view')).toBe(true);
     expect(hasPermission(accountant, 'payables.view')).toBe(true);
     expect(hasPermission(accountant, 'payables.pay')).toBe(true);
@@ -150,6 +154,9 @@ describe('RBAC Logic', () => {
 
     expect(hasPermission(warehouseManager, 'purchases.receive')).toBe(true);
     expect(hasPermission(warehouseManager, 'transfers.dispatch')).toBe(true);
+    expect(hasPermission(warehouseManager, 'inventory.value.view')).toBe(false);
+    expect(hasPermission(warehouseManager, 'transfers.approve')).toBe(false);
+    expect(hasPermission(warehouseManager, 'transfers.receive')).toBe(false);
     expect(hasPermission(warehouseManager, 'inventory.adjust')).toBe(true);
     expect(hasPermission(warehouseManager, 'payables.manage')).toBe(false);
   });
@@ -169,6 +176,7 @@ describe('RBAC Logic', () => {
     expect(hasPermission(storeManager, 'accounting.access')).toBe(true);
     expect(hasPermission(storeManager, 'payments.record')).toBe(true);
     expect(hasPermission(storeManager, 'transfers.receive')).toBe(true);
+    expect(hasPermission(storeManager, 'inventory.value.view')).toBe(false);
     expect(hasPermission(storeManager, 'restockRequests.create')).toBe(true);
     expect(hasPermission(storeManager, 'vendors.view')).toBe(false);
     expect(hasPermission(storeManager, 'vendors.manage')).toBe(false);
@@ -190,6 +198,7 @@ describe('RBAC Logic', () => {
 
     expect(hasPermission(purchaseManager, 'vendors.manage')).toBe(true);
     expect(hasPermission(purchaseManager, 'inventory.create')).toBe(true);
+    expect(hasPermission(purchaseManager, 'inventory.value.view')).toBe(false);
     expect(hasPermission(purchaseManager, 'purchases.receive')).toBe(false);
     expect(hasPermission(purchaseManager, 'purchases.approve')).toBe(false);
     expect(hasPermission(purchaseManager, 'procurement.approve')).toBe(false);

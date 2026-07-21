@@ -299,7 +299,8 @@ test('opens system administrator interface after setup is complete and launched'
   await waitFor(() => {
     expect(screen.getByTestId('tab-settings')).toBeInTheDocument();
   });
-  expect(screen.queryByTestId('tab-dashboard')).not.toBeInTheDocument();
+  expect(screen.getByTestId('tab-dashboard')).toBeInTheDocument();
+  expect(await screen.findByTestId('system-admin-dashboard')).toBeInTheDocument();
   expect(screen.queryByTestId('tab-sales')).not.toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'Complete Business Setup' })).not.toBeInTheDocument();
   expect(screen.queryByTestId('loading-screen')).not.toBeInTheDocument();

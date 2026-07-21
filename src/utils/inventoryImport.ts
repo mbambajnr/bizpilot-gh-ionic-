@@ -19,13 +19,19 @@ export const INVENTORY_IMPORT_COLUMNS = [
   ...INVENTORY_IMPORT_OPTIONAL_COLUMNS,
 ] as const;
 
-type InventoryImportColumn = (typeof INVENTORY_IMPORT_COLUMNS)[number];
+export type InventoryImportColumn = (typeof INVENTORY_IMPORT_COLUMNS)[number];
+
+export type InventoryImportMode = 'catalogue' | 'stock';
+
+export type InventoryImportColumnMapping = Array<InventoryImportColumn | undefined>;
 
 type InventoryImportRawRecord = Record<InventoryImportColumn, string>;
 
 type InventoryImportOptions = {
   inventoryCategoriesEnabled?: boolean;
   productCategories?: ProductCategory[];
+  mode?: InventoryImportMode;
+  columnMapping?: InventoryImportColumnMapping;
 };
 
 export type InventoryImportPreviewRow = {
@@ -33,6 +39,7 @@ export type InventoryImportPreviewRow = {
   values: InventoryImportRawRecord;
   normalizedInput?: NewProductInput;
   errors: string[];
+  warnings: string[];
 };
 
 export type InventoryImportPreview = {
@@ -40,20 +47,47 @@ export type InventoryImportPreview = {
   validRows: InventoryImportPreviewRow[];
   invalidRows: InventoryImportPreviewRow[];
   headerErrors: string[];
+  warningRows: InventoryImportPreviewRow[];
+  sourceHeaders: string[];
+  columnMapping: InventoryImportColumnMapping;
+  unmappedHeaders: string[];
+  mode: InventoryImportMode;
 };
 
 function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function parseCsvLine(line: string): string[] {
-  const values: string[] = [];
+const REQUIRED_IMPORT_COLUMNS: InventoryImportColumn[] = [
+  'Item Name',
+  'Cost Price',
+  'Selling Price',
+  'Quantity In Stock',
+  'Reorder Level',
+];
+
+const HEADER_ALIASES: Record<InventoryImportColumn, string[]> = {
+  'Item Name': ['item name', 'product name', 'name', 'item', 'item description', 'item describtion', 'description'],
+  'Inventory ID': ['inventory id', 'sku', 'product code', 'item code', 'code'],
+  Unit: ['unit', 'unit of measure', 'uom'],
+  'Cost Price': ['cost price', 'costprice', 'cost', 'unit cost', 'purchase price'],
+  'Selling Price': ['selling price', 'sellingprice', 'price', 'retail price', 'sales price'],
+  'Quantity In Stock': ['quantity in stock', 'quantity', 'opening stock', 'stock', 'qty'],
+  'Reorder Level': ['reorder level', 'minimum stock', 'min stock', 'reorder point'],
+  'Image URL': ['image url', 'image', 'product image'],
+  Category: ['category', 'product category', 'class', 'item class'],
+};
+
+export function parseInventoryImportCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
   let current = '';
   let inQuotes = false;
+  const normalized = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    const next = line[index + 1];
+  for (let index = 0; index < normalized.length; index += 1) {
+    const character = normalized[index];
+    const next = normalized[index + 1];
 
     if (character === '"') {
       if (inQuotes && next === '"') {
@@ -66,7 +100,15 @@ function parseCsvLine(line: string): string[] {
     }
 
     if (character === ',' && !inQuotes) {
-      values.push(current.trim());
+      row.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    if (character === '\n' && !inQuotes) {
+      row.push(current.trim());
+      if (row.some((value) => value.length > 0)) rows.push(row);
+      row = [];
       current = '';
       continue;
     }
@@ -74,27 +116,26 @@ function parseCsvLine(line: string): string[] {
     current += character;
   }
 
-  values.push(current.trim());
-  return values;
+  row.push(current.trim());
+  if (row.some((value) => value.length > 0)) rows.push(row);
+  return rows;
 }
 
-function parseCsv(text: string): string[][] {
-  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  return normalized
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map(parseCsvLine);
+export function suggestInventoryImportMapping(headers: string[]): InventoryImportColumnMapping {
+  return headers.map((header) => {
+    const normalized = normalizeHeader(header);
+    return INVENTORY_IMPORT_COLUMNS.find((column) => HEADER_ALIASES[column].includes(normalized));
+  });
 }
 
-function toRecord(headers: InventoryImportColumn[], row: string[]): InventoryImportRawRecord {
+function toRecord(headers: Array<InventoryImportColumn | undefined>, row: string[]): InventoryImportRawRecord {
   const record = INVENTORY_IMPORT_COLUMNS.reduce((current, header) => {
     current[header] = '';
     return current;
   }, {} as InventoryImportRawRecord);
 
   headers.forEach((header, index) => {
-    record[header] = row[index]?.trim() ?? '';
+    if (header) record[header] = row[index]?.trim() ?? '';
   });
 
   return record;
@@ -177,13 +218,13 @@ function findProductCategoryMatch(productCategories: ProductCategory[], value: s
   );
 }
 
-export function validateInventoryImportCsv(
-  text: string,
+export function validateInventoryImportRows(
+  parsed: string[][],
   existingProducts: Product[],
   options: InventoryImportOptions = {}
 ): InventoryImportPreview {
-  const parsed = parseCsv(text);
   const headerErrors: string[] = [];
+  const mode = options.mode ?? 'stock';
 
   if (parsed.length === 0) {
     return {
@@ -191,45 +232,40 @@ export function validateInventoryImportCsv(
       validRows: [],
       invalidRows: [],
       headerErrors: ['The file is empty. Download the template and fill in at least one row.'],
+      warningRows: [],
+      sourceHeaders: [],
+      columnMapping: [],
+      unmappedHeaders: [],
+      mode,
     };
   }
 
   const providedHeaders = parsed[0];
-  const normalizedHeaders = providedHeaders.map(normalizeHeader);
-  const baseHeaders = INVENTORY_IMPORT_BASE_COLUMNS.slice() as unknown as InventoryImportColumn[];
-  const extendedHeaders = INVENTORY_IMPORT_COLUMNS.slice() as unknown as InventoryImportColumn[];
-  const normalizedBaseHeaders = baseHeaders.map(normalizeHeader);
-  const normalizedExtendedHeaders = extendedHeaders.map(normalizeHeader);
-
-  const matchesHeaders = (expected: string[]) =>
-    normalizedHeaders.length === expected.length && normalizedHeaders.every((header, index) => header === expected[index]);
-
-  const matchedHeaders = matchesHeaders(normalizedExtendedHeaders)
-    ? extendedHeaders
-    : matchesHeaders(normalizedBaseHeaders)
-      ? baseHeaders
-      : null;
-
-  if (!matchedHeaders) {
-    headerErrors.push(
-      `Template columns must match either: ${INVENTORY_IMPORT_BASE_COLUMNS.join(', ')} or ${INVENTORY_IMPORT_COLUMNS.join(', ')}.`
-    );
-  }
+  const suggestedMapping = suggestInventoryImportMapping(providedHeaders);
+  const matchedHeaders = providedHeaders.map((_, index) => options.columnMapping ? options.columnMapping[index] : suggestedMapping[index]);
+  const duplicateHeaders = matchedHeaders.filter((header, index) => header && matchedHeaders.indexOf(header) !== index);
+  const requiredColumns = mode === 'catalogue' ? (['Item Name'] as InventoryImportColumn[]) : REQUIRED_IMPORT_COLUMNS;
+  const missingRequired = requiredColumns.filter((column) => !matchedHeaders.includes(column));
+  if (duplicateHeaders.length) headerErrors.push(`Duplicate mapped columns: ${[...new Set(duplicateHeaders)].join(', ')}.`);
+  if (missingRequired.length) headerErrors.push(`Missing required columns: ${missingRequired.join(', ')}.`);
+  if (!matchedHeaders.some(Boolean)) headerErrors.push(`No recognized inventory columns were found. Use the BisaPilot template headings.`);
+  if (parsed.length - 1 > 10_000) headerErrors.push('A single inventory import can contain at most 10,000 rows.');
 
   const inventoryCategoriesEnabled = options.inventoryCategoriesEnabled ?? false;
   const productCategories = options.productCategories ?? [];
 
   const rows = parsed.slice(1).map((row, rowIndex) => {
     const rowNumber = rowIndex + 2;
-    const values = toRecord(matchedHeaders ?? extendedHeaders, row);
+    const values = toRecord(matchedHeaders, row);
     const errors: string[] = [];
+    const warnings: string[] = [];
     const itemName = values['Item Name'].trim();
     const inventoryId = values['Inventory ID'].trim();
     const unit = values['Unit'].trim() || 'units';
-    const cost = parseNonNegativeNumber(values['Cost Price'], 'Cost Price', errors);
-    const price = parseNonNegativeNumber(values['Selling Price'], 'Selling Price', errors);
-    const quantity = parseNonNegativeInteger(values['Quantity In Stock'], 'Quantity In Stock', errors);
-    const reorderLevel = parseNonNegativeInteger(values['Reorder Level'], 'Reorder Level', errors);
+    const cost = mode === 'catalogue' && !values['Cost Price'].trim() ? 0 : parseNonNegativeNumber(values['Cost Price'], 'Cost Price', errors);
+    const price = mode === 'catalogue' && !values['Selling Price'].trim() ? 0 : parseNonNegativeNumber(values['Selling Price'], 'Selling Price', errors);
+    const quantity = mode === 'catalogue' && !values['Quantity In Stock'].trim() ? 0 : parseNonNegativeInteger(values['Quantity In Stock'], 'Quantity In Stock', errors);
+    const reorderLevel = mode === 'catalogue' && !values['Reorder Level'].trim() ? 0 : parseNonNegativeInteger(values['Reorder Level'], 'Reorder Level', errors);
     const categoryValue = values['Category'].trim();
     let categoryId: string | undefined;
 
@@ -246,7 +282,7 @@ export function validateInventoryImportCsv(
     }
 
     if (itemName && existingProducts.some((product) => product.name.trim().toLowerCase() === itemName.toLowerCase())) {
-      errors.push('Item Name already exists in current inventory.');
+      warnings.push('Item Name already exists in current inventory. Confirm the SKU identifies a distinct product.');
     }
 
     if (categoryValue && inventoryCategoriesEnabled) {
@@ -278,6 +314,7 @@ export function validateInventoryImportCsv(
             }
           : undefined,
       errors,
+      warnings,
     };
   });
 
@@ -315,8 +352,7 @@ export function validateInventoryImportCsv(
 
     const itemNameMatches = fileItemNames.get(row.values['Item Name'].trim().toLowerCase()) ?? [];
     if (row.values['Item Name'].trim() && itemNameMatches.length > 1) {
-      row.errors.push(`Item Name is duplicated in this file on rows ${itemNameMatches.join(', ')}.`);
-      row.normalizedInput = undefined;
+      row.warnings.push(`Item Name is repeated in this file on rows ${itemNameMatches.join(', ')}. Distinct SKUs will be preserved.`);
     }
   });
 
@@ -325,11 +361,25 @@ export function validateInventoryImportCsv(
       ? []
       : rows.filter((row) => row.errors.length === 0 && row.normalizedInput);
   const invalidRows = rows.filter((row) => row.errors.length > 0);
+  const warningRows = rows.filter((row) => row.warnings.length > 0);
 
   return {
     rows,
     validRows,
     invalidRows,
     headerErrors,
+    warningRows,
+    sourceHeaders: providedHeaders,
+    columnMapping: matchedHeaders,
+    unmappedHeaders: providedHeaders.filter((header, index) => header.trim() && !matchedHeaders[index]),
+    mode,
   };
+}
+
+export function validateInventoryImportCsv(
+  text: string,
+  existingProducts: Product[],
+  options: InventoryImportOptions = {}
+): InventoryImportPreview {
+  return validateInventoryImportRows(parseInventoryImportCsv(text), existingProducts, options);
 }

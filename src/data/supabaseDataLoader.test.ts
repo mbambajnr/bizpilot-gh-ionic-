@@ -11,14 +11,12 @@ vi.mock('../lib/supabase', () => ({
 
 function buildQueryResult(data: unknown) {
   const result = Promise.resolve({ data });
-  let orderedResult: {
+  const orderedResult: {
     order: ReturnType<typeof vi.fn>;
     then: Promise<{ data: unknown }>['then'];
     catch: Promise<{ data: unknown }>['catch'];
     finally: Promise<{ data: unknown }>['finally'];
-  };
-
-  orderedResult = {
+  } = {
     order: vi.fn(() => orderedResult),
     then: result.then.bind(result),
     catch: result.catch.bind(result),

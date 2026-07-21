@@ -143,6 +143,28 @@ function isCloudEmployeeConnectivityMessage(message: string) {
   return /could not check employee credentials right now/i.test(message) || /failed to fetch/i.test(message);
 }
 
+async function establishEmployeeServerSession(identifier: string, password: string) {
+  try {
+    const response = await fetch('/api/auth/employee-session', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: identifier.trim(), password }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function clearEmployeeServerSession() {
+  try {
+    await fetch('/api/auth/employee-session', { method: 'DELETE', credentials: 'same-origin' });
+  } catch {
+    // Local Ionic builds do not expose the Next session endpoint.
+  }
+}
+
 function cacheEmployeeCredential(user: UserAccessProfile) {
   const credentialsById = new Map<string, UserAccessProfile>();
   const rawCredentials = window.localStorage.getItem(LOCAL_EMPLOYEE_CREDENTIALS_KEY);
@@ -531,6 +553,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
         const localEmployeeResult = localFallback();
         if (localEmployeeResult.ok) {
+          await establishEmployeeServerSession(email, password);
           return localEmployeeResult;
         }
 
@@ -540,6 +563,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
         const cloudEmployeeResult = await signInWithCloudEmployee(email, password);
         if (cloudEmployeeResult.ok && cloudEmployeeResult.session) {
+          await establishEmployeeServerSession(email, password);
           setSession(cloudEmployeeResult.session);
           return cloudEmployeeResult;
         }
@@ -622,6 +646,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         return { ok: true, message: 'Password reset instructions were sent if that email exists.' };
       },
       async signOut() {
+        await clearEmployeeServerSession();
         const testWindow = window as TestWindow;
         testWindow.__BIZAPILOT_TEST_SESSION__ = null;
         window.localStorage.removeItem(LOCAL_SESSION_KEY);

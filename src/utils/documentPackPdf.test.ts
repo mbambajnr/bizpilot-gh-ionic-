@@ -15,6 +15,49 @@ describe('documentPackPdf', () => {
     expect(pdfBytes.byteLength).toBeGreaterThan(1000);
   });
 
+  it('renders payment status from invoice balance instead of document lifecycle status', () => {
+    const sale = {
+      ...seedState.sales[0],
+      paidAmount: 0,
+      totalAmount: 100,
+      netReceivableAmount: undefined,
+      status: 'Completed' as const,
+    };
+    const customer = seedState.customers.find((item) => item.id === sale.customerId);
+    const pdfBytes = buildInvoicePdf(sale, customer, {
+      businessProfile: seedState.businessProfile,
+      currency: seedState.businessProfile.currency,
+    });
+    const pdfText = new TextDecoder().decode(pdfBytes);
+
+    expect(pdfText).toContain('Unpaid');
+    expect(pdfText).not.toContain('(Completed)');
+  });
+
+  it('keeps customer registration state out of public invoice PDFs', () => {
+    const sale = {
+      ...seedState.sales[0],
+      customerId: undefined,
+      customerSnapshot: {
+        name: 'Northstar Hotels',
+        phone: '0240001122',
+        location: 'Airport City',
+        source: 'prospect' as const,
+      },
+      customerTypeSnapshot: undefined,
+    };
+    const pdfBytes = buildInvoicePdf(sale, undefined, {
+      businessProfile: seedState.businessProfile,
+      currency: seedState.businessProfile.currency,
+    });
+    const pdfText = new TextDecoder().decode(pdfBytes);
+
+    expect(pdfText).toContain('Northstar Hotels');
+    expect(pdfText).toContain('Airport City');
+    expect(pdfText).not.toContain('Unregistered customer');
+    expect(pdfText).not.toContain('Prospect');
+  });
+
   it('builds untaxed invoice export total rows with no tax row', () => {
     expect(buildDocumentTotalRows(seedState.sales[0], 'Invoice Total')).toEqual([
       { label: 'Subtotal', value: seedState.sales[0].totalAmount, highlight: false },

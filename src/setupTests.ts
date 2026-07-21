@@ -17,3 +17,13 @@ window.matchMedia = window.matchMedia || function() {
       dispatchEvent: function() { return false; }
   };
 };
+
+const requestAnimationFrameFallback = (callback: FrameRequestCallback) =>
+  window.setTimeout(() => callback(Date.now()), 16);
+
+const cancelAnimationFrameFallback = (handle: number) => window.clearTimeout(handle);
+
+window.requestAnimationFrame = window.requestAnimationFrame || requestAnimationFrameFallback;
+window.cancelAnimationFrame = window.cancelAnimationFrame || cancelAnimationFrameFallback;
+globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || window.requestAnimationFrame.bind(window);
+globalThis.cancelAnimationFrame = globalThis.cancelAnimationFrame || window.cancelAnimationFrame.bind(window);

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { seedState } from '../data/seedBusiness';
 import { addQuotationToState } from '../utils/businessLogic';
 import { BusinessProvider, useBusiness } from './BusinessContext';
-import { syncBusinessProfile, syncEmployeeCredential, syncQuotation, syncSale } from '../data/supabaseSync';
+import { syncBusinessProfile, syncEmployeeCredential, syncQuotationForUser, syncSale } from '../data/supabaseSync';
 
 vi.mock('./AuthContext', () => ({
   useAuth: () => ({ user: null }),
@@ -33,8 +33,11 @@ vi.mock('../data/supabaseSync', () => ({
   getLastSupabaseSyncErrorMessage: vi.fn(() => null),
   syncProductCategory: vi.fn(() => Promise.resolve(true)),
   syncQuotation: vi.fn(() => Promise.resolve(true)),
+  syncQuotationForUser: vi.fn(() => Promise.resolve(true)),
   syncBusinessLocation: vi.fn(() => Promise.resolve(true)),
   syncSupplyRoute: vi.fn(() => Promise.resolve(true)),
+  syncVendor: vi.fn(() => Promise.resolve(true)),
+  syncEmployeeVendor: vi.fn(() => Promise.resolve(true)),
   syncStockMovementForUser: vi.fn(() => Promise.resolve(true)),
   syncEmployeeCredential: vi.fn(() => Promise.resolve(true)),
   verifyEmployeeCredential: vi.fn(() => Promise.resolve(true)),
@@ -238,6 +241,24 @@ function ApprovePurchaseHarness({
   return null;
 }
 
+function MarkNotificationReadHarness({ notificationId, onDone }: { notificationId: string; onDone: (read: boolean) => void }) {
+  const didRun = useRef(false);
+  const { markNotificationsRead, state, currentUser } = useBusiness();
+
+  useEffect(() => {
+    if (didRun.current) return;
+    didRun.current = true;
+    markNotificationsRead([notificationId]);
+  }, [markNotificationsRead, notificationId]);
+
+  useEffect(() => {
+    const notification = state.notifications.find((entry) => entry.id === notificationId);
+    if (notification?.readByUserIds.includes(currentUser.userId)) onDone(true);
+  }, [currentUser.userId, notificationId, onDone, state.notifications]);
+
+  return null;
+}
+
 describe('BusinessContext quotation conversion sync', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -280,7 +301,7 @@ describe('BusinessContext quotation conversion sync', () => {
     );
 
     await waitFor(() => {
-      expect(syncQuotation).toHaveBeenCalledTimes(1);
+      expect(syncQuotationForUser).toHaveBeenCalledTimes(1);
       expect(syncSale).toHaveBeenCalledTimes(1);
     });
     expect(syncSale).toHaveBeenCalledWith(
@@ -295,6 +316,28 @@ describe('BusinessContext quotation conversion sync', () => {
         taxAmount: 6.13,
       })
     );
+  });
+
+  it('marks enterprise notifications as read for the active user', async () => {
+    const onDone = vi.fn();
+    const notificationState = {
+      ...seedState,
+      notifications: [{
+        id: 'notice-1',
+        title: 'Purchase approved',
+        message: 'The payable is ready for accounting.',
+        createdAt: new Date().toISOString(),
+        recipientRoles: [seedState.users.find((entry) => entry.userId === seedState.currentUserId)?.role ?? 'Admin'],
+        readByUserIds: [],
+        entityType: 'business' as const,
+        entityId: seedState.businessProfile.id,
+      }],
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(notificationState));
+
+    render(<BusinessProvider><MarkNotificationReadHarness notificationId="notice-1" onDone={onDone} /></BusinessProvider>);
+
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(true));
   });
 
   it('only commits business profile changes after durable sync succeeds', async () => {

@@ -141,6 +141,21 @@ export type MagentoReorderResult = {
   items: MagentoReorderItem[];
 };
 
+export type MagentoOrderActivity = {
+  generated_at: string;
+  total_count: number;
+  orders: Array<{
+    id: number;
+    order_number: string;
+    status: string;
+    created_at: string;
+    total: number;
+    currency: string;
+    item_count: number;
+    customer_name: string;
+  }>;
+};
+
 /**
  * Demand + reorder intelligence per SKU per branch — drives data-backed
  * restock and inter-branch transfer decisions.
@@ -151,6 +166,14 @@ export async function loadMagentoReorder(days?: number) {
   return parseResponse<{ ok: true; reorder: MagentoReorderResult }>(
     response,
     'Magento reorder feed failed.'
+  );
+}
+
+export async function loadMagentoActivity(limit = 8) {
+  const response = await apiFetch(`/api/magento/activity?limit=${Math.min(Math.max(limit, 1), 20)}`);
+  return parseResponse<{ ok: true; activity: MagentoOrderActivity }>(
+    response,
+    'Magento order activity is unavailable.'
   );
 }
 

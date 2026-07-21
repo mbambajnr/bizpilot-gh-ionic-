@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { seedState } from '../data/seedBusiness';
+import type { AppRole } from '../authz/types';
 import DashboardPage from './DashboardPage';
 
 const mockUseBusiness = vi.fn();
@@ -192,11 +193,23 @@ function buildState(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderDashboard(permissionMap: Record<string, boolean>, stateOverrides: Record<string, unknown> = {}) {
+function renderDashboard(
+  permissionMap: Record<string, boolean>,
+  stateOverrides: Record<string, unknown> = {},
+  role: AppRole = 'GeneralManager'
+) {
   mockUseBusiness.mockReturnValue({
     priorityQuestions: [],
     backendStatus: { source: 'local', loading: false, label: 'Ready', detail: 'Ready' },
     hasPermission: vi.fn((permission: string) => Boolean(permissionMap[permission])),
+    currentUser: {
+      userId: 'test-user',
+      name: 'Test User',
+      email: 'test@example.com',
+      role,
+      grantedPermissions: [],
+      revokedPermissions: [],
+    },
     state: buildState(stateOverrides),
   });
 
@@ -208,7 +221,94 @@ describe('DashboardPage role-aware widgets', () => {
     vi.clearAllMocks();
   });
 
-  it('shows the full ERP overview for an admin-style user', () => {
+  it('shows only governance panels for a system administrator', () => {
+    renderDashboard({
+      'business.edit': true,
+      'users.manage': true,
+      'permissions.manage': true,
+    }, {}, 'Admin');
+
+    expect(screen.getByTestId('system-admin-dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Account health')).toBeInTheDocument();
+    expect(screen.getByText('Access review')).toBeInTheDocument();
+    expect(screen.getByText('Workspace health')).toBeInTheDocument();
+    expect(screen.getByText('Vendor security')).toBeInTheDocument();
+    expect(screen.queryByText('Sales today')).not.toBeInTheDocument();
+    expect(screen.queryByText('Vault (Cash)')).not.toBeInTheDocument();
+    expect(screen.queryByText('MoMo Bank')).not.toBeInTheDocument();
+    expect(screen.queryByText('To Collect')).not.toBeInTheDocument();
+    expect(screen.queryByText('Daily reconciliation')).not.toBeInTheDocument();
+    expect(screen.queryByText('Attention needed')).not.toBeInTheDocument();
+    expect(screen.queryByText('Customer mix')).not.toBeInTheDocument();
+    expect(screen.queryByText('Supply pulse')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sales segmentation')).not.toBeInTheDocument();
+    expect(screen.queryByText('Fast movers and risk')).not.toBeInTheDocument();
+    expect(screen.queryByText('Revenue and activity')).not.toBeInTheDocument();
+    expect(screen.queryByText('Recent activity')).not.toBeInTheDocument();
+    expect(screen.queryByText('Quick Actions')).not.toBeInTheDocument();
+  });
+
+  it('opens active user details from the system admin account health metric', async () => {
+    renderDashboard({
+      'business.edit': true,
+      'users.manage': true,
+      'permissions.manage': true,
+    }, {
+      users: [
+        { userId: 'admin-1', name: 'System Owner', email: 'owner@example.com', role: 'Admin', grantedPermissions: [], revokedPermissions: [], accountStatus: 'active' },
+        { userId: 'temp-1', name: 'Temp Staff', email: 'temp@example.com', role: 'WarehouseManager', grantedPermissions: [], revokedPermissions: [], accountStatus: 'active', passwordChangeRequired: true },
+        { userId: 'old-1', name: 'Former Staff', email: 'former@example.com', role: 'StoreManager', grantedPermissions: [], revokedPermissions: [], accountStatus: 'deactivated' },
+      ],
+    }, 'Admin');
+
+    fireEvent.click(screen.getByTestId('admin-active-users-metric'));
+
+    expect(await screen.findByText('System Owner')).toBeInTheDocument();
+    expect(screen.getByText('Temp Staff')).toBeInTheDocument();
+    expect(screen.queryByText('Former Staff')).not.toBeInTheDocument();
+  });
+
+  it('opens temporary password user details from the system admin metric', async () => {
+    const users = [
+      { userId: 'admin-1', name: 'System Owner', email: 'owner@example.com', role: 'Admin' as AppRole, grantedPermissions: [], revokedPermissions: [], accountStatus: 'active' as const },
+      { userId: 'temp-1', name: 'Temp Staff', email: 'temp@example.com', role: 'WarehouseManager' as AppRole, grantedPermissions: [], revokedPermissions: [], accountStatus: 'active' as const, passwordChangeRequired: true },
+      { userId: 'old-1', name: 'Former Staff', email: 'former@example.com', role: 'StoreManager' as AppRole, grantedPermissions: [], revokedPermissions: [], accountStatus: 'deactivated' as const },
+    ];
+
+    renderDashboard({
+      'business.edit': true,
+      'users.manage': true,
+      'permissions.manage': true,
+    }, { users }, 'Admin');
+
+    fireEvent.click(screen.getByTestId('admin-temporary-passwords-metric'));
+
+    expect(await screen.findByText('Temp Staff')).toBeInTheDocument();
+    expect(screen.getByText('Password change')).toBeInTheDocument();
+    expect(screen.queryByText('Former Staff')).not.toBeInTheDocument();
+  });
+
+  it('opens deactivated user details from the system admin metric', async () => {
+    renderDashboard({
+      'business.edit': true,
+      'users.manage': true,
+      'permissions.manage': true,
+    }, {
+      users: [
+        { userId: 'admin-1', name: 'System Owner', email: 'owner@example.com', role: 'Admin', grantedPermissions: [], revokedPermissions: [], accountStatus: 'active' },
+        { userId: 'old-1', name: 'Former Staff', email: 'former@example.com', role: 'StoreManager', grantedPermissions: [], revokedPermissions: [], accountStatus: 'deactivated' },
+      ],
+    }, 'Admin');
+
+    fireEvent.click(screen.getByTestId('admin-deactivated-users-metric'));
+
+    expect(await screen.findByText('Former Staff')).toBeInTheDocument();
+    expect(screen.getByText('former@example.com')).toBeInTheDocument();
+    expect(screen.getAllByText('Deactivated').length).toBeGreaterThan(0);
+    expect(screen.queryByText('System Owner')).not.toBeInTheDocument();
+  });
+
+  it('shows the full ERP overview for a general manager style user', () => {
     renderDashboard({
       'business.edit': true,
       'users.manage': true,
@@ -359,6 +459,7 @@ describe('DashboardPage role-aware widgets', () => {
     });
 
     expect(screen.queryByText('Management Overview')).not.toBeInTheDocument();
+    expect(screen.queryByText('System Admin Dashboard')).not.toBeInTheDocument();
     expect(screen.queryByText('Procurement Desk')).not.toBeInTheDocument();
     expect(screen.queryByText('Accounting Desk')).not.toBeInTheDocument();
     expect(screen.queryByText('Users & Permissions')).not.toBeInTheDocument();

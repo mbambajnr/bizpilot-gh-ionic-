@@ -33,6 +33,7 @@ import { useAuth } from '../context/AuthContext';
 import { useBusiness } from '../context/BusinessContext';
 import { calculateTaxComponentTotalRate, getBusinessLaunchState } from '../utils/businessLogic';
 import { loadBusinessEmailConfig, saveBusinessEmailConfig } from '../lib/businessEmailConfigClient';
+import { loadMagentoCatalog, loadMagentoIntegrationStatus } from '../lib/magentoClient';
 import { getPermissionList } from '../authz/permissions';
 import { ROLE_DEFAULT_PERMISSIONS, ROLE_LABELS } from '../authz/defaults';
 import { hasSupabaseConfig } from '../lib/supabase';
@@ -211,6 +212,10 @@ const SettingsPage: React.FC = () => {
   const [employeeConfirmPassword, setEmployeeConfirmPassword] = useState('');
   const [employeePasswordMessage, setEmployeePasswordMessage] = useState('');
   const [isChangingEmployeePassword, setIsChangingEmployeePassword] = useState(false);
+  const [isTestingMagento, setIsTestingMagento] = useState(false);
+  const [magentoStatus, setMagentoStatus] = useState<'idle' | 'ready' | 'error'>('idle');
+  const [magentoMessage, setMagentoMessage] = useState('Connection has not been tested yet.');
+  const [magentoCounts, setMagentoCounts] = useState({ products: 0, branches: 0 });
 
   useEffect(() => {
     setBusinessName(state.businessProfile.businessName);
@@ -793,6 +798,33 @@ const SettingsPage: React.FC = () => {
     setShowSuccessToast(true);
   };
 
+  const handleTestMagentoConnection = async () => {
+    setIsTestingMagento(true);
+    setMagentoMessage('');
+
+    try {
+      const status = await loadMagentoIntegrationStatus();
+      if (!status.integration.configured) {
+        setMagentoStatus('error');
+        setMagentoMessage('Add MAGENTO_BASE_URL and MAGENTO_ACCESS_TOKEN to the BizPilot server environment.');
+        return;
+      }
+
+      const result = await loadMagentoCatalog();
+      setMagentoCounts({
+        products: result.catalog.products.length,
+        branches: result.catalog.branches.length,
+      });
+      setMagentoStatus('ready');
+      setMagentoMessage(`Connected to Magento store ${result.catalog.store_code}.`);
+    } catch (error) {
+      setMagentoStatus('error');
+      setMagentoMessage(error instanceof Error ? error.message : 'Magento connection test failed.');
+    } finally {
+      setIsTestingMagento(false);
+    }
+  };
+
   const handleAddEmployee = async () => {
     const defaultPermissions = new Set(ROLE_DEFAULT_PERMISSIONS[newEmployeeRole]);
     const selectedPermissions = new Set(newEmployeePermissions);
@@ -915,17 +947,60 @@ const SettingsPage: React.FC = () => {
     setShowSuccessToast(true);
   };
 
+  const isEnterpriseWeb = '__BIZPILOT_PUBLIC_ENV__' in globalThis;
+
   return (
-    <IonPage>
+    <IonPage className="settings-enterprise-page">
       <IonHeader translucent={true}>
         <IonToolbar>
           <IonTitle>Settings</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen={true}>
-        <div className="page-shell">
+        <div className="page-shell settings-page-shell">
+          {isEnterpriseWeb ? <header className="settings-page-intro">
+            <div>
+              <p className="eyebrow">Administration</p>
+              <h1>Workspace settings</h1>
+              <p>Manage access, operating rules, integrations, business identity, and document standards.</p>
+            </div>
+            <dl className="settings-summary" aria-label="Workspace summary">
+              <div>
+                <dt>Workspace</dt>
+                <dd>{businessLaunchState === 'live' ? 'Live' : businessLaunchState === 'readyToLaunch' ? 'Ready to launch' : 'In setup'}</dd>
+              </div>
+              <div>
+                <dt>Team</dt>
+                <dd>{state.users.filter((member) => (member.accountStatus ?? 'active') === 'active').length} active</dd>
+              </div>
+              <div>
+                <dt>Data</dt>
+                <dd>{backendStatus.source === 'supabase' ? 'Cloud' : 'Local'}</dd>
+              </div>
+            </dl>
+          </header> : null}
+
+          <div className="settings-layout">
+            {isEnterpriseWeb ? <nav className="settings-index" aria-label="Settings sections">
+              <p>Workspace</p>
+              <button type="button" onClick={() => document.getElementById('settings-overview')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Overview</button>
+              <button type="button" onClick={() => document.getElementById('settings-access')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Owner access</button>
+              {canManageSensitiveAdminSettings ? <button type="button" onClick={() => document.getElementById('settings-team')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Team and roles</button> : null}
+              <button type="button" onClick={() => document.getElementById('settings-security')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Security</button>
+              <p>Operations</p>
+              {canManageLocations ? <button type="button" onClick={() => document.getElementById('settings-locations')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Locations</button> : null}
+              {canManageTaxSettings ? <button type="button" onClick={() => document.getElementById('settings-tax')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Tax</button> : null}
+              {hasPermission('business.edit') ? <button type="button" onClick={() => document.getElementById('settings-business')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Business details</button> : null}
+              <p>Connections</p>
+              {canManageSensitiveAdminSettings ? <button type="button" onClick={() => document.getElementById('settings-integrations')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Cloud and Magento</button> : null}
+              {canManageBusinessEmail ? <button type="button" onClick={() => document.getElementById('settings-communications')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Business email</button> : null}
+              {hasPermission('branding.manage') ? <button type="button" onClick={() => document.getElementById('settings-branding')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Brand identity</button> : null}
+            </nav> : null}
+
+            <div className="settings-sections">
           {hasPermission('business.view') ? (
             <SectionCard
+              id="settings-overview"
               title="Business launch status"
               subtitle="Track whether this workspace is still being prepared or officially open for the team."
               highlighted={businessLaunchState !== 'live'}
@@ -977,8 +1052,11 @@ const SettingsPage: React.FC = () => {
 
           {canManageSensitiveAdminSettings ? (
             <SectionCard
+              id="settings-integrations"
               title="Cloud integrity"
               subtitle="Verify your workspace is correctly synchronized with the Supabase backend."
+              collapsible={true}
+              defaultExpanded={false}
             >
               <div className="diagnostic-grid">
                 <div className="sync-line">
@@ -1018,7 +1096,50 @@ const SettingsPage: React.FC = () => {
             </SectionCard>
           ) : null}
 
+          {canManageSensitiveAdminSettings ? (
+            <SectionCard
+              title="Magento POS connection"
+              subtitle="Test the secure catalog bridge before synchronizing products and store locations."
+              collapsible={true}
+              defaultExpanded={false}
+            >
+              <div className="diagnostic-grid">
+                <div className="sync-line">
+                  <IonBadge color={magentoStatus === 'ready' ? 'success' : magentoStatus === 'error' ? 'danger' : 'medium'}>
+                    {magentoStatus === 'ready' ? 'Connected' : magentoStatus === 'error' ? 'Needs attention' : 'Not tested'}
+                  </IonBadge>
+                  <div className="diagnostic-info">
+                    <strong>Magento catalog bridge</strong>
+                    <p className="diagnostic-detail">{magentoMessage}</p>
+                  </div>
+                </div>
+                {magentoStatus === 'ready' ? (
+                  <div className="integrity-check-list">
+                    <div className="integrity-item">
+                      <span className="status-pill success">{magentoCounts.products}</span>
+                      <span className="integrity-label">Products available</span>
+                    </div>
+                    <div className="integrity-item">
+                      <span className="status-pill success">{magentoCounts.branches}</span>
+                      <span className="integrity-label">Active branches</span>
+                    </div>
+                  </div>
+                ) : null}
+                <IonButton
+                  fill="solid"
+                  size="small"
+                  onClick={handleTestMagentoConnection}
+                  disabled={isTestingMagento}
+                >
+                  <IonIcon slot="start" icon={refreshOutline} />
+                  {isTestingMagento ? 'Testing connection...' : 'Test Magento Connection'}
+                </IonButton>
+              </div>
+            </SectionCard>
+          ) : null}
+
           <SectionCard
+            id="settings-access"
             title="Owner access"
             subtitle="The signed-in owner controls this BisaPilot workspace."
           >
@@ -1039,6 +1160,8 @@ const SettingsPage: React.FC = () => {
             <SectionCard
               title="Business owner identity"
               subtitle="Switch between roles to test permissions or repair your admin access."
+              collapsible={true}
+              defaultExpanded={false}
             >
               <div className="list-block">
                  <div className="tab-group" style={{ padding: '8px 4px', borderBottom: '1px solid var(--border-color)', marginBottom: '16px' }}>
@@ -1074,6 +1197,8 @@ const SettingsPage: React.FC = () => {
           <SectionCard
             title="Appearance"
             subtitle="Choose how BisaPilot looks for you. Light mode can improve readability in bright environments."
+            collapsible={true}
+            defaultExpanded={false}
           >
             <div className="form-grid" style={{ paddingTop: '8px' }}>
               <IonSegment
@@ -1096,10 +1221,12 @@ const SettingsPage: React.FC = () => {
 
            {canManageSensitiveAdminSettings && (
              <SectionCard
+               id="settings-team"
                title="Team accounts"
                subtitle="Create, edit, and control employee access from one coherent team-management flow."
                collapsible={true}
                defaultExpanded={false}
+               dataTestId="team-accounts-section"
              >
                <div className="list-block">
                  <div className="list-row">
@@ -1147,8 +1274,11 @@ const SettingsPage: React.FC = () => {
            )}
 
           <SectionCard
+            id="settings-security"
             title="Security"
             subtitle="Authentication credentials are managed by the configured identity provider, not by local workspace state."
+            collapsible={true}
+            defaultExpanded={mustChangeEmployeePassword || isEmployeeSession}
           >
             <div className="list-block">
               <div className="list-row">
@@ -1206,6 +1336,8 @@ const SettingsPage: React.FC = () => {
             <SectionCard
               title="Customer classification"
               subtitle="Turn B2B/B2C classification on only if your business needs that customer distinction."
+              collapsible={true}
+              defaultExpanded={false}
             >
               <div className="form-grid">
                 <div className="stats-row">
@@ -1241,8 +1373,11 @@ const SettingsPage: React.FC = () => {
 
           {canManageTaxSettings && (
             <SectionCard
+              id="settings-tax"
               title="Ghana tax"
               subtitle="Enable tax only when this business needs VAT/NHIL/GETFund treatment on new documents."
+              collapsible={true}
+              defaultExpanded={false}
             >
               <div className="form-grid">
                 <div className="list-block">
@@ -1389,8 +1524,12 @@ const SettingsPage: React.FC = () => {
 
           {canManageLocations && (
             <SectionCard
+              id="settings-locations"
               title="Locations"
               subtitle="Set up stores, warehouses, and simple warehouse-to-store supply routes."
+              collapsible={true}
+              defaultExpanded={false}
+              dataTestId="locations-section"
             >
               <div className="form-grid">
                 <div className="list-block">
@@ -1602,6 +1741,8 @@ const SettingsPage: React.FC = () => {
             <SectionCard
               title="Inventory categories"
               subtitle="Turn optional product categorization on only if your business needs extra inventory structure."
+              collapsible={true}
+              defaultExpanded={false}
             >
               <div className="form-grid">
                 <div className="list-block">
@@ -1779,8 +1920,11 @@ const SettingsPage: React.FC = () => {
 
            {canManageBusinessEmail && (
             <SectionCard
+              id="settings-business"
               title="Business setup"
               subtitle="These local settings shape invoice and receipt numbering, contact details, and currency display across the current MVP."
+              collapsible={true}
+              defaultExpanded={businessLaunchState !== 'live'}
             >
               <div className="form-grid">
                 <div className="dual-stat">
@@ -1958,8 +2102,11 @@ const SettingsPage: React.FC = () => {
 
           {canManageBusinessEmail && (
             <SectionCard
+              id="settings-communications"
               title="Business mailing system"
               subtitle="This sender identity belongs to the business. All authorized users send customer emails through this configured mailbox."
+              collapsible={true}
+              defaultExpanded={false}
             >
               <div className="form-grid">
                 <div className="dual-stat">
@@ -2054,7 +2201,13 @@ const SettingsPage: React.FC = () => {
           )}
 
           {hasPermission('branding.manage') && (
-            <SectionCard title="Brand identity" subtitle="Manage your company's visual identifiers for official invoices, quotations, and waybills. Add a logo for stronger branded documents.">
+            <SectionCard
+              id="settings-branding"
+              title="Brand identity"
+              subtitle="Manage your company's visual identifiers for official invoices, quotations, and waybills. Add a logo for stronger branded documents."
+              collapsible={true}
+              defaultExpanded={false}
+            >
               <div className="form-grid">
                 <div className="branding-upload-grid">
                   <div className="branding-item branding-asset-card">
@@ -2135,7 +2288,12 @@ const SettingsPage: React.FC = () => {
           )}
 
           {hasPermission('restockRequests.manage') && state.restockRequests.length > 0 && (
-            <SectionCard title="Restock requests queue" subtitle="Review and fulfill inventory replenishment requests from your Sales Managers.">
+            <SectionCard
+              title="Restock requests queue"
+              subtitle="Review and fulfill inventory replenishment requests from your Sales Managers."
+              collapsible={true}
+              defaultExpanded={false}
+            >
               <div className="list-block">
                 {state.restockRequests.map(req => (
                   <div className="list-row" key={req.id}>
@@ -2163,6 +2321,8 @@ const SettingsPage: React.FC = () => {
           <SectionCard
             title="Product roadmap"
             subtitle="This stays as a quick local reminder of the current BisaPilot implementation milestones."
+            collapsible={true}
+            defaultExpanded={false}
           >
             <div className="list-block">
               {roadmapSteps.map((step) => (
@@ -2176,6 +2336,8 @@ const SettingsPage: React.FC = () => {
               ))}
             </div>
           </SectionCard>
+            </div>
+          </div>
         </div>
       </IonContent>
       <IonModal isOpen={showAddEmployeeModal} onDidDismiss={closeAddEmployeeModal}>

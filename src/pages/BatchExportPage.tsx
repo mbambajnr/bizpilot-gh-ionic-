@@ -149,11 +149,15 @@ const BatchExportPage: React.FC = () => {
     setIsDownloadingZip(true);
 
     try {
-      const logoDataUrl = await loadLogoDataUrl(state.businessProfile.logoUrl);
+      const [logoDataUrl, signatureDataUrl] = await Promise.all([
+        loadLogoDataUrl(state.businessProfile.logoUrl),
+        loadLogoDataUrl(state.businessProfile.signatureUrl),
+      ]);
       const pdfContext = {
         businessProfile: state.businessProfile,
         currency: state.businessProfile.currency,
         logoDataUrl,
+        signatureDataUrl,
       };
 
       const zipEntries = [

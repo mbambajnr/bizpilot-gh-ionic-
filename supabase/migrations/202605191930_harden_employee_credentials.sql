@@ -19,7 +19,7 @@ check (status in ('draft', 'submitted', 'adminReviewed', 'approved', 'receivedTo
 
 update public.employee_credentials
 set
-  password_hash = crypt(temporary_password, gen_salt('bf')),
+  password_hash = extensions.crypt(temporary_password, extensions.gen_salt('bf')),
   temporary_password = null,
   requires_password_change = true
 where
@@ -82,7 +82,7 @@ begin
     trim(credential_name),
     lower(trim(credential_email)),
     lower(trim(credential_username)),
-    case when cleaned_password = '' then null else crypt(cleaned_password, gen_salt('bf')) end,
+    case when cleaned_password = '' then null else extensions.crypt(cleaned_password, extensions.gen_salt('bf')) end,
     null,
     case
       when cleaned_password = '' then coalesce(credential_requires_password_change, false)
@@ -164,6 +164,9 @@ grant execute on function public.upsert_employee_credential(
   text
 ) to authenticated;
 
+-- PostgreSQL cannot replace a function when its OUT columns change.
+drop function if exists public.authenticate_employee_credential(text, text);
+
 create or replace function public.authenticate_employee_credential(
   credential_identifier text,
   credential_password text
@@ -209,7 +212,7 @@ as $$
   where
     employee_credentials.account_status = 'active'
     and employee_credentials.password_hash is not null
-    and employee_credentials.password_hash = crypt(trim(credential_password), employee_credentials.password_hash)
+    and employee_credentials.password_hash = extensions.crypt(trim(credential_password), employee_credentials.password_hash)
     and (
       lower(employee_credentials.email) = lower(trim(credential_identifier))
       or lower(employee_credentials.username) = lower(trim(credential_identifier))
@@ -252,7 +255,7 @@ begin
   return query
   update public.employee_credentials
   set
-    password_hash = crypt(cleaned_next_password, gen_salt('bf')),
+    password_hash = extensions.crypt(cleaned_next_password, extensions.gen_salt('bf')),
     temporary_password = null,
     requires_password_change = false,
     credentials_generated_at = now(),
@@ -260,7 +263,7 @@ begin
   where
     employee_credentials.account_status = 'active'
     and employee_credentials.password_hash is not null
-    and employee_credentials.password_hash = crypt(cleaned_current_password, employee_credentials.password_hash)
+    and employee_credentials.password_hash = extensions.crypt(cleaned_current_password, employee_credentials.password_hash)
     and (
       lower(employee_credentials.email) = normalized_identifier
       or lower(employee_credentials.username) = normalized_identifier
@@ -320,7 +323,7 @@ begin
   where
     account_status = 'active'
     and password_hash is not null
-    and password_hash = crypt(trim(credential_password), password_hash)
+    and password_hash = extensions.crypt(trim(credential_password), password_hash)
     and (
       lower(email) = lower(trim(credential_identifier))
       or lower(username) = lower(trim(credential_identifier))

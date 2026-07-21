@@ -59,6 +59,7 @@ const InventoryPage: React.FC = () => {
   const {
     state,
     addProduct,
+    bulkImportProducts,
     addRestockRequest,
     reviewRestockRequest,
     createStockTransfer,
@@ -201,6 +202,7 @@ const InventoryPage: React.FC = () => {
     hasPermission('inventory.create') &&
     currentUser.role !== 'PurchaseManager' &&
     (hasPermission('inventory.edit') || hasPermission('inventory.adjust') || hasPermission('business.edit'));
+  const canViewInventoryValue = hasPermission('inventory.value.view');
   const canUseApprovalRole = currentUser.role === 'GeneralManager';
   const canUseRestockManagerRole =
     currentUser.role === 'GeneralManager' ||
@@ -225,7 +227,7 @@ const InventoryPage: React.FC = () => {
   );
   const activeVendors = useMemo(() => state.vendors.filter((vendor) => vendor.status === 'active'), [state.vendors]);
   const approvedPurchases = useMemo(
-    () => state.purchases.filter((purchase) => purchase.status === 'approved'),
+    () => state.purchases.filter((purchase) => ['approved', 'partiallyReceived'].includes(purchase.status)),
     [state.purchases]
   );
   const selectedLocationId =
@@ -319,9 +321,9 @@ const InventoryPage: React.FC = () => {
       id: product.id,
       title: product.name,
       subtitle: product.inventoryId,
-      meta: `${product.unit} · cost ${formatCurrency(product.cost, currency)}`,
+      meta: canViewInventoryValue ? `${product.unit} · cost ${formatCurrency(product.cost, currency)}` : product.unit,
     })),
-    [currency, state.products]
+    [canViewInventoryValue, currency, state.products]
   );
   const purchaseDraftTotal = purchaseDraftItems.reduce((sum, item) => sum + item.totalCost, 0);
   const inventoryCategoryReport = useMemo(() => selectInventoryCategoryReport(state), [state]);
@@ -618,37 +620,20 @@ const InventoryPage: React.FC = () => {
     setShowImportModal(true);
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (!importPreview || importPreview.headerErrors.length > 0 || importPreview.validRows.length === 0 || isImporting) {
       return;
     }
 
     setIsImporting(true);
-    let importedCount = 0;
-    const failedRows: string[] = [];
-
-    importPreview.validRows.forEach((row) => {
-      if (!row.normalizedInput) {
-        return;
-      }
-
-      const result = addProduct(row.normalizedInput);
-      if (result.ok) {
-        importedCount += 1;
-        return;
-      }
-
-      failedRows.push(`Row ${row.rowNumber}: ${result.message}`);
-    });
-
+    const result = await bulkImportProducts(importPreview.validRows.flatMap((row) => row.normalizedInput ? [row.normalizedInput] : []));
     setIsImporting(false);
-
-    if (failedRows.length > 0) {
-      setImportMessage(`Imported ${importedCount} item${importedCount === 1 ? '' : 's'}, but some rows failed. ${failedRows.join(' ')}`);
+    if (!result.ok || !result.data) {
+      setImportMessage(result.message ?? 'The inventory batch could not be imported.');
       return;
     }
 
-    setImportSummaryMessage(`Imported ${importedCount} inventory item${importedCount === 1 ? '' : 's'} successfully.`);
+    setImportSummaryMessage(`Imported ${result.data.importedCount.toLocaleString()} inventory items successfully.`);
     setShowImportToast(true);
     closeImportModal();
   };
@@ -1150,9 +1135,11 @@ const InventoryPage: React.FC = () => {
                     <p>30-day sales-movement heuristic</p>
                   </div>
                 </div>
-                <p className="muted-label" style={{ margin: '0 8px 12px 8px' }}>
-                  Stock value below is an operational estimate based on current product cost multiplied by quantity on hand.
-                </p>
+                {canViewInventoryValue ? (
+                  <p className="muted-label" style={{ margin: '0 8px 12px 8px' }}>
+                    Stock value below is an operational estimate based on current product cost multiplied by quantity on hand.
+                  </p>
+                ) : null}
                 <div className="list-block">
                   {inventoryLocationReport.map((entry) => (
                     <div className="list-row" key={entry.locationId}>
@@ -1162,7 +1149,7 @@ const InventoryPage: React.FC = () => {
                       </div>
                       <div className="right-meta">
                         <strong>{entry.quantityOnHand} units</strong>
-                        <p>Estimate {formatCurrency(entry.stockValue, currency)}</p>
+                        {canViewInventoryValue ? <p>Estimate {formatCurrency(entry.stockValue, currency)}</p> : <p>{entry.productCount} stocked products</p>}
                       </div>
                     </div>
                   ))}
@@ -1183,7 +1170,7 @@ const InventoryPage: React.FC = () => {
                         </div>
                         <div className="right-meta">
                           <strong>{entry.quantityOnHand} units</strong>
-                          <p>{formatCurrency(entry.stockValue, currency)}</p>
+                          {canViewInventoryValue ? <p>{formatCurrency(entry.stockValue, currency)}</p> : <p>{entry.productCount} products</p>}
                         </div>
                       </div>
                     ))}
@@ -1345,7 +1332,7 @@ const InventoryPage: React.FC = () => {
                 ) : (
                   <div className="list-block">
                     {inventorySummaries.map(({ product, quantityOnHand, lowStock, latestMovement, stockStatusDisplay }) => {
-                      const margin = product.price > 0 ? `${Math.round(((product.price - product.cost) / product.price) * 100)}%` : '0%';
+                      const margin = canViewInventoryValue && product.price > 0 ? `${Math.round(((product.price - product.cost) / product.price) * 100)}%` : null;
                       const categoryLabel = selectProductCategoryDisplayLabel(state, product.categoryId);
                       const category = product.categoryId ? categoryMap.get(product.categoryId) ?? null : null;
 
@@ -1392,7 +1379,7 @@ const InventoryPage: React.FC = () => {
                                 </p>
                               ) : null}
                               <p>
-                                Reorder at {product.reorderLevel} • Margin {margin} • {formatCurrency(product.price, currency)}
+                                Reorder at {product.reorderLevel} • {margin ? `Margin ${margin} • ` : ''}{formatCurrency(product.price, currency)}
                               </p>
                               <p>
                                 Latest movement:{' '}
@@ -2416,7 +2403,7 @@ const InventoryPage: React.FC = () => {
                   <IonButton fill="outline" onClick={() => document.getElementById('inventory-import-input')?.click()}>
                     Upload Another File
                   </IonButton>
-                  <IonButton onClick={handleConfirmImport} disabled={!importPreview || importPreview.headerErrors.length > 0 || importPreview.validRows.length === 0 || importPreview.invalidRows.length > 0 || isImporting}>
+                  <IonButton onClick={() => void handleConfirmImport()} disabled={!importPreview || importPreview.headerErrors.length > 0 || importPreview.validRows.length === 0 || importPreview.invalidRows.length > 0 || isImporting}>
                     {isImporting ? 'Importing...' : 'Confirm Import'}
                   </IonButton>
                 </div>

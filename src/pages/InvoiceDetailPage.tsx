@@ -27,7 +27,6 @@ import {
   selectLedgerEntryDisplay,
   selectSaleBalanceRemaining,
   selectStockMovementDisplay,
-  selectCustomerTypeDisplayLabel,
   selectDocumentTaxTotals,
   selectDocumentWithholdingTotals,
 } from '../selectors/businessSelectors';
@@ -44,7 +43,6 @@ const InvoiceDetailPage: React.FC = () => {
   const [formMessage, setFormMessage] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const currency = state.businessProfile.currency;
-  const isCustomerClassificationEnabled = state.businessProfile.customerClassificationEnabled;
 
   const sale = useMemo(() => state.sales.find((item) => item.id === saleId) ?? null, [saleId, state.sales]);
   const customer = useMemo(() => state.customers.find((item) => item.id === sale?.customerId) ?? null, [sale, state.customers]);
@@ -100,7 +98,9 @@ const InvoiceDetailPage: React.FC = () => {
   const balanceRemaining = selectSaleBalanceRemaining(sale);
   const taxTotals = selectDocumentTaxTotals(sale);
   const withholdingTotals = selectDocumentWithholdingTotals(sale);
-  const customerName = customer?.name ?? 'Customer';
+  const customerName = customer?.name ?? sale.customerSnapshot?.name ?? 'Customer';
+  const customerReference = customer?.clientId ? `Client ID: ${customer.clientId}` : sale.customerSnapshot?.contactName || sale.customerSnapshot?.location || '';
+  const invoiceContactPhone = customerPhone || sale.customerSnapshot?.phone || '';
   const invoiceSummaryLine = `${sale.invoiceNumber} • ${customerName} • ${formatCurrency(sale.totalAmount, currency)} • ${sale.status}`;
   const whatsappDisabled = !customerPhone;
 
@@ -290,14 +290,9 @@ const InvoiceDetailPage: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px', marginBottom: '35px' }}>
                 <div>
                   <p style={{ fontSize: '0.7rem', fontWeight: '800', color: '#666', marginBottom: '8px', textTransform: 'uppercase' }}>Bill To</p>
-                  <strong style={{ display: 'block', fontSize: '1.25rem' }}>{customer?.name}</strong>
-                  <p style={{ margin: '2px 0', fontSize: '0.95rem' }}><strong>Client ID:</strong> {customer?.clientId}</p>
-                  {isCustomerClassificationEnabled ? (
-                    <p style={{ margin: '2px 0', fontSize: '0.95rem' }}>
-                      <strong>Customer Type Snapshot:</strong> {selectCustomerTypeDisplayLabel(sale.customerTypeSnapshot)}
-                    </p>
-                  ) : null}
-                  {customerPhone && <p style={{ margin: '2px 0', fontSize: '0.95rem' }}><strong>Phone:</strong> {customerPhone}</p>}
+                  <strong style={{ display: 'block', fontSize: '1.25rem' }}>{customerName}</strong>
+                  {customerReference ? <p style={{ margin: '2px 0', fontSize: '0.95rem' }}>{customerReference}</p> : null}
+                  {invoiceContactPhone ? <p style={{ margin: '2px 0', fontSize: '0.95rem' }}><strong>Phone:</strong> {invoiceContactPhone}</p> : null}
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <p style={{ fontSize: '0.7rem', fontWeight: '800', color: '#666', marginBottom: '8px', textTransform: 'uppercase' }}>Status & Payment</p>

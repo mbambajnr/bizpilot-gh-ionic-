@@ -4,6 +4,16 @@
   min-height: 100%;
 }
 
+.settings-page-intro,
+.settings-index {
+  display: none;
+}
+
+.settings-layout,
+.settings-sections {
+  display: block;
+}
+
 .auth-shell {
   min-height: 100vh;
   display: flex;
@@ -537,6 +547,69 @@ ion-modal ion-searchbar {
   gap: 10px;
   align-items: center;
   margin-top: 18px;
+}
+
+.role-focus-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.role-focus-row .status-pill {
+  background: rgba(46, 139, 87, 0.12);
+  color: var(--ion-color-primary);
+  border: 1px solid rgba(46, 139, 87, 0.28);
+}
+
+.role-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(164px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.role-action-card {
+  display: grid;
+  gap: 5px;
+  min-height: 116px;
+  padding: 14px;
+  text-align: left;
+  color: var(--ion-text-color);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.role-action-card:hover,
+.role-action-card:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(46, 139, 87, 0.08);
+  border-color: rgba(46, 139, 87, 0.34);
+  outline: none;
+}
+
+.role-action-card span {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.role-action-card strong {
+  overflow-wrap: anywhere;
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.role-action-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 .stats-grid {
@@ -2152,6 +2225,250 @@ ion-button {
   gap: 6px;
 }
 
+.admin-portal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.admin-portal-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 190px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.admin-portal-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-portal-panel-head strong {
+  color: var(--ion-text-color);
+  font-size: 1rem;
+  text-align: right;
+}
+
+.admin-portal-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+  gap: 10px;
+}
+
+.admin-portal-metrics div,
+.admin-portal-metrics button {
+  min-height: 78px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.16);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.admin-portal-metrics button {
+  width: 100%;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.admin-portal-metrics button:hover,
+.admin-portal-metrics button:focus-visible {
+  background: rgba(46, 139, 87, 0.08);
+  border-color: rgba(46, 139, 87, 0.34);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.admin-portal-metrics h3 {
+  margin: 0 0 6px;
+  color: var(--ion-text-color);
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-portal-metrics p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.admin-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.admin-readiness-grid > div {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-portal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.admin-user-modal-shell {
+  padding-top: 16px;
+}
+
+.admin-user-list-row {
+  align-items: flex-start;
+}
+
+.admin-user-list-row .right-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+@media screen and (max-width: 600px) {
+  .page-shell {
+    padding: calc(8px + var(--ion-safe-area-top, 0px)) 10px calc(94px + var(--ion-safe-area-bottom, 0px));
+  }
+
+  .hero-card {
+    padding: 20px 16px;
+    border-radius: 12px;
+  }
+
+  .hero-card h1 {
+    font-size: 1.45rem;
+    line-height: 1.18;
+    margin: 10px 0;
+  }
+
+  .hero-copy {
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  .analytics-headline {
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+
+  .status-pulse-wrap {
+    align-self: flex-start;
+    padding: 5px 10px;
+  }
+
+  .sync-line {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .role-focus-row {
+    gap: 6px;
+    margin-top: 12px;
+  }
+
+  .system-admin-dashboard-card {
+    padding: 18px 14px;
+    border-radius: 12px;
+  }
+
+  .system-admin-dashboard-card .section-head h2 {
+    font-size: 1.08rem;
+    line-height: 1.25;
+  }
+
+  .system-admin-dashboard-card .section-head p {
+    font-size: 0.9rem;
+    line-height: 1.45;
+  }
+
+  .admin-portal-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  .admin-portal-panel {
+    min-height: 0;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 8px;
+  }
+
+  .admin-portal-panel-head {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .admin-portal-panel-head strong {
+    text-align: left;
+    line-height: 1.25;
+  }
+
+  .admin-portal-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .admin-portal-metrics div,
+  .admin-portal-metrics button {
+    min-height: 72px;
+    padding: 10px;
+  }
+
+  .admin-portal-metrics h3 {
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .admin-portal-metrics p {
+    font-size: 0.75rem;
+  }
+
+  .admin-readiness-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  .system-admin-dashboard-card .launch-checklist {
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  .system-admin-dashboard-card .launch-checklist-item {
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 1.35;
+  }
+
+  .system-admin-dashboard-card .status-dot {
+    margin-top: 5px;
+  }
+}
+
+@media screen and (max-width: 360px) {
+  .admin-portal-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
 .status-pill {
   padding: 4px 10px;
   border-radius: 999px;
@@ -3017,4 +3334,259 @@ ion-button {
 
 .notification-tray-head h2 {
   margin: 4px 0 0;
+}
+.pos-shell {
+  max-width: 1520px;
+}
+
+.pos-command-bar,
+.pos-panel-head,
+.pos-success,
+.pos-cart-line,
+.pos-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.pos-command-bar {
+  margin-bottom: 16px;
+}
+
+.pos-command-bar h1,
+.pos-panel-head h2,
+.pos-success h2 {
+  margin: 0;
+}
+
+.pos-branch-control {
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-card);
+}
+
+.pos-branch-control ion-select {
+  width: 100%;
+}
+
+.pos-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: 16px;
+  align-items: start;
+}
+
+.pos-catalog-panel,
+.pos-cart-panel,
+.pos-success {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+  border-radius: 8px;
+}
+
+.pos-catalog-panel,
+.pos-cart-panel {
+  padding: 16px;
+}
+
+.pos-cart-panel {
+  position: sticky;
+  top: 12px;
+}
+
+.pos-panel-head {
+  margin-bottom: 10px;
+}
+
+.pos-panel-head p,
+.pos-product-copy p,
+.pos-cart-line p,
+.pos-empty-cart p,
+.pos-total p,
+.pos-success p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+}
+
+.pos-product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.pos-product {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--ion-background-color);
+}
+
+.pos-product-image {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--surface-card);
+}
+
+.pos-product-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.pos-product-image > ion-icon {
+  font-size: 32px;
+  color: var(--text-muted);
+}
+
+.pos-product-image span {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.84);
+  color: #fff;
+  font-size: 11px;
+}
+
+.pos-product-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.pos-product-copy h3 {
+  min-height: 42px;
+  margin: 4px 0 8px;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.pos-cart-lines {
+  min-height: 150px;
+  max-height: 300px;
+  overflow: auto;
+  border-block: 1px solid var(--border-subtle);
+}
+
+.pos-cart-line {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pos-cart-line:last-child {
+  border-bottom: 0;
+}
+
+.pos-stepper {
+  display: grid;
+  grid-template-columns: 34px 28px 34px;
+  align-items: center;
+  text-align: center;
+}
+
+.pos-stepper ion-button {
+  width: 34px;
+  height: 34px;
+  margin: 0;
+}
+
+.pos-empty-cart,
+.pos-loading {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.pos-empty-cart ion-icon {
+  font-size: 30px;
+}
+
+.pos-customer-fields,
+.pos-payment {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.pos-field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pos-total {
+  flex-wrap: wrap;
+  padding: 16px 2px;
+}
+
+.pos-total strong {
+  font-size: 22px;
+}
+
+.pos-total p {
+  width: 100%;
+  font-size: 12px;
+}
+
+.pos-success {
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border-color: var(--ion-color-success);
+}
+
+.pos-success > ion-icon {
+  flex: 0 0 auto;
+  font-size: 34px;
+  color: var(--ion-color-success);
+}
+
+.pos-success > div {
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .pos-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-cart-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 560px) {
+  .pos-command-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pos-branch-control {
+    width: 100%;
+  }
+
+  .pos-product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pos-field-pair {
+    grid-template-columns: 1fr;
+  }
 }
