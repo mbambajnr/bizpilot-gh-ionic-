@@ -8,21 +8,19 @@ vi.mock('../lib/magentoClient', () => ({
   loadMagentoCatalog: (...args: unknown[]) => loadCatalogMock(...args),
 }));
 
-vi.mock('../data/supabaseSync', () => ({
-  getLastSupabaseSyncErrorMessage: () => null,
-  verifyEmployeeCredential: vi.fn(),
-  rotateEmployeePassword: vi.fn(),
-  ...Object.fromEntries(
-    [
-      'syncProduct', 'syncProductCategory', 'syncBusinessLocation', 'syncSupplyRoute', 'syncVendor',
-      'syncEmployeeVendor', 'syncCustomer',
-      'syncSale', 'syncQuotation', 'syncPurchase', 'syncEmployeePurchase', 'syncEmployeeCredential',
-      'syncBusinessProfile', 'syncActivityLogEntry', 'syncAppNotification', 'syncAppNotificationRead',
-      'syncExpenseForUser', 'syncStockMovementForUser', 'syncAccountsPayableForUser', 'syncPaymentForUser',
-      'syncRestockRequestForUser', 'syncStockTransferForUser',
-    ].map((name) => [name, vi.fn()])
-  ),
-}));
+// Stub out every sync export so no test hits Supabase. Derive the mock from the
+// real module's exports rather than a hand-kept name list, so it can't drift out
+// of sync with supabaseSync (which is exactly what broke this suite before).
+vi.mock('../data/supabaseSync', async () => {
+  const actual = await vi.importActual<typeof import('../data/supabaseSync')>('../data/supabaseSync');
+  const mocked: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(actual)) {
+    mocked[name] = typeof value === 'function' ? vi.fn() : value;
+  }
+  // The offline layer reads this to detect the last sync error; keep it benign.
+  mocked.getLastSupabaseSyncErrorMessage = () => null;
+  return mocked;
+});
 
 function setNavigatorOnline(value: boolean) {
   Object.defineProperty(window.navigator, 'onLine', { value, configurable: true });
