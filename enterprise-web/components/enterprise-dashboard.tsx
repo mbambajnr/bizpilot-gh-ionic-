@@ -13,7 +13,7 @@ import {
   Warehouse,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { AppRole } from '../../src/authz/types';
 import { useBusiness } from '../../src/context/BusinessContext';
@@ -48,6 +48,21 @@ function EnterpriseDashboardView() {
   const currency = state.businessProfile.currency;
   const attentionCount = model.queues.reduce((total, queue) => total + (queue.tone === 'warn' || queue.tone === 'risk' ? queue.value : 0), 0);
 
+  // Only surface the commerce widget when an external commerce platform is
+  // actually connected. Otherwise a tenant that never chose Magento would see a
+  // Magento card telling them to configure Magento. Role permission alone is not
+  // enough — connection is the gate.
+  const [commerceConnected, setCommerceConnected] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/bizpilot/magento/health', { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => { if (!cancelled) setCommerceConnected(Boolean(payload?.ok && payload.integration?.configured)); })
+      .catch(() => { if (!cancelled) setCommerceConnected(false); });
+    return () => { cancelled = true; };
+  }, []);
+  const showCommerce = model.showCommerce && commerceConnected;
+
   return <EnterpriseShell active="Overview">
     <div className="page-content role-dashboard-page">
       <section className="page-heading role-dashboard-heading">
@@ -74,7 +89,7 @@ function EnterpriseDashboardView() {
         })}
       </section>
 
-      <section className={model.showCommerce ? 'dashboard-grid' : 'dashboard-grid dashboard-grid--balanced'}>
+      <section className={showCommerce ? 'dashboard-grid' : 'dashboard-grid dashboard-grid--balanced'}>
         <div className="performance-panel role-queue-panel">
           <div className="panel-heading"><div><p className="eyebrow">Role worklist</p><h2>Priority queues</h2></div><span>{model.queues.length} monitored workflows</span></div>
           <div className="table-wrap">
@@ -88,7 +103,7 @@ function EnterpriseDashboardView() {
             {!model.queues.length ? <div className="role-dashboard-empty"><ShieldCheck size={20} /><strong>No assigned queues</strong><span>This profile has dashboard access but no operational modules assigned.</span></div> : null}
           </div>
         </div>
-        {model.showCommerce ? <MagentoStatus /> : <RoleBrief role={currentUser.role} queueCount={model.queues.length} attentionCount={attentionCount} locationCount={state.locations.filter((location) => location.isActive).length} />}
+        {showCommerce ? <MagentoStatus /> : <RoleBrief role={currentUser.role} queueCount={model.queues.length} attentionCount={attentionCount} locationCount={state.locations.filter((location) => location.isActive).length} />}
       </section>
 
       {model.recentMode === 'sales' ? <section className="recent-panel">
