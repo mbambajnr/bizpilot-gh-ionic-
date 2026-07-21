@@ -23,6 +23,8 @@ a { color: inherit; text-decoration: none; }
 /* Keyboard focus is visible on every interactive element, including inputs that
    clear the native outline. focus-visible keeps mouse clicks ring-free. */
 :where(a, button, input, select, textarea, [role="button"], [role="combobox"], [tabindex]):focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; border-radius: 4px; }
+/* The dark sidebar swallows a forest ring, so keyboard focus there uses the gold accent. */
+.sidebar :where(a, button, input, select, textarea, [role="button"], [tabindex]):focus-visible { outline-color: #f1c766; }
 
 .app-frame { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(0, 1fr); }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 24px 16px 18px; display: flex; flex-direction: column; background: #102c26; color: #eef6f2; border-right: 1px solid #25473f; }
