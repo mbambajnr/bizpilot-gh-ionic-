@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">BizPilot GH</string>
-    <string name="title_activity_main">BizPilot GH</string>
-    <string name="package_name">com.bizpilot.gh</string>
-    <string name="custom_url_scheme">com.bizpilot.gh</string>
-</resources>

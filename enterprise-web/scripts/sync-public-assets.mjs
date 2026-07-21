@@ -1,4 +1,4 @@
-import { cp, mkdir } from 'node:fs/promises';
+import { cp, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,14 +9,7 @@ const publicDir = path.join(projectDir, 'public');
 await mkdir(publicDir, { recursive: true });
 await cp(path.join(repositoryRoot, 'public'), publicDir, { recursive: true, force: true });
 
-const landingScreenshots = [
-  'cypress/screenshots-mobile-after/mobile_qa.cy.ts/mobile-customers-list.png',
-  'cypress/screenshots-mobile-after/mobile_qa.cy.ts/mobile-sales-top.png',
-  'cypress/screenshots-mobile-docs-after/mobile_qa_docs.cy.ts/mobile-waybill-detail-after.png',
-];
-
-for (const relativePath of landingScreenshots) {
-  const destination = path.join(publicDir, relativePath);
-  await mkdir(path.dirname(destination), { recursive: true });
-  await cp(path.join(repositoryRoot, relativePath), destination, { force: true });
-}
+// Remove stale mobile-screenshot artifacts from a previous copy step that
+// pulled Cypress screenshots into public/. The mobile/Cypress app has been
+// removed and these images are not referenced anywhere in the web app.
+await rm(path.join(publicDir, 'cypress'), { recursive: true, force: true });

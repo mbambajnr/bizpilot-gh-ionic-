@@ -9,7 +9,6 @@
 /coverage
 
 # production
-/dist
 /out
 /enterprise-web/.next
 /enterprise-web/node_modules
@@ -21,6 +20,9 @@
 
 # misc
 .DS_Store
+# local agent/tool config
+/.claude/
+/.zcode/
 .env.local
 .env.server
 .env.development.local
@@ -28,9 +30,6 @@
 .env.production.local
 /server/data/
 /supabase/.temp/
-/cypress/screenshots-mobile/
-/cypress/screenshots-mobile-after/
-/cypress/screenshots-mobile-docs-after/
 /.nx
 /.nx/cache
 /.vscode/*
