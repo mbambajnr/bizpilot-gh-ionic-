@@ -1,11 +1,12 @@
 'use client';
 
-import { Check, KeyRound, Pencil, Plus, ShieldCheck, UserRoundCheck, UserRoundX, X } from 'lucide-react';
+import { Check, Handshake, KeyRound, Pencil, Plus, ShieldCheck, UserRoundCheck, UserRoundX, X } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 
 import { ROLE_DEFAULT_PERMISSIONS, ROLE_LABELS } from '../../src/authz/defaults';
-import { getPermissionList } from '../../src/authz/permissions';
+import { getPermissionList, hasPermission } from '../../src/authz/permissions';
 import type { AppPermission, AppRole, UserAccessProfile } from '../../src/authz/types';
+import type { ApprovalDelegationCategory } from '../../src/data/seedBusiness';
 import { useAuth } from '../../src/context/AuthContext';
 import { useBusiness } from '../../src/context/BusinessContext';
 
@@ -70,7 +71,7 @@ export function EnterpriseTeamSettings() {
     if (result.ok) setCredentials(result.data ?? null);
   }
 
-  return <section className="settings-panel team-admin-panel">
+  return <><ApprovalDelegationPanel /><section className="settings-panel team-admin-panel">
     <div className="settings-panel-heading"><div><p className="eyebrow">Access control</p><h2>Team and roles</h2><p>Manage employee access, role baselines, permission overrides, and account recovery.</p></div>{canManage ? <button className="primary-button" type="button" onClick={() => { setEditor(newEditor()); setCredentials(null); setMessage(''); }}><Plus size={15} /> Add employee</button> : <span className="status-pill">Read only</span>}</div>
     {message && !editor ? <div className="settings-message" role="status">{message}</div> : null}
     <div className="team-admin-table"><div className="team-admin-head"><span>Employee</span><span>Role</span><span>Status</span><span>Access</span><span /></div>{state.users.map((user) => { const permissions = getPermissionList(user); const active = (user.accountStatus ?? 'active') === 'active'; return <article key={user.userId}><div className="team-avatar">{initials(user.name)}</div><div className="team-admin-identity"><strong>{user.name}</strong><span>{user.email || user.username}</span></div><div><strong>{user.roleLabel || ROLE_LABELS[user.role]}</strong><span>{ROLE_LABELS[user.role]}{user.userId === currentUser.userId ? ' · Current session' : ''}</span></div><span className={`status-pill status-pill--${active ? 'good' : 'warn'}`}>{active ? 'Active' : 'Deactivated'}</span><div className="team-permission-count"><ShieldCheck size={14} /><span>{permissions.length} permissions</span></div>{canManage ? <button className="icon-button" type="button" aria-label={`Edit ${user.name}`} title={`Edit ${user.name}`} onClick={() => openUser(user)}><Pencil size={14} /></button> : <span />}</article>;})}</div>
@@ -80,6 +81,45 @@ export function EnterpriseTeamSettings() {
       <section className="permission-editor"><div className="permission-editor-heading"><div><strong>Effective permissions</strong><span>Role defaults with explicit grants and revocations.</span></div><b>{editor.permissions.length} enabled</b></div>{permissionGroups.map((group) => <details key={group.title}><summary>{group.title}<span>{group.items.filter(([permission]) => editor.permissions.includes(permission)).length}/{group.items.length}</span></summary><div>{group.items.map(([permission, label]) => <label key={permission}><input type="checkbox" checked={editor.permissions.includes(permission)} onChange={(event) => setEditor({ ...editor, permissions: event.target.checked ? [...editor.permissions, permission] : editor.permissions.filter((entry) => entry !== permission) })} /><i>{editor.permissions.includes(permission) ? <Check size={11} /> : null}</i><span>{label}</span></label>)}</div></details>)}</section>
       {credentials ? <section className="credential-result"><KeyRound size={18} /><div><strong>Temporary credentials</strong><span>Share these securely. They are shown only for this action.</span><code>Username: {credentials.username}</code><code>Password: {credentials.temporaryPassword}</code></div></section> : null}{message ? <div className="settings-message" role="status">{message}</div> : null}
     </div><footer><button className="secondary-button" type="button" onClick={() => setEditor(null)}>{credentials && editor.mode === 'create' ? 'Close' : 'Cancel'}</button>{credentials && editor.mode === 'create' ? <button className="primary-button" type="button" onClick={() => { setEditor(newEditor()); setCredentials(null); setMessage(''); }}><Plus size={14} /> Create another</button> : <button className="primary-button" type="submit" disabled={busy}>{busy ? 'Saving...' : 'Save employee'}</button>}</footer></form></div> : null}
+  </section></>;
+}
+
+const DELEGATION_CATEGORIES: Array<[ApprovalDelegationCategory, string]> = [['payables', 'Payables'], ['purchases', 'Purchases'], ['transfers', 'Transfers']];
+
+function ApprovalDelegationPanel() {
+  const { state, currentUser, assignApprovalDelegate, revokeApprovalDelegate } = useBusiness();
+  const [delegateUserId, setDelegateUserId] = useState('');
+  const [categories, setCategories] = useState<ApprovalDelegationCategory[]>([]);
+  const [message, setMessage] = useState('');
+
+  // Only the General Manager holds approval authority to delegate.
+  if (currentUser.role !== 'GeneralManager') return null;
+
+  const candidates = state.users.filter((user) => user.userId !== currentUser.userId && (user.accountStatus ?? 'active') !== 'deactivated');
+  const selected = candidates.find((user) => user.userId === delegateUserId);
+  const delegateCanPay = Boolean(selected && (hasPermission(selected, 'payables.pay') || hasPermission(selected, 'payments.record')));
+  const toggle = (category: ApprovalDelegationCategory) => setCategories((current) => current.includes(category) ? current.filter((entry) => entry !== category) : [...current, category]);
+
+  function assign() {
+    const result = assignApprovalDelegate({ delegateUserId, categories });
+    setMessage(result.message ?? (result.ok ? 'Delegation assigned.' : 'Could not assign the delegation.'));
+    if (result.ok) { setDelegateUserId(''); setCategories([]); }
+  }
+  function revoke(delegationId: string) {
+    const result = revokeApprovalDelegate({ delegationId });
+    setMessage(result.message ?? (result.ok ? 'Delegation revoked.' : 'Could not revoke the delegation.'));
+  }
+
+  return <section className="settings-panel">
+    <div className="settings-panel-heading"><div><p className="eyebrow">Approval authority</p><h2>Approval delegation</h2><p>Assign an employee to approve on your behalf until you revoke it. The delegate approves in their own name; every approval stays in the audit trail.</p></div><Handshake size={20} /></div>
+    {message ? <div className="settings-message" role="status">{message}</div> : null}
+    {state.approvalDelegations.length ? <div className="delegation-list">{state.approvalDelegations.map((delegation) => { const user = state.users.find((entry) => entry.userId === delegation.delegateUserId); return <article key={delegation.id}><div><strong>{user?.name ?? delegation.delegateUserId}</strong><span>{delegation.categories.map((category) => DELEGATION_CATEGORIES.find(([value]) => value === category)?.[1] ?? category).join(' · ')}</span></div><button className="secondary-button danger-button" type="button" onClick={() => revoke(delegation.id)}><UserRoundX size={14} /> Revoke</button></article>; })}</div> : <div className="delegation-empty"><ShieldCheck size={18} /><span>No active delegations. You are the only approver.</span></div>}
+    <div className="delegation-assign">
+      <label className="form-field"><span>Delegate to</span><select value={delegateUserId} onChange={(event) => setDelegateUserId(event.target.value)}><option value="">Choose an employee</option>{candidates.map((user) => <option value={user.userId} key={user.userId}>{user.name} · {ROLE_LABELS[user.role]}</option>)}</select></label>
+      <fieldset className="delegation-categories"><legend>Approvals to delegate</legend>{DELEGATION_CATEGORIES.map(([value, label]) => <label key={value}><input type="checkbox" checked={categories.includes(value)} onChange={() => toggle(value)} /><span>{label}</span></label>)}</fieldset>
+      {delegateCanPay && categories.includes('payables') ? <div className="delegation-warning"><ShieldCheck size={15} /><span>{selected?.name} can also record payments. Delegating payable approval lets one person both approve and pay a bill, which breaks separation of duties. Delegate anyway?</span></div> : null}
+      <button className="primary-button" type="button" disabled={!delegateUserId || !categories.length} onClick={assign}>Assign delegation</button>
+    </div>
   </section>;
 }
 

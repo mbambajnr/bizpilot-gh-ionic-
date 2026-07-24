@@ -115,7 +115,11 @@ import {
   UpdateSalePaymentReferenceInput,
   LaunchBusinessWorkspaceInput,
   updateSalePaymentReferenceInState,
+  canApproveCategory,
+  assignApprovalDelegateInState,
+  revokeApprovalDelegateInState,
 } from '../utils/businessLogic';
+import type { ApprovalDelegationCategory } from '../data/seedBusiness';
 // Offline-resilient wrappers: identical behavior online; when the network is
 // down, writes are captured in a durable queue and replayed on reconnect.
 import { getLastSupabaseSyncErrorMessage, syncProduct, syncInventoryImportBatch, syncCustomer, syncSale, syncExpenseForUser, syncBusinessProfile, syncProductCategory, syncQuotationForUser, syncBusinessLocation, syncSupplyRoute, syncVendor, syncEmployeeVendor, syncStockMovementForUser, syncEmployeeCredential, syncPurchase, syncEmployeePurchase, syncActivityLogEntry, syncAppNotification, syncAppNotificationRead, syncAccountsPayableForUser, syncPaymentForUser, syncReceivablePaymentCommand, syncSalesReturnCommand, syncRestockRequestForUser, syncStockTransferForUser, verifyEmployeeCredential, rotateEmployeePassword, flushOfflineSync, setOfflineSyncUser } from '../offline/offlineSync';
@@ -248,6 +252,8 @@ type BusinessContextValue = {
   setSupplyRouteActive: (input: SetSupplyRouteActiveInput) => Promise<ActionResult>;
   createStockTransfer: (input: CreateStockTransferInput) => Promise<ActionResult>;
   approveStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
+  assignApprovalDelegate: (input: { delegateUserId: string; categories: ApprovalDelegationCategory[] }) => ActionResult;
+  revokeApprovalDelegate: (input: { delegationId: string }) => ActionResult;
   dispatchStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
   receiveStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
   cancelStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
@@ -756,7 +762,8 @@ export function BusinessProvider({ children }: PropsWithChildren) {
       seedState.users[0];
     return applySessionSecret(profile);
   }, [state.currentUserId, state.users, user?.id, user?.user_metadata?.auth_mode, user?.user_metadata?.employee_session_secret]);
-  const canUseApprovalRole = currentUser.role === 'GeneralManager';
+  const approvalHasPerm = (permission: AppPermission) => hasPermission(currentUser, permission);
+  const canApprove = (category: ApprovalDelegationCategory) => canApproveCategory(stateRef.current, currentUser, category, approvalHasPerm);
   const canUseRestockManagerRole =
     currentUser.role === 'GeneralManager' ||
     currentUser.role === 'WarehouseManager';
@@ -2118,7 +2125,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async approvePurchase(input) {
-        if (!canUseApprovalRole || !hasPermission(currentUser, 'purchases.approve')) {
+        if (!canApprove('purchases')) {
           return { ok: false, message: 'You are not authorized to approve purchases.' };
         }
 
@@ -2140,7 +2147,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async cancelPurchase(input) {
-        if (!canUseApprovalRole || !hasPermission(currentUser, 'purchases.approve')) {
+        if (!canApprove('purchases')) {
           return { ok: false, message: 'You are not authorized to decline purchases.' };
         }
 
@@ -2325,7 +2332,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async approvePayable(input) {
-        if (!canUseApprovalRole || (!hasPermission(currentUser, 'payables.manage') && !hasPermission(currentUser, 'payables.approve'))) {
+        if (!canApprove('payables')) {
           return { ok: false, message: 'You are not authorized to approve payables.' };
         }
 
@@ -2518,8 +2525,28 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         setState(result.data);
         return { ok: true };
       },
+      assignApprovalDelegate(input) {
+        if (currentUser.role !== 'GeneralManager') {
+          return { ok: false, message: 'Only the General Manager can delegate approval authority.' };
+        }
+        const result = assignApprovalDelegateInState(stateRef.current, { ...input, assignedByUserId: currentUser.userId });
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not assign the delegate.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      revokeApprovalDelegate(input) {
+        if (currentUser.role !== 'GeneralManager') {
+          return { ok: false, message: 'Only the General Manager can revoke approval delegations.' };
+        }
+        const result = revokeApprovalDelegateInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not revoke the delegation.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
       async approveStockTransfer(input) {
-        if (!canUseApprovalRole || !hasPermission(currentUser, 'transfers.approve')) {
+        if (!canApprove('transfers')) {
           return { ok: false, message: 'You are not authorized to approve stock transfers.' };
         }
 
@@ -2606,7 +2633,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async cancelStockTransfer(input) {
-        if (!canUseApprovalRole || !hasPermission(currentUser, 'transfers.approve')) {
+        if (!canApprove('transfers')) {
           return { ok: false, message: 'You are not authorized to cancel stock transfers.' };
         }
 

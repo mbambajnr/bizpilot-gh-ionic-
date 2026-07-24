@@ -26,7 +26,7 @@ import { useBusiness } from '../../src/context/BusinessContext';
 import type { ProcurementDocument, Purchase, PurchaseItem, PurchaseStatus } from '../../src/data/seedBusiness';
 import { loadMagentoReorder, type MagentoReorderItem, type MagentoReorderResult } from '../../src/lib/magentoClient';
 import { selectProcurementWorklist, selectWarehouseWorklist } from '../../src/selectors/businessSelectors';
-import { selectPurchaseDeliveredQuantity, selectPurchaseOpenInspection, selectPurchaseReceivedQuantity } from '../../src/utils/businessLogic';
+import { canApproveCategory, selectPurchaseDeliveredQuantity, selectPurchaseOpenInspection, selectPurchaseReceivedQuantity } from '../../src/utils/businessLogic';
 import { formatCurrency, formatRelativeDate } from '../../src/utils/format';
 import { EnterpriseApp } from './enterprise-app';
 import { EnterpriseShell } from './enterprise-shell';
@@ -104,7 +104,7 @@ function EnterpriseProcurementView() {
   const activeVendors = state.vendors.filter((vendor) => vendor.status === 'active');
   const canView = hasPermission('purchases.view') || hasPermission('procurement.view') || hasPermission('payables.manage');
   const canCreate = hasPermission('purchases.create') || hasPermission('procurement.create');
-  const canApprove = currentUser.role === 'GeneralManager' && hasPermission('purchases.approve');
+  const canApprove = canApproveCategory(state, currentUser, 'purchases', hasPermission);
   const canReceive = hasPermission('purchases.receive');
   const canRecordInvoice = hasPermission('payables.manage');
   const canEditPurchase = canCreate || canApprove || canRecordInvoice;

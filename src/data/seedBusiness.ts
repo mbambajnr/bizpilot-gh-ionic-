@@ -631,7 +631,20 @@ export type BusinessState = {
   currentUserId: string;
   restockRequests: RestockRequest[];
   expenses: Expense[];
+  approvalDelegations: ApprovalDelegation[];
   themePreference: 'system' | 'light' | 'dark';
+};
+
+export type ApprovalDelegationCategory = 'payables' | 'purchases' | 'transfers';
+
+/** A General Manager delegating approval authority to another employee, per category, until revoked. */
+export type ApprovalDelegation = {
+  id: string;
+  delegateUserId: string;
+  assignedByUserId: string;
+  categories: ApprovalDelegationCategory[];
+  active: boolean;
+  createdAt: string;
 };
 
 const now = new Date();
@@ -894,6 +907,7 @@ export const seedState: BusinessState = {
   expenses: [
     { id: 'exp-2', category: 'Utility', amount: 85, note: 'Electricity bill', createdAt: isoDaysAgoAt(2, 16, 30), recordedByUserId: 'u-admin', recordedByName: 'Admin User' },
   ],
+  approvalDelegations: [],
   themePreference: 'system',
 };
 

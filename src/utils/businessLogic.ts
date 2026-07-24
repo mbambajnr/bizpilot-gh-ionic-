@@ -3,6 +3,7 @@ import type {
   AppNotification,
   AccountsPayableStatus,
   ActivityLogEntry,
+  ApprovalDelegationCategory,
   BusinessProfile,
   BusinessLocation,
   BusinessLocationType,
@@ -41,6 +42,47 @@ import type {
   WithholdingTaxSnapshot,
 } from '../data/seedBusiness';
 import { seedState } from '../data/seedBusiness';
+import type { AppPermission } from '../authz/types';
+
+/**
+ * Whether a user may approve a given category. The General Manager holds this by
+ * role (gated on the relevant permission); any other user holds it only through
+ * an active delegation the GM assigned for that category.
+ */
+export function canApproveCategory(
+  state: Pick<BusinessState, 'approvalDelegations'>,
+  user: { role: string; userId: string },
+  category: ApprovalDelegationCategory,
+  hasPermission: (permission: AppPermission) => boolean,
+): boolean {
+  if (user.role === 'GeneralManager') {
+    if (category === 'payables') return hasPermission('payables.manage') || hasPermission('payables.approve');
+    if (category === 'purchases') return hasPermission('purchases.approve');
+    return hasPermission('transfers.approve');
+  }
+  return (state.approvalDelegations ?? []).some((delegation) => delegation.active && delegation.delegateUserId === user.userId && delegation.categories.includes(category));
+}
+
+/** Add or replace an approval delegation for a delegate. GM-authorized only. */
+export function assignApprovalDelegateInState(
+  state: BusinessState,
+  input: { delegateUserId: string; categories: ApprovalDelegationCategory[]; assignedByUserId: string },
+): ActionResult<BusinessState> {
+  if (!input.delegateUserId) return { ok: false, message: 'Choose an employee to receive the delegation.' };
+  if (input.delegateUserId === input.assignedByUserId) return { ok: false, message: 'You cannot delegate approval authority to yourself.' };
+  if (!input.categories.length) return { ok: false, message: 'Choose at least one approval type to delegate.' };
+  const delegate = state.users.find((user) => user.userId === input.delegateUserId);
+  if (!delegate || delegate.accountStatus === 'deactivated') return { ok: false, message: 'The selected employee is not an active user.' };
+  const others = state.approvalDelegations.filter((delegation) => delegation.delegateUserId !== input.delegateUserId);
+  const delegation = { id: crypto.randomUUID(), delegateUserId: input.delegateUserId, assignedByUserId: input.assignedByUserId, categories: [...input.categories], active: true, createdAt: new Date().toISOString() };
+  return { ok: true, data: { ...state, approvalDelegations: [...others, delegation] } };
+}
+
+/** Revoke (remove) an approval delegation. */
+export function revokeApprovalDelegateInState(state: BusinessState, input: { delegationId: string }): ActionResult<BusinessState> {
+  if (!state.approvalDelegations.some((delegation) => delegation.id === input.delegationId)) return { ok: false, message: 'That delegation no longer exists.' };
+  return { ok: true, data: { ...state, approvalDelegations: state.approvalDelegations.filter((delegation) => delegation.id !== input.delegationId) } };
+}
 import {
   nextActivityNumber,
   nextClientId,
@@ -1574,6 +1616,7 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     currentUserId: raw.currentUserId ?? seedState.currentUserId,
     restockRequests: raw.restockRequests ?? [],
     expenses: raw.expenses ?? [],
+    approvalDelegations: raw.approvalDelegations ?? [],
     themePreference: raw.themePreference ?? 'system',
   };
 }
