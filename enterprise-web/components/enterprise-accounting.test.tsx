@@ -99,7 +99,7 @@ describe('Accounting financial statements', () => {
       // Revenue(net)=435, COGS=2*100=200 => gross 235; expenses 50 => net 185.
       sales: [{ ...seedState.sales[0], id: 's-fin', status: 'Completed' as const, createdAt: now, totalAmount: 500, subtotalAmount: 435, taxAmount: 65, paidAmount: 500, items: [{ productId: 'pX', productName: 'Widget', inventoryId: 'INV-X', quantity: 2, unitPrice: 250, total: 500 }] }],
       products: [{ ...seedState.products[0], id: 'pX', name: 'Widget', price: 250, cost: 100 }],
-      expenses: [{ id: 'e-fin', category: 'Rent', amount: 50, note: '', createdAt: now, recordedByUserId: 'u', recordedByName: 'U' }],
+      expenses: [{ id: 'e-fin', category: 'Rent', amount: 50, note: '', createdAt: now, recordedByUserId: 'u', recordedByName: 'U', status: 'auto_approved' as const }],
       stockMovements: [{ ...seedState.stockMovements[0], id: 'm-fin', relatedSaleId: 's-fin', locationId: 'loc-main', type: 'sale' as const }],
       locations: [{ ...seedState.locations[0], id: 'loc-main', name: 'Main Store', isActive: true }],
     };

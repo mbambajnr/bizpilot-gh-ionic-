@@ -7,6 +7,7 @@ import { ROLE_DEFAULT_PERMISSIONS, ROLE_LABELS } from '../../src/authz/defaults'
 import { getPermissionList, hasPermission } from '../../src/authz/permissions';
 import type { AppPermission, AppRole, UserAccessProfile } from '../../src/authz/types';
 import type { ApprovalDelegationCategory } from '../../src/data/seedBusiness';
+import { formatCurrency } from '../../src/utils/format';
 import { useAuth } from '../../src/context/AuthContext';
 import { useBusiness } from '../../src/context/BusinessContext';
 
@@ -84,12 +85,13 @@ export function EnterpriseTeamSettings() {
   </section></>;
 }
 
-const DELEGATION_CATEGORIES: Array<[ApprovalDelegationCategory, string]> = [['payables', 'Payables'], ['purchases', 'Purchases'], ['transfers', 'Transfers']];
+const DELEGATION_CATEGORIES: Array<[ApprovalDelegationCategory, string]> = [['payables', 'Payables'], ['purchases', 'Purchases'], ['transfers', 'Transfers'], ['expenses', 'Expenses']];
 
 function ApprovalDelegationPanel() {
   const { state, currentUser, assignApprovalDelegate, revokeApprovalDelegate } = useBusiness();
   const [delegateUserId, setDelegateUserId] = useState('');
   const [categories, setCategories] = useState<ApprovalDelegationCategory[]>([]);
+  const [amountLimit, setAmountLimit] = useState('');
   const [message, setMessage] = useState('');
 
   // Only the General Manager holds approval authority to delegate.
@@ -101,9 +103,9 @@ function ApprovalDelegationPanel() {
   const toggle = (category: ApprovalDelegationCategory) => setCategories((current) => current.includes(category) ? current.filter((entry) => entry !== category) : [...current, category]);
 
   function assign() {
-    const result = assignApprovalDelegate({ delegateUserId, categories });
+    const result = assignApprovalDelegate({ delegateUserId, categories, amountLimit: amountLimit.trim() ? Number(amountLimit) : undefined });
     setMessage(result.message ?? (result.ok ? 'Delegation assigned.' : 'Could not assign the delegation.'));
-    if (result.ok) { setDelegateUserId(''); setCategories([]); }
+    if (result.ok) { setDelegateUserId(''); setCategories([]); setAmountLimit(''); }
   }
   function revoke(delegationId: string) {
     const result = revokeApprovalDelegate({ delegationId });
@@ -113,10 +115,11 @@ function ApprovalDelegationPanel() {
   return <section className="settings-panel">
     <div className="settings-panel-heading"><div><p className="eyebrow">Approval authority</p><h2>Approval delegation</h2><p>Assign an employee to approve on your behalf until you revoke it. The delegate approves in their own name; every approval stays in the audit trail.</p></div><Handshake size={20} /></div>
     {message ? <div className="settings-message" role="status">{message}</div> : null}
-    {state.approvalDelegations.length ? <div className="delegation-list">{state.approvalDelegations.map((delegation) => { const user = state.users.find((entry) => entry.userId === delegation.delegateUserId); return <article key={delegation.id}><div><strong>{user?.name ?? delegation.delegateUserId}</strong><span>{delegation.categories.map((category) => DELEGATION_CATEGORIES.find(([value]) => value === category)?.[1] ?? category).join(' · ')}</span></div><button className="secondary-button danger-button" type="button" onClick={() => revoke(delegation.id)}><UserRoundX size={14} /> Revoke</button></article>; })}</div> : <div className="delegation-empty"><ShieldCheck size={18} /><span>No active delegations. You are the only approver.</span></div>}
+    {state.approvalDelegations.length ? <div className="delegation-list">{state.approvalDelegations.map((delegation) => { const user = state.users.find((entry) => entry.userId === delegation.delegateUserId); return <article key={delegation.id}><div><strong>{user?.name ?? delegation.delegateUserId}</strong><span>{delegation.categories.map((category) => DELEGATION_CATEGORIES.find(([value]) => value === category)?.[1] ?? category).join(' · ')}{delegation.amountLimit != null ? ` · up to ${formatCurrency(delegation.amountLimit, state.businessProfile.currency)}` : ''}</span></div><button className="secondary-button danger-button" type="button" onClick={() => revoke(delegation.id)}><UserRoundX size={14} /> Revoke</button></article>; })}</div> : <div className="delegation-empty"><ShieldCheck size={18} /><span>No active delegations. You are the only approver.</span></div>}
     <div className="delegation-assign">
       <label className="form-field"><span>Delegate to</span><select value={delegateUserId} onChange={(event) => setDelegateUserId(event.target.value)}><option value="">Choose an employee</option>{candidates.map((user) => <option value={user.userId} key={user.userId}>{user.name} · {ROLE_LABELS[user.role]}</option>)}</select></label>
       <fieldset className="delegation-categories"><legend>Approvals to delegate</legend>{DELEGATION_CATEGORIES.map(([value, label]) => <label key={value}><input type="checkbox" checked={categories.includes(value)} onChange={() => toggle(value)} /><span>{label}</span></label>)}</fieldset>
+      <label className="form-field"><span>Approval limit <small>Optional</small></span><input type="number" min="0" step="1" value={amountLimit} onChange={(event) => setAmountLimit(event.target.value)} placeholder="Blank = no cap. Above this, only you approve." /></label>
       {delegateCanPay && categories.includes('payables') ? <div className="delegation-warning"><ShieldCheck size={15} /><span>{selected?.name} can also record payments. Delegating payable approval lets one person both approve and pay a bill, which breaks separation of duties. Delegate anyway?</span></div> : null}
       <button className="primary-button" type="button" disabled={!delegateUserId || !categories.length} onClick={assign}>Assign delegation</button>
     </div>

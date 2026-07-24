@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  ShieldCheck,
   ArrowDownLeft,
   ArrowRight,
   ArrowUpRight,
@@ -16,6 +17,7 @@ import {
   Plus,
   ReceiptText,
   Search,
+  Sparkles,
   TrendingUp,
   WalletCards,
   X,
@@ -26,12 +28,13 @@ import { type FormEvent, useMemo, useState } from 'react';
 import { useBusiness } from '../../src/context/BusinessContext';
 import type { AccountsPayable, Expense, Payment, PaymentChannel } from '../../src/data/seedBusiness';
 import { selectDashboardMetrics, selectSaleBalanceRemaining } from '../../src/selectors/businessSelectors';
-import { canApproveCategory } from '../../src/utils/businessLogic';
+import { canApproveCategory, isCustomerOnCreditHold, selectCustomerOutstanding } from '../../src/utils/businessLogic';
+import { detectExpenseAnomalies, groupAnomaliesByExpense, type AnomalyCode, type ExpenseAnomaly } from '../../src/utils/anomalyDetection';
 import { formatCurrency, formatRelativeDate } from '../../src/utils/format';
 import { EnterpriseApp } from './enterprise-app';
 import { EnterpriseShell } from './enterprise-shell';
 
-type AccountingView = 'overview' | 'financials' | 'receivables' | 'payables' | 'expenses' | 'cash' | 'payments' | 'approvals';
+type AccountingView = 'overview' | 'financials' | 'receivables' | 'credit' | 'payables' | 'expenses' | 'cash' | 'payments' | 'approvals' | 'close';
 
 const EXPENSE_CATEGORIES = ['General', 'Rent', 'Utility', 'Staff Wages', 'Transportation', 'Stock Purchase', 'Repairs', 'Marketing'];
 const PAYABLE_STATUS: Record<AccountsPayable['status'], { label: string; tone: 'neutral' | 'warn' | 'good' | 'risk' }> = {
@@ -48,21 +51,25 @@ export function EnterpriseAccounting() {
 }
 
 function AccountingWorkspace() {
-  const { state, currentUser, hasPermission, addExpense, approvePayable, recordPayablePayment } = useBusiness();
+  const { state, currentUser, hasPermission, addExpense, approveExpense, rejectExpense, approvePayable, recordPayablePayment, closeAccountingPeriod, reopenAccountingPeriod, setCustomerCreditHold } = useBusiness();
   const canAccess = hasPermission('accounting.access');
   const canViewPayables = hasPermission('payables.view') || hasPermission('payables.manage') || hasPermission('payables.pay');
   const canApprovePayables = canApproveCategory(state, currentUser, 'payables', hasPermission);
   const canPayPayables = hasPermission('payables.pay');
   const canViewExpenses = hasPermission('expenses.view');
   const canCreateExpenses = hasPermission('expenses.create');
+  const canApproveExpenses = canApproveCategory(state, currentUser, 'expenses', hasPermission);
   const canViewPayments = hasPermission('payments.view') || hasPermission('payments.record');
   const canViewSales = hasPermission('sales.view') || hasPermission('reports.sales.view');
   const canViewFinancials = hasPermission('reports.financial.view');
+  const canManageCredit = hasPermission('customers.ledger.view');
   const [view, setView] = useState<AccountingView>(() => {
     if (typeof window === 'undefined') return 'overview';
     const segment = new URLSearchParams(window.location.search).get('segment');
+    if (segment === 'close' && canViewFinancials) return 'close';
     if (segment === 'financials' && canViewFinancials) return 'financials';
     if (segment === 'receivables' && canViewSales) return 'receivables';
+    if (segment === 'credit' && canManageCredit) return 'credit';
     if (segment === 'payables' && canViewPayables) return 'payables';
     if (segment === 'expenses' && (canViewExpenses || canCreateExpenses)) return 'expenses';
     if (segment === 'payments' && canViewPayments) return 'payments';
@@ -83,6 +90,7 @@ function AccountingWorkspace() {
   const [busy, setBusy] = useState(false);
   const [accountingOpenedAt] = useState(() => new Date());
   const metrics = useMemo(() => selectDashboardMetrics(state), [state]);
+  const expenseAnomalies = useMemo(() => (canViewExpenses ? groupAnomaliesByExpense(detectExpenseAnomalies(state)) : new Map<string, ExpenseAnomaly[]>()), [state, canViewExpenses]);
   const currency = state.businessProfile.currency;
 
   const todayKey = accountingOpenedAt.toDateString();
@@ -90,6 +98,7 @@ function AccountingWorkspace() {
   const todaysSales = state.sales.filter((sale) => sale.status !== 'Reversed' && new Date(sale.createdAt).toDateString() === todayKey);
   const todaysExpenses = state.expenses.filter((expense) => new Date(expense.createdAt).toDateString() === todayKey);
   const monthlyExpenses = state.expenses.filter((expense) => expense.createdAt.slice(0, 7) === monthKey);
+  const pendingExpenseCount = state.expenses.filter((expense) => expense.status === 'pending_approval').length;
   const todaysSupplierPayments = state.payments.filter((payment) => payment.sourceType === 'payable' && new Date(payment.createdAt).toDateString() === todayKey);
   const todaysCustomerPayments = state.payments.filter((payment) => ['invoice', 'sale'].includes(payment.sourceType) && new Date(payment.createdAt).toDateString() === todayKey);
   const salesWithPaymentRecords = new Set(state.payments.filter((payment) => ['invoice', 'sale'].includes(payment.sourceType)).map((payment) => payment.sourceId));
@@ -99,6 +108,7 @@ function AccountingWorkspace() {
   const supplierPaidToday = todaysSupplierPayments.reduce((sum, payment) => sum + payment.amount, 0);
   const netCashMovement = cashCollectedToday - expenseToday - supplierPaidToday;
   const openReceivables = state.sales.filter((sale) => sale.status !== 'Reversed' && selectSaleBalanceRemaining(sale) > 0);
+  const onCreditHoldCount = state.customers.filter((customer) => isCustomerOnCreditHold(state, customer)).length;
   const receivables = openReceivables.reduce((sum, sale) => sum + selectSaleBalanceRemaining(sale), 0);
   const openPayables = state.accountsPayable.filter((payable) => !['paid', 'cancelled'].includes(payable.status) && payable.balance > 0);
   const payableBalance = openPayables.reduce((sum, payable) => sum + payable.balance, 0);
@@ -146,6 +156,13 @@ function AccountingWorkspace() {
     return result.ok;
   }
 
+  function decideExpense(expenseId: string, decision: 'approve' | 'reject') {
+    const result = decision === 'approve'
+      ? approveExpense({ expenseId })
+      : rejectExpense({ expenseId, reason: window.prompt('Reason for rejecting this expense?')?.trim() || '' });
+    setActionMessage(result.message ?? (result.ok ? `Expense ${decision === 'approve' ? 'approved' : 'rejected'}.` : 'The expense could not be updated.'));
+  }
+
   if (!canAccess) {
     return <EnterpriseShell active="Accounting"><div className="page-content"><section className="access-denied"><CircleDollarSign size={24} /><h1>Accounting access is restricted</h1><p>Your role does not include the finance workspace.</p></section></div></EnterpriseShell>;
   }
@@ -166,23 +183,27 @@ function AccountingWorkspace() {
           <button className={view === 'overview' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('overview')}>Overview</button>
           {canViewFinancials ? <button className={view === 'financials' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('financials')}>Financial statements</button> : null}
           {canViewSales ? <button className={view === 'receivables' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('receivables')}>Receivables {openReceivables.length ? `(${openReceivables.length})` : ''}</button> : null}
+          {canManageCredit ? <button className={view === 'credit' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('credit')}>Credit control {onCreditHoldCount ? `(${onCreditHoldCount})` : ''}</button> : null}
           {canViewPayables ? <button className={view === 'payables' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('payables')}>Payables {openPayables.length ? `(${openPayables.length})` : ''}</button> : null}
-          {canViewExpenses || canCreateExpenses ? <button className={view === 'expenses' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('expenses')}>Expenses</button> : null}
+          {canViewExpenses || canCreateExpenses ? <button className={view === 'expenses' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('expenses')}>Expenses{pendingExpenseCount && canApproveExpenses ? <span className="accounting-tab-badge">{pendingExpenseCount}</span> : null}</button> : null}
           {canViewSales ? <button className={view === 'cash' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('cash')}>Cash control {missingCashReferences.length ? `(${missingCashReferences.length})` : ''}</button> : null}
           {canViewPayments ? <button className={view === 'payments' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('payments')}>Payment ledger</button> : null}
           <button className={view === 'approvals' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('approvals')}>Approvals</button>
+          {canViewFinancials ? <button className={view === 'close' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('close')}>Period close</button> : null}
         </nav>
 
         {actionMessage ? <div className="settings-message" role="status">{actionMessage}</div> : null}
 
         {view === 'overview' ? <AccountingOverview currency={currency} pendingApprovalCount={pendingApprovalCount} payableReadyCount={payableReadyCount} overduePayableCount={overduePayableCount} missingCashReferences={missingCashReferences.length} expenseToday={expenseToday} supplierPaidToday={supplierPaidToday} monthlyExpenses={monthlyExpenses} metrics={metrics} onOpen={setView} canViewPayables={canViewPayables} canViewExpenses={canViewExpenses || canCreateExpenses} canViewCash={canViewSales} /> : null}
         {view === 'receivables' && canViewSales ? <ReceivablesWorkspace sales={state.sales} customers={state.customers} currency={currency} now={accountingOpenedAt.getTime()} canOpenInvoice={hasPermission('invoices.view')} /> : null}
-        {view === 'payables' && canViewPayables ? <PayablesWorkspace rows={filteredPayables} selected={selectedPayableRow} query={query} statusFilter={statusFilter} currency={currency} busy={busy} canApprove={canApprovePayables} canPay={canPayPayables} onQuery={setQuery} onStatusFilter={setStatusFilter} onSelect={setSelectedPayableId} onApprove={(payable) => void approve(payable)} onPay={setPaymentTarget} /> : null}
-        {view === 'expenses' && (canViewExpenses || canCreateExpenses) ? <ExpensesWorkspace expenses={state.expenses} currency={currency} canView={canViewExpenses} canCreate={canCreateExpenses} onCreate={() => setExpenseEditorOpen(true)} /> : null}
+        {view === 'payables' && canViewPayables ? <PayablesWorkspace rows={filteredPayables} selected={selectedPayableRow} query={query} statusFilter={statusFilter} currency={currency} busy={busy} canApprove={selectedPayableRow ? canApproveCategory(state, currentUser, 'payables', hasPermission, selectedPayableRow.payable.amountDue) : canApprovePayables} canPay={canPayPayables} onQuery={setQuery} onStatusFilter={setStatusFilter} onSelect={setSelectedPayableId} onApprove={(payable) => void approve(payable)} onPay={setPaymentTarget} /> : null}
+        {view === 'expenses' && (canViewExpenses || canCreateExpenses) ? <ExpensesWorkspace expenses={state.expenses} currency={currency} canView={canViewExpenses} canCreate={canCreateExpenses} canApprove={canApproveExpenses} threshold={state.businessProfile.expenseApprovalThreshold} anomalies={expenseAnomalies} onCreate={() => setExpenseEditorOpen(true)} onDecide={decideExpense} /> : null}
         {view === 'cash' && canViewSales ? <CashControl sales={todaysSales} customers={state.customers} currency={currency} missingReferenceCount={missingCashReferences.length} /> : null}
         {view === 'payments' && canViewPayments ? <PaymentLedger payments={state.payments} payables={state.accountsPayable} vendors={state.vendors} sales={state.sales} customers={state.customers} users={state.users} currency={currency} /> : null}
         {view === 'financials' && canViewFinancials ? <FinancialStatements state={state} currency={currency} /> : null}
+        {view === 'credit' && canManageCredit ? <CreditControl state={state} currency={currency} onToggleHold={(customerId, released) => { const result = setCustomerCreditHold({ customerId, released }); setActionMessage(result.message ?? (result.ok ? (released ? 'Credit hold released.' : 'Credit hold re-applied.') : 'Could not update the credit hold.')); }} /> : null}
         {view === 'approvals' ? <ApprovalsAudit payables={state.accountsPayable} purchases={state.purchases} transfers={state.stockTransfers} vendors={state.vendors} users={state.users} /> : null}
+        {view === 'close' && canViewFinancials ? <PeriodClose closedPeriods={state.closedAccountingPeriods} pendingApprovalCount={pendingApprovalCount} missingCashReferences={missingCashReferences.length} openReceivables={openReceivables.length} onClose={(period) => { const result = closeAccountingPeriod({ period }); setActionMessage(result.message ?? (result.ok ? 'Period closed.' : 'Could not close the period.')); }} onReopen={(period) => { const result = reopenAccountingPeriod({ period }); setActionMessage(result.message ?? (result.ok ? 'Period reopened.' : 'Could not reopen the period.')); }} /> : null}
       </div>
 
       {paymentTarget ? <PaymentEditor payable={paymentTarget} vendorName={state.vendors.find((vendor) => vendor.id === paymentTarget.vendorId)?.name ?? paymentTarget.vendorCode} currency={currency} busy={busy} onClose={() => setPaymentTarget(null)} onSave={pay} /> : null}
@@ -220,13 +241,71 @@ function PayableInspector({ row, currency, busy, canApprove, canPay, onApprove, 
   return <aside className="payable-inspector"><div className="payable-inspector-head"><i><ReceiptText size={18} /></i><div><p className="eyebrow">{payable.payableCode}</p><h2>{vendor?.name ?? payable.vendorCode}</h2><span className={`payable-status payable-status--${meta.tone}`}>{meta.label}</span></div></div><div className="payable-inspector-values"><div><span>Amount due</span><strong>{formatCurrency(payable.amountDue, currency)}</strong></div><div><span>Paid</span><strong>{formatCurrency(payable.amountPaid, currency)}</strong></div><div><span>Balance</span><strong className={payable.balance ? 'accounting-negative' : ''}>{formatCurrency(payable.balance, currency)}</strong></div></div><section className="payable-control-section"><div className="accounting-section-heading"><span>Procurement controls</span><Link href="/procurement">Open order <ArrowRight size={12} /></Link></div><div className="payable-control-row"><ClipboardCheck size={14} /><span><strong>Purchase order</strong><small>{purchase?.purchaseCode ?? 'Unavailable'}</small></span><b>{purchase?.status ?? '—'}</b></div><div className="payable-control-row"><FileCheck2 size={14} /><span><strong>Three-way match</strong><small>Order, receipt, and supplier invoice</small></span><b className={purchase?.threeWayMatchStatus === 'matched' ? 'accounting-positive' : 'accounting-negative'}>{purchase?.threeWayMatchStatus ?? 'pending'}</b></div><div className="payable-control-row"><Landmark size={14} /><span><strong>Due date</strong><small>{payable.dueDate ? new Date(`${payable.dueDate}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) : 'Not specified'}</small></span><b>{payable.paymentMethod ?? '—'}</b></div></section><section className="payable-audit"><div className="accounting-section-heading"><span>Settlement evidence</span></div><dl><div><dt>Reference</dt><dd>{payable.paymentReference || 'Not recorded'}</dd></div><div><dt>Last update</dt><dd>{formatRelativeDate(payable.updatedAt)}</dd></div><div><dt>Approved by</dt><dd>{payable.approvedBy || 'Pending'}</dd></div></dl></section><div className="payable-inspector-actions">{canApprove && payable.status === 'pendingReview' ? <button className="primary-button" type="button" disabled={busy || purchase?.threeWayMatchStatus !== 'matched'} onClick={() => onApprove(payable)}><CheckCircle2 size={14} /> Approve payable</button> : null}{canPay && paymentsAllowed ? <button className="primary-button" type="button" disabled={busy} onClick={() => onPay(payable)}><Banknote size={14} /> Record payment</button> : null}{payable.status === 'pendingReview' && purchase?.threeWayMatchStatus !== 'matched' ? <p><AlertTriangle size={13} /> Complete the three-way match before approval.</p> : null}</div></aside>;
 }
 
-function ExpensesWorkspace({ expenses, currency, canView, canCreate, onCreate }: { expenses: Expense[]; currency: string; canView: boolean; canCreate: boolean; onCreate: () => void }) {
-  return <section className="accounting-wide-panel"><div className="accounting-panel-heading"><div><p className="eyebrow">Operating costs</p><h2>Expense ledger</h2><p>Every entry retains its recorder, category, note, and timestamp.</p></div>{canCreate ? <button className="primary-button" type="button" onClick={onCreate}><Plus size={15} /> Record expense</button> : null}</div>{canView ? <div className="accounting-table-wrap"><table className="expense-table"><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Recorded by</th><th>Amount</th></tr></thead><tbody>{[...expenses].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)).map((expense) => <tr key={expense.id}><td>{new Date(expense.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td><td><span className="expense-category">{expense.category}</span></td><td>{expense.note || 'No description'}</td><td>{expense.recordedByName}</td><td><strong className="accounting-negative">-{formatCurrency(expense.amount, currency)}</strong></td></tr>)}</tbody></table>{!expenses.length ? <AccountingEmpty icon={ReceiptText} title="No expenses recorded" detail="Authorized users can add the first operating expense using the action above." /> : null}</div> : <AccountingEmpty icon={ReceiptText} title="Expense history is restricted" detail="Your role can record expenses but cannot inspect the full ledger." />}</section>;
+const EXPENSE_STATUS_LABELS: Record<Expense['status'], string> = { auto_approved: 'Approved', approved: 'Approved', pending_approval: 'Awaiting approval', rejected: 'Rejected' };
+const ANOMALY_LABELS: Record<AnomalyCode, string> = { category_outlier: 'Outlier', threshold_proximity: 'Near threshold', possible_duplicate: 'Possible duplicate', velocity_spike: 'Rapid entry' };
+
+function ExpenseStatusBadge({ status }: { status: Expense['status'] }) {
+  const tone = status === 'rejected' ? 'rejected' : status === 'pending_approval' ? 'pending' : 'approved';
+  return <span className={`expense-status-badge expense-status-badge--${tone}`}>{EXPENSE_STATUS_LABELS[status]}</span>;
+}
+
+function AnomalyChips({ flags }: { flags: ExpenseAnomaly[] }) {
+  return <span className="anomaly-chips">{flags.map((flag) => <span key={flag.code} className={`anomaly-chip anomaly-chip--${flag.severity}`} title={flag.reason}><Sparkles size={11} /> {ANOMALY_LABELS[flag.code]}</span>)}</span>;
+}
+
+function ExpensesWorkspace({ expenses, currency, canView, canCreate, canApprove, threshold, anomalies, onCreate, onDecide }: { expenses: Expense[]; currency: string; canView: boolean; canCreate: boolean; canApprove: boolean; threshold?: number; anomalies: Map<string, ExpenseAnomaly[]>; onCreate: () => void; onDecide: (expenseId: string, decision: 'approve' | 'reject') => void }) {
+  const pending = expenses.filter((expense) => expense.status === 'pending_approval').sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+  const flaggedCount = anomalies.size;
+  const criticalCount = [...anomalies.values()].filter((flags) => flags.some((flag) => flag.severity === 'critical')).length;
+  return <section className="accounting-wide-panel"><div className="accounting-panel-heading"><div><p className="eyebrow">Operating costs</p><h2>Expense ledger</h2><p>{threshold ? `Expenses at or above ${formatCurrency(threshold, currency)} route to the General Manager for approval before posting.` : 'Every entry retains its recorder, category, note, and timestamp.'}</p></div>{canCreate ? <button className="primary-button" type="button" onClick={onCreate}><Plus size={15} /> Record expense</button> : null}</div>
+    {canView && flaggedCount ? <div className="expense-ai-review"><Sparkles size={17} /><div><strong>{flaggedCount} expense{flaggedCount === 1 ? '' : 's'} flagged for review{criticalCount ? ` · ${criticalCount} high severity` : ''}</strong><span>Automated checks for outliers, threshold structuring, duplicates, and rapid entry. Advisory only — every decision stays with an authorized approver.</span></div></div> : null}
+    {canApprove && pending.length ? <div className="expense-approval-queue"><div className="accounting-panel-heading"><div><p className="eyebrow">Action centre</p><h3>Awaiting your approval</h3><p>{pending.length} expense{pending.length === 1 ? '' : 's'} at or above the approval threshold.</p></div></div>{pending.map((expense) => { const flags = anomalies.get(expense.id) ?? []; return <div className="expense-approval-row" key={expense.id}><div><strong>{formatCurrency(expense.amount, currency)}</strong><small>{expense.category} · {expense.recordedByName} · {new Date(expense.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</small>{expense.note ? <em>{expense.note}</em> : null}{flags.length ? <span className="expense-approval-flags"><AnomalyChips flags={flags} />{flags.map((flag) => <small key={flag.code} className="anomaly-reason">{flag.reason}</small>)}</span> : null}</div><div className="expense-approval-actions"><button className="secondary-button" type="button" onClick={() => onDecide(expense.id, 'reject')}>Reject</button><button className="primary-button" type="button" onClick={() => onDecide(expense.id, 'approve')}><CheckCircle2 size={15} /> Approve</button></div></div>; })}</div> : null}
+    {canView ? <div className="accounting-table-wrap"><table className="expense-table"><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Recorded by</th><th>Status</th><th>Amount</th></tr></thead><tbody>{[...expenses].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)).map((expense) => { const flags = anomalies.get(expense.id) ?? []; return <tr key={expense.id} className={expense.status === 'rejected' ? 'expense-row--rejected' : flags.length ? 'expense-row--flagged' : ''}><td>{new Date(expense.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td><td><span className="expense-category">{expense.category}</span></td><td>{expense.note || 'No description'}{expense.status === 'rejected' && expense.rejectionReason ? <small className="expense-rejection-note">Rejected: {expense.rejectionReason}</small> : null}{flags.length ? <small className="anomaly-reason">{flags[0].reason}</small> : null}</td><td>{expense.recordedByName}</td><td><ExpenseStatusBadge status={expense.status} />{flags.length ? <AnomalyChips flags={flags} /> : null}</td><td><strong className="accounting-negative">-{formatCurrency(expense.amount, currency)}</strong></td></tr>; })}</tbody></table>{!expenses.length ? <AccountingEmpty icon={ReceiptText} title="No expenses recorded" detail="Authorized users can add the first operating expense using the action above." /> : null}</div> : <AccountingEmpty icon={ReceiptText} title="Expense history is restricted" detail="Your role can record expenses but cannot inspect the full ledger." />}</section>;
 }
 
 function CashControl({ sales, customers, currency, missingReferenceCount }: { sales: ReturnType<typeof useBusiness>['state']['sales']; customers: ReturnType<typeof useBusiness>['state']['customers']; currency: string; missingReferenceCount: number }) {
   const cash = sales.filter((sale) => sale.paymentMethod === 'Cash');
   return <section className="accounting-wide-panel"><div className="accounting-panel-heading"><div><p className="eyebrow">Daily close</p><h2>Cash-to-bank control</h2><p>Cash invoices require a banking or deposit reference to complete daily evidence.</p></div><span className={missingReferenceCount ? 'accounting-risk-badge' : 'accounting-good-badge'}>{missingReferenceCount ? `${missingReferenceCount} missing` : 'Evidence complete'}</span></div><div className="accounting-table-wrap"><table className="cash-control-table"><thead><tr><th>Invoice</th><th>Customer</th><th>Cash collected</th><th>Banking reference</th><th>Status</th><th /></tr></thead><tbody>{cash.map((sale) => <tr key={sale.id}><td><strong>{sale.invoiceNumber}</strong><span>{formatRelativeDate(sale.createdAt)}</span></td><td>{customers.find((customer) => customer.id === sale.customerId)?.name ?? sale.customerSnapshot?.name ?? 'Walk-in customer'}</td><td>{formatCurrency(sale.paidAmount, currency)}</td><td>{sale.paymentReference || 'Not recorded'}</td><td><span className={`payable-status payable-status--${sale.paymentReference ? 'good' : 'risk'}`}>{sale.paymentReference ? 'Reconciled' : 'Action required'}</span></td><td><Link className="icon-button" title={`Open ${sale.invoiceNumber}`} href={`/sales/${sale.id}`}><ChevronRight size={14} /></Link></td></tr>)}</tbody></table>{!cash.length ? <AccountingEmpty icon={Landmark} title="No cash sales today" detail="Cash invoices recorded today will appear here for banking evidence." /> : null}</div></section>;
+}
+
+function CreditControl({ state, currency, onToggleHold }: { state: ReturnType<typeof useBusiness>['state']; currency: string; onToggleHold: (customerId: string, released: boolean) => void }) {
+  const rows = state.customers
+    .filter((customer) => customer.creditLimit != null)
+    .map((customer) => {
+      const outstanding = selectCustomerOutstanding(state, customer.id);
+      const limit = customer.creditLimit ?? 0;
+      const over = outstanding > limit;
+      return { customer, outstanding, limit, over, onHold: over && !customer.creditHoldOverride, released: over && Boolean(customer.creditHoldOverride) };
+    })
+    .sort((left, right) => Number(right.onHold) - Number(left.onHold) || right.outstanding - left.outstanding);
+  return <section className="accounting-wide-panel">
+    <div className="accounting-panel-heading"><div><p className="eyebrow">Credit management</p><h2>Credit control</h2><p>Customers with a credit limit. A customer over their limit is held — no new credit sale goes through until you release the hold or they pay down.</p></div><span>{rows.filter((row) => row.onHold).length} on hold</span></div>
+    <div className="accounting-table-wrap"><table className="financials-table"><thead><tr><th>Customer</th><th>Credit limit</th><th>Outstanding</th><th>Available</th><th>Status</th><th /></tr></thead><tbody>{rows.map((row) => <tr key={row.customer.id}><td>{row.customer.name}</td><td>{formatCurrency(row.limit, currency)}</td><td><strong className={row.over ? 'accounting-negative' : ''}>{formatCurrency(row.outstanding, currency)}</strong></td><td>{formatCurrency(Math.max(0, row.limit - row.outstanding), currency)}</td><td><span className={`payable-status payable-status--${row.onHold ? 'risk' : row.released ? 'warn' : 'good'}`}>{row.onHold ? 'On hold' : row.released ? 'Released' : 'Within limit'}</span></td><td>{row.onHold ? <button className="secondary-button" type="button" onClick={() => onToggleHold(row.customer.id, true)}>Release hold</button> : row.released ? <button className="secondary-button danger-button" type="button" onClick={() => onToggleHold(row.customer.id, false)}>Re-apply hold</button> : null}</td></tr>)}</tbody></table>{!rows.length ? <AccountingEmpty icon={ShieldCheck} title="No customers have a credit limit" detail="Set a credit limit on a customer account to enforce credit control on their sales." /> : null}</div>
+  </section>;
+}
+
+function PeriodClose({ closedPeriods, pendingApprovalCount, missingCashReferences, openReceivables, onClose, onReopen }: { closedPeriods: ReturnType<typeof useBusiness>['state']['closedAccountingPeriods']; pendingApprovalCount: number; missingCashReferences: number; openReceivables: number; onClose: (period: string) => void; onReopen: (period: string) => void }) {
+  const [nowPeriod] = useState(() => new Date().toISOString().slice(0, 7));
+  const [period, setPeriod] = useState(() => { const date = new Date(); date.setDate(1); date.setMonth(date.getMonth() - 1); return date.toISOString().slice(0, 7); });
+  const formatPeriod = (value: string) => new Date(`${value}-01T00:00:00`).toLocaleDateString('en-GH', { month: 'long', year: 'numeric' });
+  const alreadyClosed = closedPeriods.some((entry) => entry.period === period);
+  const isFuture = period > nowPeriod;
+  const checklist = [
+    { label: 'Payables awaiting approval', detail: 'Bills still pending sign-off', count: pendingApprovalCount, blocker: true },
+    { label: 'Cash sales missing banking reference', detail: 'Cash invoices without deposit evidence', count: missingCashReferences, blocker: true },
+    { label: 'Open receivables', detail: 'Customer balances still outstanding (informational)', count: openReceivables, blocker: false },
+  ];
+  return <section className="accounting-wide-panel">
+    <div className="accounting-panel-heading"><div><p className="eyebrow">Governance</p><h2>Month-end close</h2><p>Locking a period prevents any transaction dated within it from being created, reversed, or edited. Corrections go to the open period.</p></div><span>{closedPeriods.length} closed</span></div>
+    <div className="period-close-body">
+      <div className="period-close-checklist">
+        <label className="form-field"><span>Month to close</span><input type="month" max={nowPeriod} value={period} onChange={(event) => setPeriod(event.target.value)} /></label>
+        <div className="finance-queue-list">{checklist.map((item) => <div className="period-check" key={item.label}><i className={`finance-queue-icon finance-queue-icon--${item.count && item.blocker ? 'warn' : 'good'}`}>{item.count && item.blocker ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />}</i><span><strong>{item.label}</strong><small>{item.detail}</small></span><b>{item.count}</b></div>)}</div>
+        {alreadyClosed ? <div className="settings-message">{formatPeriod(period)} is already closed.</div> : <button className="primary-button" type="button" disabled={isFuture} onClick={() => onClose(period)}>{isFuture ? 'Future period' : `Close ${formatPeriod(period)}`}</button>}
+      </div>
+      <div className="period-close-history"><div className="accounting-section-heading"><span>Closed periods</span></div>{closedPeriods.length ? <div className="delegation-list">{[...closedPeriods].sort((left, right) => right.period.localeCompare(left.period)).map((entry) => <article key={entry.period}><div><strong>{formatPeriod(entry.period)}</strong><span>Closed by {entry.closedByName} · {formatRelativeDate(entry.closedAt)}</span></div><button className="secondary-button" type="button" onClick={() => onReopen(entry.period)}>Reopen</button></article>)}</div> : <div className="delegation-empty"><ShieldCheck size={18} /><span>No periods are closed. All months are open for posting.</span></div>}</div>
+    </div>
+  </section>;
 }
 
 function ApprovalsAudit({ payables, purchases, transfers, vendors, users }: { payables: AccountsPayable[]; purchases: ReturnType<typeof useBusiness>['state']['purchases']; transfers: ReturnType<typeof useBusiness>['state']['stockTransfers']; vendors: ReturnType<typeof useBusiness>['state']['vendors']; users: ReturnType<typeof useBusiness>['state']['users'] }) {

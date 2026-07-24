@@ -269,7 +269,7 @@ function EnterpriseProcurementView() {
               state={state}
               currentUserId={currentUser.userId}
               canCreate={canCreate}
-              canApprove={canApprove}
+              canApprove={selectedPurchase ? canApproveCategory(state, currentUser, 'purchases', hasPermission, selectedPurchase.totalAmount) : canApprove}
               canReceive={canReceive}
               canRecordInvoice={canRecordInvoice}
               canEditPurchase={canEditPurchase}

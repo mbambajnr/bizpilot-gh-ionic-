@@ -44,6 +44,8 @@ import {
   UpdateBusinessProfileInput,
   addExpenseToState,
   NewExpenseInput,
+  approveExpenseInState,
+  rejectExpenseInState,
   createProductCategoryInState,
   CreateProductCategoryInput,
   updateProductCategoryInState,
@@ -118,6 +120,9 @@ import {
   canApproveCategory,
   assignApprovalDelegateInState,
   revokeApprovalDelegateInState,
+  closeAccountingPeriodInState,
+  reopenAccountingPeriodInState,
+  setCustomerCreditHoldInState,
 } from '../utils/businessLogic';
 import type { ApprovalDelegationCategory } from '../data/seedBusiness';
 // Offline-resilient wrappers: identical behavior online; when the network is
@@ -210,6 +215,7 @@ type BusinessContextValue = {
   adjustStock: (input: AdjustStockInput) => Promise<ActionResult>;
   addCustomer: (input: NewCustomerInput) => ActionResult;
   updateCustomer: (input: UpdateCustomerInput) => ActionResult;
+  setCustomerCreditHold: (input: { customerId: string; released: boolean }) => ActionResult;
   updateCustomerStatus: (input: UpdateCustomerStatusInput) => ActionResult;
   updateBusinessProfile: (input: UpdateBusinessProfileInput) => Promise<ActionResult>;
   launchBusinessWorkspace: (input?: LaunchBusinessWorkspaceInput) => Promise<ActionResult>;
@@ -241,6 +247,8 @@ type BusinessContextValue = {
   updateBranding: (input: { logoUrl?: string; signatureUrl?: string }) => Promise<ActionResult>;
   hasPermission: (permission: AppPermission) => boolean;
   addExpense: (input: NewExpenseInput) => ActionResult;
+  approveExpense: (input: { expenseId: string }) => ActionResult;
+  rejectExpense: (input: { expenseId: string; reason: string }) => ActionResult;
   updateThemePreference: (theme: 'system' | 'light' | 'dark') => void;
   createProductCategory: (input: CreateProductCategoryInput) => Promise<ActionResult>;
   updateProductCategory: (input: UpdateProductCategoryInput) => Promise<ActionResult>;
@@ -252,8 +260,10 @@ type BusinessContextValue = {
   setSupplyRouteActive: (input: SetSupplyRouteActiveInput) => Promise<ActionResult>;
   createStockTransfer: (input: CreateStockTransferInput) => Promise<ActionResult>;
   approveStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
-  assignApprovalDelegate: (input: { delegateUserId: string; categories: ApprovalDelegationCategory[] }) => ActionResult;
+  assignApprovalDelegate: (input: { delegateUserId: string; categories: ApprovalDelegationCategory[]; amountLimit?: number }) => ActionResult;
   revokeApprovalDelegate: (input: { delegationId: string }) => ActionResult;
+  closeAccountingPeriod: (input: { period: string }) => ActionResult;
+  reopenAccountingPeriod: (input: { period: string }) => ActionResult;
   dispatchStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
   receiveStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
   cancelStockTransfer: (input: StockTransferActionInput) => Promise<ActionResult>;
@@ -763,7 +773,7 @@ export function BusinessProvider({ children }: PropsWithChildren) {
     return applySessionSecret(profile);
   }, [state.currentUserId, state.users, user?.id, user?.user_metadata?.auth_mode, user?.user_metadata?.employee_session_secret]);
   const approvalHasPerm = (permission: AppPermission) => hasPermission(currentUser, permission);
-  const canApprove = (category: ApprovalDelegationCategory) => canApproveCategory(stateRef.current, currentUser, category, approvalHasPerm);
+  const canApprove = (category: ApprovalDelegationCategory, amount?: number) => canApproveCategory(stateRef.current, currentUser, category, approvalHasPerm, amount);
   const canUseRestockManagerRole =
     currentUser.role === 'GeneralManager' ||
     currentUser.role === 'WarehouseManager';
@@ -987,6 +997,18 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           void syncCustomer(state.businessProfile.id, updatedCustomer);
         }
 
+        return { ok: true };
+      },
+      setCustomerCreditHold(input) {
+        if (!hasPermission(currentUser, 'customers.ledger.view')) {
+          return { ok: false, message: 'You are not authorized to manage credit holds.' };
+        }
+        const result = setCustomerCreditHoldInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not update the credit hold.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        const updatedCustomer = result.data.customers.find((customer) => customer.id === input.customerId);
+        if (updatedCustomer) void syncCustomer(result.data.businessProfile.id, updatedCustomer);
         return { ok: true };
       },
       updateCustomerStatus(input) {
@@ -1772,6 +1794,28 @@ export function BusinessProvider({ children }: PropsWithChildren) {
 
         return { ok: true };
       },
+      approveExpense(input) {
+        const expense = stateRef.current.expenses.find((entry) => entry.id === input.expenseId);
+        if (!canApprove('expenses', expense?.amount)) {
+          return { ok: false, message: expense && canApprove('expenses') ? 'This expense exceeds your approval limit — the General Manager must approve it.' : 'You are not authorized to approve expenses.' };
+        }
+        const result = approveExpenseInState(stateRef.current, { expenseId: input.expenseId, decidedByUserId: currentUser.userId, decidedByName: currentUser.name });
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not approve the expense.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      rejectExpense(input) {
+        const expense = stateRef.current.expenses.find((entry) => entry.id === input.expenseId);
+        if (!canApprove('expenses', expense?.amount)) {
+          return { ok: false, message: expense && canApprove('expenses') ? 'This expense exceeds your approval limit — the General Manager must approve it.' : 'You are not authorized to approve expenses.' };
+        }
+        const result = rejectExpenseInState(stateRef.current, { expenseId: input.expenseId, decidedByUserId: currentUser.userId, decidedByName: currentUser.name, reason: input.reason });
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not reject the expense.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
       updateThemePreference(theme) {
         setState((prev) => ({ ...prev, themePreference: theme }));
       },
@@ -2125,8 +2169,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async approvePurchase(input) {
-        if (!canApprove('purchases')) {
-          return { ok: false, message: 'You are not authorized to approve purchases.' };
+        const purchaseToApprove = stateRef.current.purchases.find((purchase) => purchase.id === input.purchaseId);
+        if (!canApprove('purchases', purchaseToApprove?.totalAmount)) {
+          return { ok: false, message: purchaseToApprove && canApprove('purchases') ? 'This purchase exceeds your approval limit — the General Manager must approve it.' : 'You are not authorized to approve purchases.' };
         }
 
         const currentState = stateRef.current;
@@ -2332,8 +2377,9 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         return { ok: true };
       },
       async approvePayable(input) {
-        if (!canApprove('payables')) {
-          return { ok: false, message: 'You are not authorized to approve payables.' };
+        const payableToApprove = stateRef.current.accountsPayable.find((payable) => payable.id === input.payableId);
+        if (!canApprove('payables', payableToApprove?.amountDue)) {
+          return { ok: false, message: payableToApprove && canApprove('payables') ? 'This payable exceeds your approval limit — the General Manager must approve it.' : 'You are not authorized to approve payables.' };
         }
 
         const currentState = stateRef.current;
@@ -2541,6 +2587,26 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         }
         const result = revokeApprovalDelegateInState(stateRef.current, input);
         if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not revoke the delegation.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      closeAccountingPeriod(input) {
+        if (!hasPermission(currentUser, 'reports.financial.view')) {
+          return { ok: false, message: 'You are not authorized to close accounting periods.' };
+        }
+        const result = closeAccountingPeriodInState(stateRef.current, { period: input.period, closedByUserId: currentUser.userId, closedByName: currentUser.name });
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not close the period.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      reopenAccountingPeriod(input) {
+        if (!hasPermission(currentUser, 'reports.financial.view')) {
+          return { ok: false, message: 'You are not authorized to reopen accounting periods.' };
+        }
+        const result = reopenAccountingPeriodInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not reopen the period.' };
         stateRef.current = result.data;
         setState(result.data);
         return { ok: true };

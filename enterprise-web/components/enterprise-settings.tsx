@@ -55,7 +55,7 @@ function EnterpriseSettingsView() {
     event.preventDefault();
     setSaving(true);
     setMessage('');
-    const result = await updateBusinessProfile({ ...activeForm, website: activeForm.website.trim() || undefined });
+    const result = await updateBusinessProfile({ ...activeForm, website: activeForm.website.trim() || undefined, expenseApprovalThreshold: activeForm.expenseApprovalThreshold.trim() ? Number(activeForm.expenseApprovalThreshold) : undefined });
     if (result.ok) setEdited(false);
     setMessage(result.message ?? (result.ok ? 'Business profile saved.' : 'The business profile could not be saved.'));
     setSaving(false);
@@ -132,6 +132,10 @@ function EnterpriseSettingsView() {
               <Field label="Website" type="url" value={activeForm.website} disabled={!canEdit} onChange={(value) => updateForm({ website: value })} />
               <label className="form-field form-field--wide"><span>Business address</span><textarea value={activeForm.address} disabled={!canEdit} onChange={(event) => updateForm({ address: event.target.value })} /></label>
             </div>
+            <div className="settings-panel-heading settings-panel-heading--sub"><div><p className="eyebrow">Financial controls</p><h3>Expense approval</h3><p>Expenses at or above this amount route to the General Manager for approval before they post. Leave blank to auto-approve every expense.</p></div></div>
+            <div className="form-grid">
+              <Field label={`Expense approval threshold (${activeForm.currency || 'GHS'})`} type="number" value={activeForm.expenseApprovalThreshold} disabled={!canEdit} onChange={(value) => updateForm({ expenseApprovalThreshold: value })} />
+            </div>
             {canEdit ? <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? 'Saving...' : 'Save business details'}</button></div> : null}
           </form>
         ) : null}
@@ -164,6 +168,7 @@ function profileToForm(profile: ReturnType<typeof useBusiness>['state']['busines
     address: profile.address,
     website: profile.website ?? '',
     waybillPrefix: profile.waybillPrefix,
+    expenseApprovalThreshold: profile.expenseApprovalThreshold != null ? String(profile.expenseApprovalThreshold) : '',
   };
 }
 

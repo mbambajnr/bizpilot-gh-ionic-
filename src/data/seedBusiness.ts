@@ -62,6 +62,8 @@ export type BusinessProfile = {
   defaultWithholdingTaxRate: number;
   defaultWithholdingTaxLabel: string;
   defaultWithholdingTaxBasis: WithholdingTaxBasis;
+  /** Expenses at or above this amount must be approved before posting. 0 or undefined = every expense is auto-approved. */
+  expenseApprovalThreshold?: number;
   launchedAt?: string;
 };
 
@@ -142,6 +144,10 @@ export type Customer = {
   customerType?: CustomerType;
   taxExempt?: boolean;
   taxExemptionReason?: string;
+  /** Maximum the customer may owe. Undefined = no limit. When outstanding exceeds it, new credit sales are blocked. */
+  creditLimit?: number;
+  /** Accountant override that lets credit sales proceed despite being over the limit. */
+  creditHoldOverride?: boolean;
   terminatedAt?: string;
   terminationReason?: string;
 };
@@ -583,6 +589,9 @@ export type ActivityLogEntry = {
   relatedSaleId?: string;
 };
 
+/** Where an expense sits in the approval workflow. Below the business threshold it is `auto_approved` on entry. */
+export type ExpenseStatus = 'auto_approved' | 'pending_approval' | 'approved' | 'rejected';
+
 export type Expense = {
   id: string;
   category: string;
@@ -591,6 +600,12 @@ export type Expense = {
   createdAt: string;
   recordedByUserId: string;
   recordedByName: string;
+  status: ExpenseStatus;
+  /** Who approved or rejected the expense (only set once a decision is made). */
+  decidedByUserId?: string;
+  decidedByName?: string;
+  decidedAt?: string;
+  rejectionReason?: string;
 };
 
 export type AppNotification = {
@@ -632,10 +647,19 @@ export type BusinessState = {
   restockRequests: RestockRequest[];
   expenses: Expense[];
   approvalDelegations: ApprovalDelegation[];
+  closedAccountingPeriods: ClosedAccountingPeriod[];
   themePreference: 'system' | 'light' | 'dark';
 };
 
-export type ApprovalDelegationCategory = 'payables' | 'purchases' | 'transfers';
+/** A locked accounting period. `period` is a 'YYYY-MM' key; nothing dated within it can be created, reversed, or edited. */
+export type ClosedAccountingPeriod = {
+  period: string;
+  closedByUserId: string;
+  closedByName: string;
+  closedAt: string;
+};
+
+export type ApprovalDelegationCategory = 'payables' | 'purchases' | 'transfers' | 'expenses';
 
 /** A General Manager delegating approval authority to another employee, per category, until revoked. */
 export type ApprovalDelegation = {
@@ -643,6 +667,8 @@ export type ApprovalDelegation = {
   delegateUserId: string;
   assignedByUserId: string;
   categories: ApprovalDelegationCategory[];
+  /** Max amount the delegate may approve. Undefined = no cap. Above it, only the GM can approve. */
+  amountLimit?: number;
   active: boolean;
   createdAt: string;
 };
@@ -905,9 +931,10 @@ export const seedState: BusinessState = {
   currentUserId: 'u-admin',
   restockRequests: [],
   expenses: [
-    { id: 'exp-2', category: 'Utility', amount: 85, note: 'Electricity bill', createdAt: isoDaysAgoAt(2, 16, 30), recordedByUserId: 'u-admin', recordedByName: 'Admin User' },
+    { id: 'exp-2', category: 'Utility', amount: 85, note: 'Electricity bill', createdAt: isoDaysAgoAt(2, 16, 30), recordedByUserId: 'u-admin', recordedByName: 'Admin User', status: 'auto_approved' },
   ],
   approvalDelegations: [],
+  closedAccountingPeriods: [],
   themePreference: 'system',
 };
 

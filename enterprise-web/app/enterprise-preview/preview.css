@@ -354,6 +354,17 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .access-denied h1 { margin-top: 14px; font-size: 32px; }
 .access-denied p { color: var(--muted); font-size: 16px; }
 
+/* Month-end close */
+.period-close-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px; padding: 16px; }
+.period-close-checklist { display: flex; flex-direction: column; gap: 14px; }
+.period-close-checklist .form-field input { min-height: 44px; }
+.period-check { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 9px 0; }
+.period-check strong { display: block; font-size: 13px; }
+.period-check small { color: var(--muted); font-size: 11px; }
+.period-check b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.period-close-history .accounting-section-heading { margin-bottom: 10px; }
+@media (max-width: 900px) { .period-close-body { grid-template-columns: 1fr; } }
+
 /* Approval delegation */
 .delegation-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
 .delegation-list article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: #f7f9f8; border: 1px solid var(--line); border-radius: 6px; }
@@ -366,6 +377,44 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .delegation-categories label { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; }
 .delegation-warning { display: flex; align-items: flex-start; gap: 9px; padding: 11px 13px; color: #8a4b16; background: #fdf4e7; border: 1px solid #f0d9b8; border-radius: 6px; font-size: 13px; line-height: 1.5; }
 .delegation-assign > .primary-button { align-self: flex-start; }
+
+/* Expense approval routing */
+.accounting-tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; margin-left: 7px; padding: 0 5px; border-radius: 9px; background: var(--warning); color: #fff; font-size: 11px; font-weight: 700; line-height: 1; }
+.expense-status-badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
+.expense-status-badge--approved { color: var(--forest); background: var(--forest-soft); }
+.expense-status-badge--pending { color: #8a4b16; background: #fdf4e7; }
+.expense-status-badge--rejected { color: var(--danger); background: #fbeaea; }
+.expense-approval-queue { margin: 4px 0 18px; padding: 16px; background: #fdf9f0; border: 1px solid #f0d9b8; border-radius: 8px; }
+.expense-approval-queue .accounting-panel-heading { margin-bottom: 10px; }
+.expense-approval-queue h3 { font-size: 15px; margin: 0; }
+.expense-approval-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid #f0d9b8; }
+.expense-approval-row:first-of-type { border-top: 0; }
+.expense-approval-row > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.expense-approval-row strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.expense-approval-row small { color: var(--muted); font-size: 12px; }
+.expense-approval-row em { color: var(--ink); font-size: 12px; font-style: italic; }
+.expense-approval-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.expense-rejection-note { display: block; margin-top: 3px; color: var(--danger); font-size: 11px; }
+.expense-row--rejected td { opacity: 0.65; }
+.expense-row--flagged td { background: #fffaf3; }
+
+/* AI anomaly review */
+.expense-ai-review { display: flex; align-items: flex-start; gap: 12px; margin: 4px 0 18px; padding: 14px 16px; background: linear-gradient(180deg, #f7f4ff 0%, #f4f6ff 100%); border: 1px solid #ddd6f3; border-radius: 8px; }
+.expense-ai-review > svg { flex-shrink: 0; margin-top: 1px; color: #6d5bd0; }
+.expense-ai-review strong { display: block; font-size: 14px; }
+.expense-ai-review span { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.5; max-width: 720px; }
+.anomaly-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.expense-table .anomaly-chips { margin-top: 5px; }
+.anomaly-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
+.anomaly-chip svg { flex-shrink: 0; }
+.anomaly-chip--warning { color: #8a4b16; background: #fdf4e7; }
+.anomaly-chip--critical { color: var(--danger); background: #fbeaea; }
+.anomaly-reason { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.expense-approval-flags { display: block; margin-top: 6px; }
+.expense-approval-flags .anomaly-reason { margin-top: 3px; }
+.settings-panel-heading--sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.settings-panel-heading--sub h3 { font-size: 15px; margin: 0; }
+.settings-panel-heading--sub p { margin: 5px 0 0; color: var(--muted); font-size: 13px; max-width: 640px; }
 
 /* Native team and security administration */
 .team-admin-panel > .settings-panel-heading > div > p:last-child,

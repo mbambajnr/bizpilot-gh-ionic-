@@ -625,7 +625,12 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       note: e.note || '',
       createdAt: e.created_at,
       recordedByUserId: e.recorded_by_user_id || '',
-      recordedByName: e.recorded_by_name || 'Unknown user'
+      recordedByName: e.recorded_by_name || 'Unknown user',
+      status: e.status ?? 'auto_approved',
+      decidedByUserId: e.decided_by_user_id ?? undefined,
+      decidedByName: e.decided_by_name ?? undefined,
+      decidedAt: e.decided_at ?? undefined,
+      rejectionReason: e.rejection_reason ?? undefined
     }));
 
     const mappedUsers: UserAccessProfile[] = ((employeeCredentials || []) as EmployeeCredentialRow[]).map((employee) => ({

@@ -54,27 +54,33 @@ export function canApproveCategory(
   user: { role: string; userId: string },
   category: ApprovalDelegationCategory,
   hasPermission: (permission: AppPermission) => boolean,
+  amount?: number,
 ): boolean {
   if (user.role === 'GeneralManager') {
     if (category === 'payables') return hasPermission('payables.manage') || hasPermission('payables.approve');
     if (category === 'purchases') return hasPermission('purchases.approve');
     return hasPermission('transfers.approve');
   }
-  return (state.approvalDelegations ?? []).some((delegation) => delegation.active && delegation.delegateUserId === user.userId && delegation.categories.includes(category));
+  const delegation = (state.approvalDelegations ?? []).find((entry) => entry.active && entry.delegateUserId === user.userId && entry.categories.includes(category));
+  if (!delegation) return false;
+  // Threshold routing: a delegate can only approve up to their amount limit; larger documents escalate to the GM.
+  if (delegation.amountLimit != null && amount != null && amount > delegation.amountLimit) return false;
+  return true;
 }
 
 /** Add or replace an approval delegation for a delegate. GM-authorized only. */
 export function assignApprovalDelegateInState(
   state: BusinessState,
-  input: { delegateUserId: string; categories: ApprovalDelegationCategory[]; assignedByUserId: string },
+  input: { delegateUserId: string; categories: ApprovalDelegationCategory[]; assignedByUserId: string; amountLimit?: number },
 ): ActionResult<BusinessState> {
   if (!input.delegateUserId) return { ok: false, message: 'Choose an employee to receive the delegation.' };
   if (input.delegateUserId === input.assignedByUserId) return { ok: false, message: 'You cannot delegate approval authority to yourself.' };
   if (!input.categories.length) return { ok: false, message: 'Choose at least one approval type to delegate.' };
   const delegate = state.users.find((user) => user.userId === input.delegateUserId);
   if (!delegate || delegate.accountStatus === 'deactivated') return { ok: false, message: 'The selected employee is not an active user.' };
+  const amountLimit = Number.isFinite(input.amountLimit) && (input.amountLimit ?? 0) > 0 ? input.amountLimit : undefined;
   const others = state.approvalDelegations.filter((delegation) => delegation.delegateUserId !== input.delegateUserId);
-  const delegation = { id: crypto.randomUUID(), delegateUserId: input.delegateUserId, assignedByUserId: input.assignedByUserId, categories: [...input.categories], active: true, createdAt: new Date().toISOString() };
+  const delegation = { id: crypto.randomUUID(), delegateUserId: input.delegateUserId, assignedByUserId: input.assignedByUserId, categories: [...input.categories], amountLimit, active: true, createdAt: new Date().toISOString() };
   return { ok: true, data: { ...state, approvalDelegations: [...others, delegation] } };
 }
 
@@ -82,6 +88,51 @@ export function assignApprovalDelegateInState(
 export function revokeApprovalDelegateInState(state: BusinessState, input: { delegationId: string }): ActionResult<BusinessState> {
   if (!state.approvalDelegations.some((delegation) => delegation.id === input.delegationId)) return { ok: false, message: 'That delegation no longer exists.' };
   return { ok: true, data: { ...state, approvalDelegations: state.approvalDelegations.filter((delegation) => delegation.id !== input.delegationId) } };
+}
+
+/** The 'YYYY-MM' accounting period an ISO timestamp falls in. */
+export function accountingPeriodOf(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+/** Whether the period containing the given date has been closed (locked). */
+export function isAccountingPeriodClosed(state: Pick<BusinessState, 'closedAccountingPeriods'>, iso: string): boolean {
+  const period = accountingPeriodOf(iso);
+  return state.closedAccountingPeriods.some((entry) => entry.period === period);
+}
+
+/** Close (lock) a month. Nothing dated within it can then be created, reversed, or edited. */
+export function closeAccountingPeriodInState(state: BusinessState, input: { period: string; closedByUserId: string; closedByName: string }): ActionResult<BusinessState> {
+  if (!/^\d{4}-\d{2}$/.test(input.period)) return { ok: false, message: 'Choose a valid month to close.' };
+  if (input.period > accountingPeriodOf(new Date().toISOString())) return { ok: false, message: 'A future period cannot be closed.' };
+  if (state.closedAccountingPeriods.some((entry) => entry.period === input.period)) return { ok: false, message: 'That period is already closed.' };
+  return { ok: true, data: { ...state, closedAccountingPeriods: [...state.closedAccountingPeriods, { period: input.period, closedByUserId: input.closedByUserId, closedByName: input.closedByName, closedAt: new Date().toISOString() }] } };
+}
+
+/** Reopen (unlock) a previously closed month. */
+export function reopenAccountingPeriodInState(state: BusinessState, input: { period: string }): ActionResult<BusinessState> {
+  if (!state.closedAccountingPeriods.some((entry) => entry.period === input.period)) return { ok: false, message: 'That period is not closed.' };
+  return { ok: true, data: { ...state, closedAccountingPeriods: state.closedAccountingPeriods.filter((entry) => entry.period !== input.period) } };
+}
+
+/** Total unpaid balance a customer currently owes across their non-reversed sales. */
+export function selectCustomerOutstanding(state: Pick<BusinessState, 'sales'>, customerId: string): number {
+  return state.sales
+    .filter((sale) => sale.customerId === customerId && sale.status !== 'Reversed')
+    .reduce((sum, sale) => sum + Math.max(0, (sale.netReceivableAmount ?? sale.totalAmount) - (sale.creditedAmount ?? 0) - sale.paidAmount), 0);
+}
+
+/** Whether a customer is over their credit limit (and not manually released). */
+export function isCustomerOnCreditHold(state: Pick<BusinessState, 'sales'>, customer: Customer): boolean {
+  if (customer.creditLimit == null || customer.creditHoldOverride) return false;
+  return selectCustomerOutstanding(state, customer.id) > customer.creditLimit;
+}
+
+/** Toggle the accountant's credit-hold override (release / re-apply the hold) for a customer. */
+export function setCustomerCreditHoldInState(state: BusinessState, input: { customerId: string; released: boolean }): ActionResult<BusinessState> {
+  const customer = state.customers.find((entry) => entry.id === input.customerId);
+  if (!customer) return { ok: false, message: 'The selected customer could not be found.' };
+  return { ok: true, data: { ...state, customers: state.customers.map((entry) => entry.id === input.customerId ? { ...entry, creditHoldOverride: input.released } : entry) } };
 }
 import {
   nextActivityNumber,
@@ -142,6 +193,7 @@ export type UpdateCustomerInput = {
   customerType?: Customer['customerType'];
   taxExempt?: boolean;
   taxExemptionReason?: string;
+  creditLimit?: number;
 };
 
 export type UpdateCustomerStatusInput = {
@@ -1042,6 +1094,10 @@ function ensureBusinessProfile(profile?: Partial<BusinessProfile>): BusinessProf
     defaultWithholdingTaxRate: profile?.defaultWithholdingTaxRate ?? 0,
     defaultWithholdingTaxLabel: profile?.defaultWithholdingTaxLabel?.trim() || 'Withholding Tax',
     defaultWithholdingTaxBasis: profile?.defaultWithholdingTaxBasis ?? 'taxInclusiveTotal',
+    expenseApprovalThreshold:
+      profile?.expenseApprovalThreshold != null && profile.expenseApprovalThreshold > 0
+        ? profile.expenseApprovalThreshold
+        : undefined,
     launchedAt: profile?.launchedAt?.trim() || undefined,
   };
 }
@@ -1615,8 +1671,9 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     users,
     currentUserId: raw.currentUserId ?? seedState.currentUserId,
     restockRequests: raw.restockRequests ?? [],
-    expenses: raw.expenses ?? [],
+    expenses: (raw.expenses ?? []).map((expense) => ({ ...expense, status: expense.status ?? 'auto_approved' })),
     approvalDelegations: raw.approvalDelegations ?? [],
+    closedAccountingPeriods: raw.closedAccountingPeriods ?? [],
     themePreference: raw.themePreference ?? 'system',
   };
 }
@@ -1961,6 +2018,7 @@ export function updateCustomerInState(current: BusinessState, input: UpdateCusto
     return { ok: false, message: 'The selected customer could not be found.' };
   }
 
+  const creditLimit = input.creditLimit === undefined ? existingCustomer.creditLimit : (Number.isFinite(input.creditLimit) && input.creditLimit > 0 ? input.creditLimit : undefined);
   const updatedCustomer: Customer = {
     ...existingCustomer,
     name,
@@ -1968,6 +2026,7 @@ export function updateCustomerInState(current: BusinessState, input: UpdateCusto
     whatsapp: input.whatsapp?.trim() || '',
     email: input.email?.trim() || '',
     channel,
+    creditLimit,
     customerType: current.businessProfile.customerClassificationEnabled
       ? customerTypeResult.data
       : existingCustomer.customerType,
@@ -2095,6 +2154,10 @@ export function updateBusinessProfileInState(current: BusinessState, input: Upda
     defaultWithholdingTaxRate: input.defaultWithholdingTaxRate ?? current.businessProfile.defaultWithholdingTaxRate,
     defaultWithholdingTaxLabel: input.defaultWithholdingTaxLabel ?? current.businessProfile.defaultWithholdingTaxLabel,
     defaultWithholdingTaxBasis: input.defaultWithholdingTaxBasis ?? current.businessProfile.defaultWithholdingTaxBasis,
+    expenseApprovalThreshold:
+      input.expenseApprovalThreshold != null && input.expenseApprovalThreshold > 0
+        ? input.expenseApprovalThreshold
+        : undefined,
   };
   const createdAt = new Date().toISOString();
 
@@ -4306,6 +4369,9 @@ export function convertQuotationToSalesState(
 }
 
 export function addSaleToState(current: BusinessState, input: NewSaleInput): ActionResult<BusinessState> {
+  if (isAccountingPeriodClosed(current, input.createdAt || new Date().toISOString())) {
+    return { ok: false, message: 'That date is in a closed accounting period. Reopen the period or use the current date.' };
+  }
   const customer = input.customerId ? current.customers.find((item) => item.id === input.customerId) : undefined;
   const customerSnapshot: InvoiceCustomerSnapshot | undefined = customer
     ? {
@@ -4393,6 +4459,15 @@ export function addSaleToState(current: BusinessState, input: NewSaleInput): Act
 
   if (!Number.isFinite(input.paidAmount) || input.paidAmount < 0 || input.paidAmount > netReceivableAmount) {
     return { ok: false, message: 'Paid amount must be a valid number between 0 and total.' };
+  }
+
+  // Credit control: block a credit sale that would push a registered customer over
+  // their credit limit, unless the accountant has released the hold.
+  if (customer && customer.creditLimit != null && !customer.creditHoldOverride && !input.correctionOfSaleId) {
+    const newReceivable = netReceivableAmount - input.paidAmount;
+    if (newReceivable > 0 && selectCustomerOutstanding(current, customer.id) + newReceivable > customer.creditLimit) {
+      return { ok: false, message: `${customer.name} is over their credit limit. Collect payment or have the accountant release the credit hold.` };
+    }
   }
 
   const invoiceNumber = nextInvoiceNumber(current.sales, current.businessProfile.invoicePrefix);
@@ -4749,6 +4824,10 @@ export function reverseSaleInState(current: BusinessState, input: ReverseSaleInp
     return { ok: false, message: 'This invoice has already been reversed.' };
   }
 
+  if (isAccountingPeriodClosed(current, sale.createdAt)) {
+    return { ok: false, message: 'This invoice falls in a closed accounting period. Reopen the period before reversing it.' };
+  }
+
   const reason = input.reason.trim();
   if (!reason) {
     return { ok: false, message: 'A reason is required before reversing an invoice.' };
@@ -4997,6 +5076,8 @@ export function addExpenseToState(
   }
 
   const createdAt = new Date().toISOString();
+  const threshold = current.businessProfile.expenseApprovalThreshold;
+  const requiresApproval = threshold != null && threshold > 0 && input.amount >= threshold;
   const expense: Expense = {
     id: `exp-${crypto.randomUUID()}`,
     category: input.category.trim(),
@@ -5005,14 +5086,17 @@ export function addExpenseToState(
     createdAt,
     recordedByUserId: input.recordedByUserId,
     recordedByName: input.recordedByName,
+    status: requiresApproval ? 'pending_approval' : 'auto_approved',
   };
 
   const activity = createActivityLogEntry(current, {
     entityType: 'business',
     entityId: 'expenses',
     actionType: 'expense_logged',
-    title: 'Expense recorded',
-    detail: `${expense.category}: ${expense.amount} was logged.`,
+    title: requiresApproval ? 'Expense submitted for approval' : 'Expense recorded',
+    detail: requiresApproval
+      ? `${expense.category}: ${expense.amount} awaits approval (at or above the ${threshold} threshold).`
+      : `${expense.category}: ${expense.amount} was logged.`,
     status: 'info',
     createdAt,
     referenceNumber: `EXP-${expense.id.slice(0, 8).toUpperCase()}`,
@@ -5026,4 +5110,65 @@ export function addExpenseToState(
       activityLogEntries: [activity, ...current.activityLogEntries],
     },
   };
+}
+
+export type ExpenseDecisionInput = {
+  expenseId: string;
+  decidedByUserId: string;
+  decidedByName: string;
+  /** Required when rejecting; ignored on approval. */
+  reason?: string;
+};
+
+function decideExpenseInState(
+  current: BusinessState,
+  input: ExpenseDecisionInput,
+  outcome: 'approved' | 'rejected'
+): ActionResult<BusinessState> {
+  const expense = (current.expenses ?? []).find((entry) => entry.id === input.expenseId);
+  if (!expense) return { ok: false, message: 'That expense could not be found.' };
+  if (expense.status !== 'pending_approval') {
+    return { ok: false, message: 'Only expenses awaiting approval can be decided.' };
+  }
+  if (outcome === 'rejected' && !input.reason?.trim()) {
+    return { ok: false, message: 'A reason is required to reject an expense.' };
+  }
+
+  const decidedAt = new Date().toISOString();
+  const updated: Expense = {
+    ...expense,
+    status: outcome,
+    decidedByUserId: input.decidedByUserId,
+    decidedByName: input.decidedByName,
+    decidedAt,
+    rejectionReason: outcome === 'rejected' ? input.reason?.trim() : undefined,
+  };
+
+  const activity = createActivityLogEntry(current, {
+    entityType: 'business',
+    entityId: 'expenses',
+    actionType: 'expense_logged',
+    title: outcome === 'approved' ? 'Expense approved' : 'Expense rejected',
+    detail: `${expense.category}: ${expense.amount} was ${outcome} by ${input.decidedByName}.`,
+    status: outcome === 'approved' ? 'info' : 'warning',
+    createdAt: decidedAt,
+    referenceNumber: `EXP-${expense.id.slice(0, 8).toUpperCase()}`,
+  });
+
+  return {
+    ok: true,
+    data: {
+      ...current,
+      expenses: current.expenses.map((entry) => (entry.id === expense.id ? updated : entry)),
+      activityLogEntries: [activity, ...current.activityLogEntries],
+    },
+  };
+}
+
+export function approveExpenseInState(current: BusinessState, input: ExpenseDecisionInput): ActionResult<BusinessState> {
+  return decideExpenseInState(current, input, 'approved');
+}
+
+export function rejectExpenseInState(current: BusinessState, input: ExpenseDecisionInput): ActionResult<BusinessState> {
+  return decideExpenseInState(current, input, 'rejected');
 }
