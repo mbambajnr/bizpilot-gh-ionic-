@@ -93,9 +93,10 @@ describe('RBAC Logic', () => {
     expect(hasPermission(accountant, 'expenses.view')).toBe(true);
     expect(hasPermission(accountant, 'expenses.create')).toBe(true);
     expect(hasPermission(accountant, 'reports.financial.view')).toBe(true);
-    expect(hasPermission(accountant, 'sales.view')).toBe(false);
-    expect(hasPermission(accountant, 'reports.sales.view')).toBe(false);
-    expect(hasPermission(accountant, 'purchases.view')).toBe(false);
+    expect(hasPermission(accountant, 'sales.view')).toBe(true);
+    expect(hasPermission(accountant, 'invoices.view')).toBe(true);
+    expect(hasPermission(accountant, 'reports.sales.view')).toBe(true);
+    expect(hasPermission(accountant, 'purchases.view')).toBe(true);
     expect(hasPermission(accountant, 'procurement.view')).toBe(false);
     expect(hasPermission(accountant, 'payables.approve')).toBe(false);
     expect(hasPermission(accountant, 'transfers.view')).toBe(false);

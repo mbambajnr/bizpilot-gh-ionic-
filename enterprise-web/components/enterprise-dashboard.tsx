@@ -77,7 +77,7 @@ function EnterpriseDashboardView() {
         </div>
       </section>
 
-      <section className="metric-grid role-metric-grid" aria-label={`${currentUser.roleLabel || currentUser.role} metrics`}>
+      <section className={`metric-grid role-metric-grid${model.metrics.length > 4 ? ' metric-grid--wide' : ''}`} aria-label={`${currentUser.roleLabel || currentUser.role} metrics`}>
         {model.metrics.map((metric) => <Metric {...metric} key={metric.label} />)}
       </section>
 

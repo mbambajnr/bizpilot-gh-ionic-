@@ -21,7 +21,7 @@ BisaPilot uses role-based access control with optional per-user permission overr
 | System Administrator | Configure the system, users, roles, permissions, business profile, and branding. | System administration only. No default business operation execution. |
 | General Manager | Supervise operations, review reports, approve procurement, approve payables, approve/cancel transfers, and manage high-level supply decisions. | Oversight and approval. Limited execution. |
 | Sales Manager | Manage sales, quotations, customers, invoices, sales reporting, and sales-driven stock requests/transfers. | Sales operations and sales reporting. |
-| Accountant | Manage payables, supplier payments, expenses, payment records, customer ledgers, and financial reporting. | Finance execution and financial visibility. |
+| Accountant | Manage payables, supplier payments, expenses, and payment records; read-only visibility into sales, invoices, purchases, customer/receivable ledgers, and financial + sales reporting. | Finance execution plus full financial-transaction visibility (view-only outside payables/payments/expenses). |
 | Warehouse Manager | Receive approved purchases, manage warehouse inventory, manage restock requests, approve/dispatch/receive transfers, and view inventory reports. | Warehouse operations and stock movement control. |
 | Store Manager | Run store sales, customers, quotations, payment capture, store transfer receipt, and restock requests to warehouse. | Store operations. No vendor or procurement management. |
 | Purchase Manager | Create purchase/procurement drafts and submit them for approval. Manage vendor records by default. | Procurement initiation. No purchase approval, receipt, or payment. |
@@ -37,13 +37,13 @@ BisaPilot uses role-based access control with optional per-user permission overr
 | `business.edit` | Yes | No | No | No | No | No | No |
 | `branding.view` | Yes | Yes | No | No | No | No | No |
 | `branding.manage` | Yes | No | No | No | No | No | No |
-| `sales.view` | No | Yes | Yes | No | No | Yes | No |
+| `sales.view` | No | Yes | Yes | Yes | No | Yes | No |
 | `sales.create` | No | Yes | Yes | No | No | Yes | No |
 | `sales.reverse` | No | Yes | No | No | No | No | No |
 | `quotations.view` | No | Yes | Yes | No | No | Yes | No |
 | `quotations.create` | No | Yes | Yes | No | No | Yes | No |
 | `quotations.convert` | No | Yes | Yes | No | No | Yes | No |
-| `invoices.view` | No | Yes | Yes | No | No | Yes | No |
+| `invoices.view` | No | Yes | Yes | Yes | No | Yes | No |
 | `invoices.print` | No | Yes | Yes | No | No | Yes | No |
 | `invoices.export_pdf` | No | Yes | Yes | No | No | Yes | No |
 | `customers.view` | No | Yes | Yes | Yes | No | Yes | No |
@@ -60,7 +60,7 @@ BisaPilot uses role-based access control with optional per-user permission overr
 | `vendors.manage` | No | Yes | No | No | No | No | Yes |
 | `vendors.create` | No | Yes | No | No | No | No | Yes |
 | `vendors.edit` | No | Yes | No | No | No | No | Yes |
-| `purchases.view` | No | Yes | Yes | No | Yes | No | Yes |
+| `purchases.view` | No | Yes | Yes | Yes | Yes | No | Yes |
 | `purchases.create` | No | Yes | Yes | No | No | No | Yes |
 | `purchases.approve` | No | Yes | No | No | No | No | No |
 | `purchases.receive` | No | No | No | No | Yes | No | No |
@@ -86,7 +86,7 @@ BisaPilot uses role-based access control with optional per-user permission overr
 | `restockRequests.create` | No | Yes | Yes | No | No | Yes | No |
 | `restockRequests.manage` | No | Yes | No | No | Yes | No | No |
 | `reports.dashboard.view` | No | Yes | Yes | Yes | Yes | Yes | Yes |
-| `reports.sales.view` | No | Yes | Yes | No | No | Yes | No |
+| `reports.sales.view` | No | Yes | Yes | Yes | No | Yes | No |
 | `reports.financial.view` | No | Yes | No | Yes | No | No | No |
 | `reports.inventory.view` | No | Yes | Yes | No | Yes | Yes | Yes |
 | `quotations.print` | No | Yes | Yes | No | No | Yes | No |

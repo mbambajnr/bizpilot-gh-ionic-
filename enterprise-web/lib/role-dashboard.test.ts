@@ -27,9 +27,17 @@ describe('role dashboard models', () => {
 
     expect(model.title).toBeTruthy();
     expect(model.description).toBeTruthy();
-    expect(model.metrics).toHaveLength(4);
+    // The accountant carries a richer financial snapshot (6 tiles); other roles use 4.
+    expect(model.metrics).toHaveLength(role === 'Accountant' ? 6 : 4);
     expect(model.queues.length).toBeGreaterThan(0);
     expect(model.queues.every((queue) => queue.href.startsWith('/'))).toBe(true);
+  });
+
+  it('gives the accountant revenue and net cash movement on the dashboard', () => {
+    const user = userFor('Accountant');
+    const model = buildRoleDashboardModel({ state: seedState, user, hasPermission: (permission) => hasPermission(user, permission) });
+    const labels = model.metrics.map((metric) => metric.label);
+    expect(labels).toEqual(['Revenue today', 'Cash received today', 'Receivables', 'Supplier obligations', 'Expenses today', 'Net cash movement']);
   });
 
   it('removes revoked workflow links from the dashboard', () => {

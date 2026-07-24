@@ -81,6 +81,12 @@ h2 { font-size: 24px; font-weight: 600; }
 .sync-note { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 15px; }
 .sync-note > span { width: 7px; height: 7px; background: #4b9c72; border-radius: 50%; box-shadow: 0 0 0 3px #dcebe3; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: 7px; }
+/* Roles with a richer metric set (e.g. the accountant's 6-tile financial snapshot) use a 3-col grid so tiles stay even. The existing max-width rules below still collapse it to 2 then 1. */
+.metric-grid--wide { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (min-width: 1101px) {
+  .metric-grid--wide .metric:nth-child(3n) { border-right: 0; }
+  .metric-grid--wide .metric:nth-child(-n+3) { border-bottom: 1px solid var(--line); }
+}
 .metric { min-width: 0; padding: 20px 22px; border-right: 1px solid var(--line); }
 .metric:last-child { border-right: 0; }
 .metric > span { display: block; color: var(--muted); font-size: 15px; font-weight: 500; }
@@ -347,6 +353,19 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .access-denied svg { color: var(--warning); }
 .access-denied h1 { margin-top: 14px; font-size: 32px; }
 .access-denied p { color: var(--muted); font-size: 16px; }
+
+/* Approval delegation */
+.delegation-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.delegation-list article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: #f7f9f8; border: 1px solid var(--line); border-radius: 6px; }
+.delegation-list article strong { display: block; font-size: 14px; }
+.delegation-list article span { color: var(--muted); font-size: 12px; }
+.delegation-empty { display: flex; align-items: center; gap: 10px; margin: 12px 0; padding: 12px 14px; color: var(--muted); font-size: 13px; background: #f7f9f8; border: 1px solid var(--line); border-radius: 6px; }
+.delegation-assign { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.delegation-categories { display: flex; flex-wrap: wrap; gap: 16px; padding: 0; border: 0; margin: 0; }
+.delegation-categories legend { padding: 0; margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.delegation-categories label { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; cursor: pointer; }
+.delegation-warning { display: flex; align-items: flex-start; gap: 9px; padding: 11px 13px; color: #8a4b16; background: #fdf4e7; border: 1px solid #f0d9b8; border-radius: 6px; font-size: 13px; line-height: 1.5; }
+.delegation-assign > .primary-button { align-self: flex-start; }
 
 /* Native team and security administration */
 .team-admin-panel > .settings-panel-heading > div > p:last-child,
@@ -2292,6 +2311,20 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .report-ranked-list span, .report-ranked-list strong, .report-ranked-list small { display: block; }
 .report-ranked-list strong, .report-ranked-list b { font-size: 12px; }
 .report-ranked-list small { margin-top: 3px; color: var(--muted); font-size: 12px; }
+.income-statement { padding: 8px 16px 4px; }
+.income-statement .is-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid #f0f3f1; font-size: 13px; }
+.income-statement .is-row b { font-variant-numeric: tabular-nums; }
+.income-statement .is-deduct b { color: #9b4139; }
+.income-statement .is-muted { color: var(--muted); border-bottom: 0; padding-top: 2px; font-size: 12px; }
+.income-statement .is-subtotal { font-weight: 600; border-top: 1px solid var(--line); }
+.income-statement .is-total { margin-top: 2px; padding: 12px 0; border-top: 2px solid var(--forest); border-bottom: 0; font-size: 15px; font-weight: 700; }
+.income-statement .is-total.is-loss b { color: #9b4139; }
+.is-note { padding: 4px 16px 16px; color: var(--muted); font-size: 11px; }
+.report-table-scroll { overflow-x: auto; padding: 4px 16px 14px; }
+.financials-table { width: 100%; border-collapse: collapse; }
+.financials-table th { padding: 8px 10px; color: var(--muted); text-align: left; font-size: 10px; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+.financials-table th:not(:first-child), .financials-table td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.financials-table td { padding: 10px; font-size: 12px; border-bottom: 1px solid #f0f3f1; }
 .report-category-bars { padding: 11px 16px 15px; }
 .report-category-bars > div { display: grid; grid-template-columns: 130px minmax(120px, 1fr) 100px; align-items: center; gap: 12px; padding: 7px 0; }
 .report-category-bars > div > span { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }

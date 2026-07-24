@@ -103,8 +103,13 @@ describe('Phase 2 RBAC Enforcement', () => {
   });
 
   it('Accountant should focus on settlement and financial records by default', () => {
-    expect(hasPermission(accountant, 'purchases.view')).toBe(false);
+    expect(hasPermission(accountant, 'purchases.view')).toBe(true);
+    expect(hasPermission(accountant, 'sales.view')).toBe(true);
+    expect(hasPermission(accountant, 'invoices.view')).toBe(true);
+    expect(hasPermission(accountant, 'reports.sales.view')).toBe(true);
     expect(hasPermission(accountant, 'purchases.create')).toBe(false);
+    expect(hasPermission(accountant, 'purchases.approve')).toBe(false);
+    expect(hasPermission(accountant, 'sales.create')).toBe(false);
     expect(hasPermission(accountant, 'payables.view')).toBe(true);
     expect(hasPermission(accountant, 'payables.manage')).toBe(true);
     expect(hasPermission(accountant, 'payables.approve')).toBe(false);

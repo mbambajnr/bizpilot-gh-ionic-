@@ -112,7 +112,11 @@ export function buildRoleDashboardModel({ state, user, hasPermission }: { state:
   const pendingRestocks = state.restockRequests.filter((request) => request.status === 'Pending').length;
   const activeVendors = state.vendors.filter((vendor) => vendor.status === 'active').length;
   const openPurchaseValue = state.purchases.filter((purchase) => !['receivedToWarehouse', 'declined', 'cancelled'].includes(purchase.status)).reduce((sum, purchase) => sum + purchase.totalAmount, 0);
-  const expensesToday = state.expenses.filter((expense) => new Date(expense.createdAt).toDateString() === new Date().toDateString()).reduce((sum, expense) => sum + expense.amount, 0);
+  const todayKey = new Date().toDateString();
+  const expensesToday = state.expenses.filter((expense) => new Date(expense.createdAt).toDateString() === todayKey).reduce((sum, expense) => sum + expense.amount, 0);
+  const customerReceiptsToday = state.payments.filter((payment) => ['invoice', 'sale'].includes(payment.sourceType) && new Date(payment.createdAt).toDateString() === todayKey).reduce((sum, payment) => sum + payment.amount, 0);
+  const supplierPaymentsToday = state.payments.filter((payment) => payment.sourceType === 'payable' && new Date(payment.createdAt).toDateString() === todayKey).reduce((sum, payment) => sum + payment.amount, 0);
+  const netCashMovement = customerReceiptsToday - expensesToday - supplierPaymentsToday;
   const activeUsers = state.users.filter((entry) => entry.accountStatus !== 'deactivated').length;
   const accessExceptions = state.users.filter((entry) => entry.grantedPermissions.length > 0 || entry.revokedPermissions.length > 0).length;
   const temporaryPasswords = state.users.filter((entry) => entry.passwordChangeRequired && entry.accountStatus !== 'deactivated').length;
@@ -174,10 +178,12 @@ export function buildRoleDashboardModel({ state, user, hasPermission }: { state:
     },
     Accountant: {
       metrics: [
-        metric('Cash received today', formatCurrency(metrics.cashInHand + metrics.mobileMoneyReceived, currency), `${metrics.todayPayments.length} customer payments`, 'good'),
+        metric('Revenue today', formatCurrency(metrics.salesToday, currency), `${metrics.salesTodayCount} invoices`, metrics.salesToday ? 'good' : 'neutral'),
+        metric('Cash received today', formatCurrency(customerReceiptsToday, currency), `${metrics.todayPayments.length} customer payments`, 'good'),
         metric('Receivables', formatCurrency(metrics.receivables, currency), `${metrics.customersOwingCount} accounts outstanding`, metrics.receivables ? 'warn' : 'good'),
         metric('Supplier obligations', formatCurrency(payables.totalOutstandingBalance, currency), `${payables.openCount} open payables`, payables.openCount ? 'warn' : 'good'),
         metric('Expenses today', formatCurrency(expensesToday, currency), 'Recorded operating expenses', expensesToday ? 'neutral' : 'good'),
+        metric('Net cash movement', formatCurrency(netCashMovement, currency), 'Received less expenses and settlements', netCashMovement < 0 ? 'risk' : 'good'),
       ],
       queues: [
         queue('Approved payables', 'Supplier obligations authorized for settlement.', payables.approvedAwaitingPaymentCount, payables.approvedAwaitingPaymentCount ? 'Ready to pay' : 'Clear', payables.approvedAwaitingPaymentCount ? 'warn' : 'good', '/accounting?segment=payables&action=payment', 'accounting'),

@@ -108,7 +108,14 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AppRole, AppPermission[]> = {
     'inventory.value.view',
     'customers.view',
     'customers.ledger.view',
+    // Read-only visibility into every financial transaction the accountant is
+    // expected to reconcile and report on: revenue (sales), receivables
+    // (invoices), and the purchase orders behind the payables they manage.
+    // View-only — execution stays excluded (no sales.create, purchases.approve, etc.).
+    'sales.view',
+    'invoices.view',
     'vendors.view',
+    'purchases.view',
     'payables.view',
     'payables.manage',
     'payables.pay',
@@ -118,6 +125,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AppRole, AppPermission[]> = {
     'expenses.view',
     'expenses.create',
     'reports.financial.view',
+    'reports.sales.view',
     'reports.dashboard.view',
   ],
   WarehouseManager: [

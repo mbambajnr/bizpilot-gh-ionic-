@@ -14,9 +14,15 @@ describe('enterprise route access', () => {
   });
 
   it('blocks direct operational URLs that are not assigned to the role', () => {
-    expect(resolveEnterpriseAccess({ pathname: '/sales', workspaceLive: true, role: 'Accountant', hasPermission: permissionsFor('Accountant') }).status).toBe('unauthorized');
     expect(resolveEnterpriseAccess({ pathname: '/pos', workspaceLive: true, role: 'WarehouseManager', hasPermission: permissionsFor('WarehouseManager') }).status).toBe('unauthorized');
     expect(resolveEnterpriseAccess({ pathname: '/inventory', workspaceLive: true, role: 'Admin', hasPermission: permissionsFor('Admin') }).status).toBe('unauthorized');
+  });
+
+  it('gives the accountant read visibility into financial transactions', () => {
+    const check = permissionsFor('Accountant');
+    for (const pathname of ['/sales', '/sales/sale-1', '/procurement', '/reports']) {
+      expect(resolveEnterpriseAccess({ pathname, workspaceLive: true, role: 'Accountant', hasPermission: check }).status).toBe('allowed');
+    }
   });
 
   it('uses invoice permission for invoice and waybill detail URLs', () => {

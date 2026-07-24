@@ -26,11 +26,12 @@ import { type FormEvent, useMemo, useState } from 'react';
 import { useBusiness } from '../../src/context/BusinessContext';
 import type { AccountsPayable, Expense, Payment, PaymentChannel } from '../../src/data/seedBusiness';
 import { selectDashboardMetrics, selectSaleBalanceRemaining } from '../../src/selectors/businessSelectors';
+import { canApproveCategory } from '../../src/utils/businessLogic';
 import { formatCurrency, formatRelativeDate } from '../../src/utils/format';
 import { EnterpriseApp } from './enterprise-app';
 import { EnterpriseShell } from './enterprise-shell';
 
-type AccountingView = 'overview' | 'payables' | 'expenses' | 'cash' | 'payments';
+type AccountingView = 'overview' | 'financials' | 'receivables' | 'payables' | 'expenses' | 'cash' | 'payments' | 'approvals';
 
 const EXPENSE_CATEGORIES = ['General', 'Rent', 'Utility', 'Staff Wages', 'Transportation', 'Stock Purchase', 'Repairs', 'Marketing'];
 const PAYABLE_STATUS: Record<AccountsPayable['status'], { label: string; tone: 'neutral' | 'warn' | 'good' | 'risk' }> = {
@@ -50,18 +51,22 @@ function AccountingWorkspace() {
   const { state, currentUser, hasPermission, addExpense, approvePayable, recordPayablePayment } = useBusiness();
   const canAccess = hasPermission('accounting.access');
   const canViewPayables = hasPermission('payables.view') || hasPermission('payables.manage') || hasPermission('payables.pay');
-  const canApprovePayables = currentUser.role === 'GeneralManager' && (hasPermission('payables.manage') || hasPermission('payables.approve'));
+  const canApprovePayables = canApproveCategory(state, currentUser, 'payables', hasPermission);
   const canPayPayables = hasPermission('payables.pay');
   const canViewExpenses = hasPermission('expenses.view');
   const canCreateExpenses = hasPermission('expenses.create');
   const canViewPayments = hasPermission('payments.view') || hasPermission('payments.record');
   const canViewSales = hasPermission('sales.view') || hasPermission('reports.sales.view');
+  const canViewFinancials = hasPermission('reports.financial.view');
   const [view, setView] = useState<AccountingView>(() => {
     if (typeof window === 'undefined') return 'overview';
     const segment = new URLSearchParams(window.location.search).get('segment');
+    if (segment === 'financials' && canViewFinancials) return 'financials';
+    if (segment === 'receivables' && canViewSales) return 'receivables';
     if (segment === 'payables' && canViewPayables) return 'payables';
     if (segment === 'expenses' && (canViewExpenses || canCreateExpenses)) return 'expenses';
     if (segment === 'payments' && canViewPayments) return 'payments';
+    if (segment === 'approvals') return 'approvals';
     return 'overview';
   });
   const [query, setQuery] = useState('');
@@ -93,7 +98,8 @@ function AccountingWorkspace() {
   const expenseToday = todaysExpenses.reduce((sum, expense) => sum + expense.amount, 0);
   const supplierPaidToday = todaysSupplierPayments.reduce((sum, payment) => sum + payment.amount, 0);
   const netCashMovement = cashCollectedToday - expenseToday - supplierPaidToday;
-  const receivables = state.sales.filter((sale) => sale.status !== 'Reversed').reduce((sum, sale) => sum + selectSaleBalanceRemaining(sale), 0);
+  const openReceivables = state.sales.filter((sale) => sale.status !== 'Reversed' && selectSaleBalanceRemaining(sale) > 0);
+  const receivables = openReceivables.reduce((sum, sale) => sum + selectSaleBalanceRemaining(sale), 0);
   const openPayables = state.accountsPayable.filter((payable) => !['paid', 'cancelled'].includes(payable.status) && payable.balance > 0);
   const payableBalance = openPayables.reduce((sum, payable) => sum + payable.balance, 0);
   const pendingApprovalCount = state.accountsPayable.filter((payable) => payable.status === 'pendingReview').length;
@@ -158,19 +164,25 @@ function AccountingWorkspace() {
 
         <nav className="accounting-tabs" aria-label="Accounting views">
           <button className={view === 'overview' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('overview')}>Overview</button>
+          {canViewFinancials ? <button className={view === 'financials' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('financials')}>Financial statements</button> : null}
+          {canViewSales ? <button className={view === 'receivables' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('receivables')}>Receivables {openReceivables.length ? `(${openReceivables.length})` : ''}</button> : null}
           {canViewPayables ? <button className={view === 'payables' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('payables')}>Payables {openPayables.length ? `(${openPayables.length})` : ''}</button> : null}
           {canViewExpenses || canCreateExpenses ? <button className={view === 'expenses' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('expenses')}>Expenses</button> : null}
           {canViewSales ? <button className={view === 'cash' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('cash')}>Cash control {missingCashReferences.length ? `(${missingCashReferences.length})` : ''}</button> : null}
           {canViewPayments ? <button className={view === 'payments' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('payments')}>Payment ledger</button> : null}
+          <button className={view === 'approvals' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('approvals')}>Approvals</button>
         </nav>
 
         {actionMessage ? <div className="settings-message" role="status">{actionMessage}</div> : null}
 
         {view === 'overview' ? <AccountingOverview currency={currency} pendingApprovalCount={pendingApprovalCount} payableReadyCount={payableReadyCount} overduePayableCount={overduePayableCount} missingCashReferences={missingCashReferences.length} expenseToday={expenseToday} supplierPaidToday={supplierPaidToday} monthlyExpenses={monthlyExpenses} metrics={metrics} onOpen={setView} canViewPayables={canViewPayables} canViewExpenses={canViewExpenses || canCreateExpenses} canViewCash={canViewSales} /> : null}
+        {view === 'receivables' && canViewSales ? <ReceivablesWorkspace sales={state.sales} customers={state.customers} currency={currency} now={accountingOpenedAt.getTime()} canOpenInvoice={hasPermission('invoices.view')} /> : null}
         {view === 'payables' && canViewPayables ? <PayablesWorkspace rows={filteredPayables} selected={selectedPayableRow} query={query} statusFilter={statusFilter} currency={currency} busy={busy} canApprove={canApprovePayables} canPay={canPayPayables} onQuery={setQuery} onStatusFilter={setStatusFilter} onSelect={setSelectedPayableId} onApprove={(payable) => void approve(payable)} onPay={setPaymentTarget} /> : null}
         {view === 'expenses' && (canViewExpenses || canCreateExpenses) ? <ExpensesWorkspace expenses={state.expenses} currency={currency} canView={canViewExpenses} canCreate={canCreateExpenses} onCreate={() => setExpenseEditorOpen(true)} /> : null}
         {view === 'cash' && canViewSales ? <CashControl sales={todaysSales} customers={state.customers} currency={currency} missingReferenceCount={missingCashReferences.length} /> : null}
         {view === 'payments' && canViewPayments ? <PaymentLedger payments={state.payments} payables={state.accountsPayable} vendors={state.vendors} sales={state.sales} customers={state.customers} users={state.users} currency={currency} /> : null}
+        {view === 'financials' && canViewFinancials ? <FinancialStatements state={state} currency={currency} /> : null}
+        {view === 'approvals' ? <ApprovalsAudit payables={state.accountsPayable} purchases={state.purchases} transfers={state.stockTransfers} vendors={state.vendors} users={state.users} /> : null}
       </div>
 
       {paymentTarget ? <PaymentEditor payable={paymentTarget} vendorName={state.vendors.find((vendor) => vendor.id === paymentTarget.vendorId)?.name ?? paymentTarget.vendorCode} currency={currency} busy={busy} onClose={() => setPaymentTarget(null)} onSave={pay} /> : null}
@@ -215,6 +227,75 @@ function ExpensesWorkspace({ expenses, currency, canView, canCreate, onCreate }:
 function CashControl({ sales, customers, currency, missingReferenceCount }: { sales: ReturnType<typeof useBusiness>['state']['sales']; customers: ReturnType<typeof useBusiness>['state']['customers']; currency: string; missingReferenceCount: number }) {
   const cash = sales.filter((sale) => sale.paymentMethod === 'Cash');
   return <section className="accounting-wide-panel"><div className="accounting-panel-heading"><div><p className="eyebrow">Daily close</p><h2>Cash-to-bank control</h2><p>Cash invoices require a banking or deposit reference to complete daily evidence.</p></div><span className={missingReferenceCount ? 'accounting-risk-badge' : 'accounting-good-badge'}>{missingReferenceCount ? `${missingReferenceCount} missing` : 'Evidence complete'}</span></div><div className="accounting-table-wrap"><table className="cash-control-table"><thead><tr><th>Invoice</th><th>Customer</th><th>Cash collected</th><th>Banking reference</th><th>Status</th><th /></tr></thead><tbody>{cash.map((sale) => <tr key={sale.id}><td><strong>{sale.invoiceNumber}</strong><span>{formatRelativeDate(sale.createdAt)}</span></td><td>{customers.find((customer) => customer.id === sale.customerId)?.name ?? sale.customerSnapshot?.name ?? 'Walk-in customer'}</td><td>{formatCurrency(sale.paidAmount, currency)}</td><td>{sale.paymentReference || 'Not recorded'}</td><td><span className={`payable-status payable-status--${sale.paymentReference ? 'good' : 'risk'}`}>{sale.paymentReference ? 'Reconciled' : 'Action required'}</span></td><td><Link className="icon-button" title={`Open ${sale.invoiceNumber}`} href={`/sales/${sale.id}`}><ChevronRight size={14} /></Link></td></tr>)}</tbody></table>{!cash.length ? <AccountingEmpty icon={Landmark} title="No cash sales today" detail="Cash invoices recorded today will appear here for banking evidence." /> : null}</div></section>;
+}
+
+function ApprovalsAudit({ payables, purchases, transfers, vendors, users }: { payables: AccountsPayable[]; purchases: ReturnType<typeof useBusiness>['state']['purchases']; transfers: ReturnType<typeof useBusiness>['state']['stockTransfers']; vendors: ReturnType<typeof useBusiness>['state']['vendors']; users: ReturnType<typeof useBusiness>['state']['users'] }) {
+  const resolveUser = (id?: string) => (id ? users.find((user) => user.userId === id)?.name ?? id : 'Unknown');
+  const resolveVendor = (id?: string) => vendors.find((vendor) => vendor.id === id)?.name;
+  type ApprovalRow = { id: string; type: string; tone: 'good' | 'warn' | 'neutral'; reference: string; detail: string; approvedBy: string; at: string };
+  const rows: ApprovalRow[] = [
+    ...payables.filter((payable) => payable.approvedBy).map((payable) => ({ id: `pay-${payable.id}`, type: 'Payable', tone: 'good' as const, reference: payable.payableCode, detail: resolveVendor(payable.vendorId) ?? payable.vendorCode, approvedBy: resolveUser(payable.approvedBy), at: payable.updatedAt })),
+    ...purchases.filter((purchase) => purchase.approvedBy).map((purchase) => ({ id: `pur-${purchase.id}`, type: 'Purchase', tone: 'warn' as const, reference: purchase.purchaseCode, detail: resolveVendor(purchase.vendorId) ?? purchase.vendorCode, approvedBy: resolveUser(purchase.approvedBy), at: purchase.approvedAt ?? purchase.updatedAt })),
+    ...transfers.filter((transfer) => transfer.approvedBy).map((transfer) => ({ id: `trf-${transfer.id}`, type: 'Transfer', tone: 'neutral' as const, reference: transfer.transferCode, detail: 'Stock transfer', approvedBy: resolveUser(transfer.approvedBy), at: transfer.approvedAt ?? transfer.createdAt })),
+  ].sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
+  return <section className="accounting-wide-panel"><div className="accounting-panel-heading"><div><p className="eyebrow">Governance</p><h2>Approval history</h2><p>Company-wide record of authorized payables, purchases, and stock transfers — who approved what, and when.</p></div><span>{rows.length} approvals</span></div><div className="accounting-table-wrap"><table className="payment-ledger-table"><thead><tr><th>Type</th><th>Reference</th><th>Details</th><th>Approved by</th><th>When</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><span className={`payable-status payable-status--${row.tone}`}>{row.type}</span></td><td><strong>{row.reference}</strong></td><td>{row.detail}</td><td>{row.approvedBy}</td><td>{formatRelativeDate(row.at)}</td></tr>)}</tbody></table>{!rows.length ? <AccountingEmpty icon={ClipboardCheck} title="No approvals recorded yet" detail="Approved payables, purchases, and transfers will appear here as an audit trail." /> : null}</div></section>;
+}
+
+function FinancialStatements({ state, currency }: { state: ReturnType<typeof useBusiness>['state']; currency: string }) {
+  const [period, setPeriod] = useState<'month' | 'year' | 'all'>('month');
+  const [now] = useState(() => Date.now());
+  const nowDate = new Date(now);
+  const cutoff = period === 'month' ? new Date(nowDate.getFullYear(), nowDate.getMonth(), 1).getTime() : period === 'year' ? new Date(nowDate.getFullYear(), 0, 1).getTime() : 0;
+  const periodLabel = period === 'month' ? nowDate.toLocaleDateString('en-GH', { month: 'long', year: 'numeric' }) : period === 'year' ? String(nowDate.getFullYear()) : 'All time';
+
+  const sales = state.sales.filter((sale) => sale.status === 'Completed' && Date.parse(sale.createdAt) >= cutoff);
+  const expenses = state.expenses.filter((expense) => Date.parse(expense.createdAt) >= cutoff);
+  const productCost = (productId: string) => state.products.find((product) => product.id === productId)?.cost ?? 0;
+  const netRevenueOf = (sale: typeof sales[number]) => sale.subtotalAmount ?? (sale.totalAmount - (sale.taxAmount ?? 0));
+  const cogsOf = (sale: typeof sales[number]) => sale.items.reduce((sum, item) => sum + item.quantity * productCost(item.productId), 0);
+
+  const revenue = sales.reduce((sum, sale) => sum + netRevenueOf(sale), 0);
+  const tax = sales.reduce((sum, sale) => sum + (sale.taxAmount ?? 0), 0);
+  const cogs = sales.reduce((sum, sale) => sum + cogsOf(sale), 0);
+  const grossProfit = revenue - cogs;
+  const grossMargin = revenue ? Math.round((grossProfit / revenue) * 100) : 0;
+  const expenseTotal = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const netProfit = grossProfit - expenseTotal;
+  const expenseByCategory = Object.entries(expenses.reduce<Record<string, number>>((result, expense) => { result[expense.category] = (result[expense.category] ?? 0) + expense.amount; return result; }, {})).sort((left, right) => right[1] - left[1]);
+  const maxCategory = Math.max(...expenseByCategory.map(([, amount]) => amount), 1);
+
+  const saleLocation = new Map<string, string>();
+  state.stockMovements.forEach((movement) => { if (movement.relatedSaleId && movement.locationId && !saleLocation.has(movement.relatedSaleId)) saleLocation.set(movement.relatedSaleId, movement.locationId); });
+  const branchAgg = new Map<string, { revenue: number; cogs: number }>();
+  sales.forEach((sale) => { const key = saleLocation.get(sale.id) ?? 'unassigned'; const acc = branchAgg.get(key) ?? { revenue: 0, cogs: 0 }; branchAgg.set(key, { revenue: acc.revenue + netRevenueOf(sale), cogs: acc.cogs + cogsOf(sale) }); });
+  const branchRows = [...branchAgg.entries()].map(([locationId, agg]) => ({ name: state.locations.find((location) => location.id === locationId)?.name ?? 'Unassigned', revenue: agg.revenue, cogs: agg.cogs, gross: agg.revenue - agg.cogs })).sort((left, right) => right.revenue - left.revenue);
+
+  return <section className="accounting-wide-panel">
+    <div className="accounting-panel-heading"><div><p className="eyebrow">Profit &amp; loss · {periodLabel}</p><h2>Income statement</h2><p>Accrual-basis statement from recorded sales, product cost, and expenses.</p></div><div className="payment-segments">{([['month', 'This month'], ['year', 'This year'], ['all', 'All time']] as const).map(([value, label]) => <button type="button" className={period === value ? 'payment-segment payment-segment--active' : 'payment-segment'} onClick={() => setPeriod(value)} key={value}>{label}</button>)}</div></div>
+    <div className="income-statement">
+      <div className="is-row"><span>Revenue (net of tax)</span><b>{formatCurrency(revenue, currency)}</b></div>
+      <div className="is-row is-deduct"><span>Cost of sales</span><b>({formatCurrency(cogs, currency)})</b></div>
+      <div className="is-row is-subtotal"><span>Gross profit</span><b>{formatCurrency(grossProfit, currency)}</b></div>
+      <div className="is-row is-muted"><span>Gross margin</span><b>{grossMargin}%</b></div>
+      <div className="is-row is-deduct"><span>Operating expenses</span><b>({formatCurrency(expenseTotal, currency)})</b></div>
+      <div className={`is-row is-total ${netProfit < 0 ? 'is-loss' : ''}`}><span>{netProfit < 0 ? 'Net loss' : 'Net profit'}</span><b>{formatCurrency(netProfit, currency)}</b></div>
+    </div>
+    <p className="is-note">Output VAT of {formatCurrency(tax, currency)} is collected for the tax authority and excluded from revenue. This is a management statement, not a filed statutory return.</p>
+    <div className="accounting-panel-heading"><div><p className="eyebrow">By branch</p><h2>Revenue and margin by location</h2></div></div>
+    <div className="report-table-scroll"><table className="financials-table"><thead><tr><th>Branch</th><th>Revenue</th><th>Cost of sales</th><th>Gross profit</th><th>Margin</th></tr></thead><tbody>{branchRows.map((row) => <tr key={row.name}><td>{row.name}</td><td>{formatCurrency(row.revenue, currency)}</td><td>{formatCurrency(row.cogs, currency)}</td><td><strong>{formatCurrency(row.gross, currency)}</strong></td><td>{row.revenue ? Math.round((row.gross / row.revenue) * 100) : 0}%</td></tr>)}</tbody></table></div>
+    {!branchRows.length ? <AccountingEmpty icon={TrendingUp} title="No sales in this period" detail="Completed sales will populate the income statement and branch breakdown." /> : null}
+    <div className="accounting-panel-heading"><div><p className="eyebrow">By category</p><h2>Operating expenses</h2></div></div>
+    <div className="report-category-bars">{expenseByCategory.map(([category, amount]) => <div key={category}><span>{category}</span><i><b style={{ width: `${Math.max(4, expenseTotal ? amount / maxCategory * 100 : 0)}%` }} /></i><strong>{formatCurrency(amount, currency)}</strong></div>)}{!expenseByCategory.length ? <div className="accounting-empty-small"><ReceiptText size={20} /><span>No expenses recorded in this period.</span></div> : null}</div>
+  </section>;
+}
+
+function ReceivablesWorkspace({ sales, customers, currency, now, canOpenInvoice }: { sales: ReturnType<typeof useBusiness>['state']['sales']; customers: ReturnType<typeof useBusiness>['state']['customers']; currency: string; now: number; canOpenInvoice: boolean }) {
+  const rows = sales
+    .filter((sale) => sale.status !== 'Reversed' && selectSaleBalanceRemaining(sale) > 0)
+    .map((sale) => ({ sale, balance: selectSaleBalanceRemaining(sale), ageDays: Math.max(0, Math.floor((now - Date.parse(sale.createdAt)) / 86400000)) }))
+    .sort((left, right) => right.balance - left.balance);
+  const total = rows.reduce((sum, row) => sum + row.balance, 0);
+  return <section className="accounting-wide-panel"><div className="accounting-panel-heading"><div><p className="eyebrow">Accounts receivable</p><h2>Outstanding receivables</h2><p>Completed customer invoices that still carry an unpaid balance.</p></div><span>{formatCurrency(total, currency)} across {rows.length} invoices</span></div><div className="accounting-table-wrap"><table className="payment-ledger-table"><thead><tr><th>Invoice</th><th>Customer</th><th>Invoiced</th><th>Paid</th><th>Balance due</th><th>Age</th><th /></tr></thead><tbody>{rows.map(({ sale, balance, ageDays }) => <tr key={sale.id}><td><strong>{sale.invoiceNumber}</strong><span>{formatRelativeDate(sale.createdAt)}</span></td><td>{customers.find((customer) => customer.id === sale.customerId)?.name ?? sale.customerSnapshot?.name ?? 'Walk-in customer'}</td><td>{formatCurrency(sale.totalAmount, currency)}</td><td>{formatCurrency(sale.paidAmount, currency)}</td><td><strong className="accounting-negative">{formatCurrency(balance, currency)}</strong></td><td><span className={`payable-status payable-status--${ageDays > 30 ? 'risk' : ageDays > 14 ? 'warn' : 'good'}`}>{ageDays} day{ageDays === 1 ? '' : 's'}</span></td><td>{canOpenInvoice ? <Link className="icon-button" aria-label={`Open ${sale.invoiceNumber}`} title={`Open ${sale.invoiceNumber}`} href={`/sales/${sale.id}`}><ChevronRight size={14} /></Link> : null}</td></tr>)}</tbody></table>{!rows.length ? <AccountingEmpty icon={WalletCards} title="No outstanding receivables" detail="Fully paid and unpaid customer invoices will appear here when a balance is due." /> : null}</div></section>;
 }
 
 function PaymentLedger({ payments, payables, vendors, sales, customers, users, currency }: { payments: Payment[]; payables: AccountsPayable[]; vendors: ReturnType<typeof useBusiness>['state']['vendors']; sales: ReturnType<typeof useBusiness>['state']['sales']; customers: ReturnType<typeof useBusiness>['state']['customers']; users: ReturnType<typeof useBusiness>['state']['users']; currency: string }) {
