@@ -123,6 +123,7 @@ import {
   closeAccountingPeriodInState,
   reopenAccountingPeriodInState,
   setCustomerCreditHoldInState,
+  setPaymentReconciledInState,
 } from '../utils/businessLogic';
 import type { ApprovalDelegationCategory } from '../data/seedBusiness';
 // Offline-resilient wrappers: identical behavior online; when the network is
@@ -216,6 +217,7 @@ type BusinessContextValue = {
   addCustomer: (input: NewCustomerInput) => ActionResult;
   updateCustomer: (input: UpdateCustomerInput) => ActionResult;
   setCustomerCreditHold: (input: { customerId: string; released: boolean }) => ActionResult;
+  setPaymentReconciled: (input: { paymentId: string; reconciled: boolean }) => ActionResult;
   updateCustomerStatus: (input: UpdateCustomerStatusInput) => ActionResult;
   updateBusinessProfile: (input: UpdateBusinessProfileInput) => Promise<ActionResult>;
   launchBusinessWorkspace: (input?: LaunchBusinessWorkspaceInput) => Promise<ActionResult>;
@@ -1009,6 +1011,16 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         setState(result.data);
         const updatedCustomer = result.data.customers.find((customer) => customer.id === input.customerId);
         if (updatedCustomer) void syncCustomer(result.data.businessProfile.id, updatedCustomer);
+        return { ok: true };
+      },
+      setPaymentReconciled(input) {
+        if (!hasPermission(currentUser, 'reports.financial.view')) {
+          return { ok: false, message: 'You are not authorized to reconcile payments.' };
+        }
+        const result = setPaymentReconciledInState(stateRef.current, { ...input, reconciledByUserId: currentUser.userId });
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not update the reconciliation.' };
+        stateRef.current = result.data;
+        setState(result.data);
         return { ok: true };
       },
       updateCustomerStatus(input) {

@@ -264,6 +264,8 @@ type PaymentRow = {
   reference: string | null;
   recorded_by: string;
   created_at: string;
+  reconciled_at?: string | null;
+  reconciled_by?: string | null;
 };
 
 type StockTransferItemRow = {
@@ -714,6 +716,8 @@ export async function loadFullBusinessDataFromSupabase(businessId: string): Prom
       reference: payment.reference ?? undefined,
       recordedBy: payment.recorded_by,
       createdAt: payment.created_at,
+      reconciledAt: payment.reconciled_at ?? undefined,
+      reconciledBy: payment.reconciled_by ?? undefined,
     }));
 
     const mappedStockTransfers: StockTransfer[] = ((stockTransfers || []) as StockTransferRow[]).map((transfer) => ({

@@ -5172,3 +5172,23 @@ export function approveExpenseInState(current: BusinessState, input: ExpenseDeci
 export function rejectExpenseInState(current: BusinessState, input: ExpenseDecisionInput): ActionResult<BusinessState> {
   return decideExpenseInState(current, input, 'rejected');
 }
+
+export type SetPaymentReconciledInput = { paymentId: string; reconciled: boolean; reconciledByUserId: string };
+
+/** Mark a payment as matched to (or unmatched from) a bank/cash statement during reconciliation. */
+export function setPaymentReconciledInState(current: BusinessState, input: SetPaymentReconciledInput): ActionResult<BusinessState> {
+  const payment = current.payments.find((entry) => entry.id === input.paymentId);
+  if (!payment) return { ok: false, message: 'That payment could not be found.' };
+  const reconciledAt = input.reconciled ? new Date().toISOString() : undefined;
+  return {
+    ok: true,
+    data: {
+      ...current,
+      payments: current.payments.map((entry) =>
+        entry.id === payment.id
+          ? { ...entry, reconciledAt, reconciledBy: input.reconciled ? input.reconciledByUserId : undefined }
+          : entry,
+      ),
+    },
+  };
+}

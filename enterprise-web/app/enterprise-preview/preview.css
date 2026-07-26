@@ -527,6 +527,24 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .sale-impact-blocker { color: var(--danger); }
 .sale-impact-notice { color: #8a4b16; }
 
+/* Bank / cash reconciliation */
+.recon-accounts { margin: 12px 0 16px; flex-wrap: wrap; }
+.recon-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: end; margin-bottom: 16px; padding: 14px 16px; background: #f7f9f8; border: 1px solid var(--line); border-radius: 10px; }
+.recon-summary > div > span, .recon-statement > span { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 3px; }
+.recon-summary > div > strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.recon-statement { margin: 0; }
+.recon-statement input { min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-size: 14px; width: 100%; }
+.recon-diff strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.recon-diff--matched strong { color: var(--forest); }
+.recon-diff--off strong { color: var(--danger); }
+.recon-table th:first-child, .recon-table td:first-child { width: 56px; text-align: center; }
+.recon-table td:last-child, .recon-table th:last-child { text-align: right; }
+.recon-table input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--forest); }
+.recon-row--cleared td { background: var(--forest-soft); }
+.recon-in { color: var(--forest); font-variant-numeric: tabular-nums; font-weight: 600; }
+.recon-out { color: var(--danger); font-variant-numeric: tabular-nums; font-weight: 600; }
+@media (max-width: 820px) { .recon-summary { grid-template-columns: 1fr 1fr; } }
+
 .settings-panel-heading--sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .settings-panel-heading--sub h3 { font-size: 15px; margin: 0; }
 .settings-panel-heading--sub p { margin: 5px 0 0; color: var(--muted); font-size: 13px; max-width: 640px; }

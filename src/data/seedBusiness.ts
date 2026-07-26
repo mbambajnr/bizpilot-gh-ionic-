@@ -511,6 +511,9 @@ export type Payment = {
   reference?: string;
   recordedBy: string;
   createdAt: string;
+  /** When this movement was matched to a bank/cash statement during reconciliation. Unset = uncleared. */
+  reconciledAt?: string;
+  reconciledBy?: string;
 };
 
 export type CustomerLedgerEntry = {

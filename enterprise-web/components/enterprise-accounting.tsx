@@ -31,11 +31,12 @@ import { selectDashboardMetrics, selectSaleBalanceRemaining } from '../../src/se
 import { canApproveCategory, isCustomerOnCreditHold, selectCustomerOutstanding } from '../../src/utils/businessLogic';
 import { detectExpenseAnomalies, groupAnomaliesByExpense, type AnomalyCode, type ExpenseAnomaly } from '../../src/utils/anomalyDetection';
 import { forecastCollections, type CollectionForecast, type CollectionAction } from '../../src/utils/collectionsForecast';
+import { buildBankReconciliation, reconciliationDifference, type CashAccount } from '../../src/utils/bankReconciliation';
 import { formatCurrency, formatRelativeDate } from '../../src/utils/format';
 import { EnterpriseApp } from './enterprise-app';
 import { EnterpriseShell } from './enterprise-shell';
 
-type AccountingView = 'overview' | 'financials' | 'receivables' | 'credit' | 'payables' | 'expenses' | 'cash' | 'payments' | 'approvals' | 'close';
+type AccountingView = 'overview' | 'financials' | 'receivables' | 'credit' | 'payables' | 'expenses' | 'cash' | 'payments' | 'reconcile' | 'approvals' | 'close';
 
 const EXPENSE_CATEGORIES = ['General', 'Rent', 'Utility', 'Staff Wages', 'Transportation', 'Stock Purchase', 'Repairs', 'Marketing'];
 const PAYABLE_STATUS: Record<AccountsPayable['status'], { label: string; tone: 'neutral' | 'warn' | 'good' | 'risk' }> = {
@@ -52,7 +53,7 @@ export function EnterpriseAccounting() {
 }
 
 function AccountingWorkspace() {
-  const { state, currentUser, hasPermission, addExpense, approveExpense, rejectExpense, approvePayable, recordPayablePayment, closeAccountingPeriod, reopenAccountingPeriod, setCustomerCreditHold } = useBusiness();
+  const { state, currentUser, hasPermission, addExpense, approveExpense, rejectExpense, approvePayable, recordPayablePayment, closeAccountingPeriod, reopenAccountingPeriod, setCustomerCreditHold, setPaymentReconciled } = useBusiness();
   const canAccess = hasPermission('accounting.access');
   const canViewPayables = hasPermission('payables.view') || hasPermission('payables.manage') || hasPermission('payables.pay');
   const canApprovePayables = canApproveCategory(state, currentUser, 'payables', hasPermission);
@@ -74,6 +75,7 @@ function AccountingWorkspace() {
     if (segment === 'payables' && canViewPayables) return 'payables';
     if (segment === 'expenses' && (canViewExpenses || canCreateExpenses)) return 'expenses';
     if (segment === 'payments' && canViewPayments) return 'payments';
+    if (segment === 'reconcile' && canViewFinancials) return 'reconcile';
     if (segment === 'approvals') return 'approvals';
     return 'overview';
   });
@@ -191,6 +193,7 @@ function AccountingWorkspace() {
           {canViewSales ? <button className={view === 'cash' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('cash')}>Cash control {missingCashReferences.length ? `(${missingCashReferences.length})` : ''}</button> : null}
           {canViewPayments ? <button className={view === 'payments' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('payments')}>Payment ledger</button> : null}
           <button className={view === 'approvals' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('approvals')}>Approvals</button>
+          {canViewFinancials ? <button className={view === 'reconcile' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('reconcile')}>Reconciliation</button> : null}
           {canViewFinancials ? <button className={view === 'close' ? 'accounting-tab accounting-tab--active' : 'accounting-tab'} type="button" onClick={() => setView('close')}>Period close</button> : null}
         </nav>
 
@@ -203,6 +206,7 @@ function AccountingWorkspace() {
         {view === 'cash' && canViewSales ? <CashControl sales={todaysSales} customers={state.customers} currency={currency} missingReferenceCount={missingCashReferences.length} /> : null}
         {view === 'payments' && canViewPayments ? <PaymentLedger payments={state.payments} payables={state.accountsPayable} vendors={state.vendors} sales={state.sales} customers={state.customers} users={state.users} currency={currency} /> : null}
         {view === 'financials' && canViewFinancials ? <FinancialStatements state={state} currency={currency} /> : null}
+        {view === 'reconcile' && canViewFinancials ? <BankReconciliation state={state} currency={currency} onReconcile={(paymentId, reconciled) => { const result = setPaymentReconciled({ paymentId, reconciled }); if (!result.ok) setActionMessage(result.message); }} /> : null}
         {view === 'credit' && canManageCredit ? <CreditControl state={state} currency={currency} onToggleHold={(customerId, released) => { const result = setCustomerCreditHold({ customerId, released }); setActionMessage(result.message ?? (result.ok ? (released ? 'Credit hold released.' : 'Credit hold re-applied.') : 'Could not update the credit hold.')); }} /> : null}
         {view === 'approvals' ? <ApprovalsAudit payables={state.accountsPayable} purchases={state.purchases} transfers={state.stockTransfers} vendors={state.vendors} users={state.users} /> : null}
         {view === 'close' && canViewFinancials ? <PeriodClose closedPeriods={state.closedAccountingPeriods} pendingApprovalCount={pendingApprovalCount} missingCashReferences={missingCashReferences.length} openReceivables={openReceivables.length} onClose={(period) => { const result = closeAccountingPeriod({ period }); setActionMessage(result.message ?? (result.ok ? 'Period closed.' : 'Could not close the period.')); }} onReopen={(period) => { const result = reopenAccountingPeriod({ period }); setActionMessage(result.message ?? (result.ok ? 'Period reopened.' : 'Could not reopen the period.')); }} /> : null}
@@ -283,6 +287,29 @@ function CreditControl({ state, currency, onToggleHold }: { state: ReturnType<ty
   return <section className="accounting-wide-panel">
     <div className="accounting-panel-heading"><div><p className="eyebrow">Credit management</p><h2>Credit control</h2><p>Customers with a credit limit. A customer over their limit is held — no new credit sale goes through until you release the hold or they pay down.</p></div><span>{rows.filter((row) => row.onHold).length} on hold</span></div>
     <div className="accounting-table-wrap"><table className="financials-table"><thead><tr><th>Customer</th><th>Credit limit</th><th>Outstanding</th><th>Available</th><th>Status</th><th /></tr></thead><tbody>{rows.map((row) => <tr key={row.customer.id}><td>{row.customer.name}</td><td>{formatCurrency(row.limit, currency)}</td><td><strong className={row.over ? 'accounting-negative' : ''}>{formatCurrency(row.outstanding, currency)}</strong></td><td>{formatCurrency(Math.max(0, row.limit - row.outstanding), currency)}</td><td><span className={`payable-status payable-status--${row.onHold ? 'risk' : row.released ? 'warn' : 'good'}`}>{row.onHold ? 'On hold' : row.released ? 'Released' : 'Within limit'}</span></td><td>{row.onHold ? <button className="secondary-button" type="button" onClick={() => onToggleHold(row.customer.id, true)}>Release hold</button> : row.released ? <button className="secondary-button danger-button" type="button" onClick={() => onToggleHold(row.customer.id, false)}>Re-apply hold</button> : null}</td></tr>)}</tbody></table>{!rows.length ? <AccountingEmpty icon={ShieldCheck} title="No customers have a credit limit" detail="Set a credit limit on a customer account to enforce credit control on their sales." /> : null}</div>
+  </section>;
+}
+
+const RECON_SOURCE_LABELS: Record<CashAccount['movements'][number]['sourceType'], string> = { sale: 'Customer sale', invoice: 'Invoice payment', payable: 'Supplier payment', expense: 'Expense' };
+
+function BankReconciliation({ state, currency, onReconcile }: { state: ReturnType<typeof useBusiness>['state']; currency: string; onReconcile: (paymentId: string, reconciled: boolean) => void }) {
+  const accounts = buildBankReconciliation(state);
+  const [channel, setChannel] = useState<CashAccount['channel'] | undefined>(accounts[0]?.channel);
+  const [statements, setStatements] = useState<Record<string, string>>({});
+  const account = accounts.find((entry) => entry.channel === channel) ?? accounts[0];
+  if (!accounts.length) return <AccountingEmpty icon={Landmark} title="No payments to reconcile" detail="Customer receipts and supplier payments will appear here to match against your bank or cash statement." />;
+  const statementRaw = statements[account.channel] ?? '';
+  const difference = reconciliationDifference(account.clearedBalance, statementRaw.trim() ? Number(statementRaw) : undefined);
+  return <section className="accounting-wide-panel">
+    <div className="accounting-panel-heading"><div><p className="eyebrow">Cash &amp; bank</p><h2>Reconciliation</h2><p>Tick each recorded receipt or payment that appears on your bank or cash statement, then compare the cleared balance to the statement.</p></div><span>{account.unreconciledCount} uncleared</span></div>
+    <div className="payment-segments recon-accounts">{accounts.map((entry) => <button key={entry.channel} type="button" className={entry.channel === account.channel ? 'payment-segment payment-segment--active' : 'payment-segment'} onClick={() => setChannel(entry.channel)}>{entry.label} · {formatCurrency(entry.bookBalance, currency)}</button>)}</div>
+    <div className="recon-summary">
+      <div><span>Book balance</span><strong>{formatCurrency(account.bookBalance, currency)}</strong></div>
+      <div><span>Cleared balance</span><strong>{formatCurrency(account.clearedBalance, currency)}</strong></div>
+      <label className="form-field recon-statement"><span>Statement balance</span><input type="number" step="0.01" value={statementRaw} onChange={(event) => setStatements((current) => ({ ...current, [account.channel]: event.target.value }))} placeholder="Enter statement closing balance" /></label>
+      <div className={`recon-diff ${difference === 0 ? 'recon-diff--matched' : difference == null ? '' : 'recon-diff--off'}`}><span>Difference</span><strong>{difference == null ? '—' : difference === 0 ? 'Reconciled' : formatCurrency(difference, currency)}</strong></div>
+    </div>
+    <div className="accounting-table-wrap"><table className="expense-table recon-table"><thead><tr><th>Cleared</th><th>Date</th><th>Description</th><th>Reference</th><th>Amount</th></tr></thead><tbody>{account.movements.map((movement) => <tr key={movement.paymentId} className={movement.reconciled ? 'recon-row--cleared' : ''}><td><input type="checkbox" checked={movement.reconciled} onChange={(event) => onReconcile(movement.paymentId, event.target.checked)} aria-label={`Mark ${movement.reference || 'payment'} cleared`} /></td><td>{new Date(movement.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td><td>{RECON_SOURCE_LABELS[movement.sourceType]}</td><td>{movement.reference || '—'}</td><td className={movement.direction === 'in' ? 'recon-in' : 'recon-out'}>{movement.direction === 'in' ? '+' : '−'}{formatCurrency(movement.amount, currency)}</td></tr>)}</tbody></table></div>
   </section>;
 }
 
