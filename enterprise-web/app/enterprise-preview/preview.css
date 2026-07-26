@@ -490,6 +490,24 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .assistant-answer-rows li > small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .assistant-disclaimer { margin: 12px 0 0; color: var(--muted); font-size: 11px; }
 
+/* Customer statement of account */
+.statement-lines-heading { display: flex; align-items: baseline; justify-content: space-between; margin: 16px 0 8px; }
+.statement-lines-heading .eyebrow { margin: 0; }
+.statement-lines-heading span { color: var(--muted); font-size: 11px; }
+.statement-lines-wrap { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.statement-lines-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.statement-lines-table thead th { position: sticky; top: 0; z-index: 1; padding: 8px 10px; text-align: left; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; background: #f8faf9; border-bottom: 1px solid var(--line); }
+.statement-lines-table thead th:nth-child(3), .statement-lines-table thead th:nth-child(4) { text-align: right; }
+.statement-lines-table tbody td { padding: 9px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+.statement-lines-table tbody tr:first-child td { border-top: 0; }
+.statement-lines-table td:first-child { white-space: nowrap; color: var(--muted); }
+.statement-lines-table td strong { display: block; font-size: 12px; }
+.statement-lines-table td small { color: var(--muted); font-size: 11px; }
+.statement-amount { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
+.statement-amount--charge { color: var(--danger); }
+.statement-amount--credit { color: var(--forest); }
+.statement-balance { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 700; }
+
 .settings-panel-heading--sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .settings-panel-heading--sub h3 { font-size: 15px; margin: 0; }
 .settings-panel-heading--sub p { margin: 5px 0 0; color: var(--muted); font-size: 13px; max-width: 640px; }

@@ -27,9 +27,8 @@ import type { Customer, CustomerType } from '../../src/data/seedBusiness';
 import {
   selectCustomerBalance,
   selectCustomerLastPaymentLabel,
-  selectCustomerLedgerEntries,
   selectCustomerStatement,
-  selectLedgerEntryDisplay,
+  selectCustomerStatementLines,
   selectSaleBalanceRemaining,
 } from '../../src/selectors/businessSelectors';
 import { formatCurrency, formatRelativeDate } from '../../src/utils/format';
@@ -153,7 +152,7 @@ function CustomerInspector({ record, state, currency, canEdit, canEmail, canView
   const [section, setSection] = useState<'activity' | 'statement'>('activity');
   if (!record) return <aside className="customer-inspector customer-inspector--empty"><UserRound size={24} /><strong>Select a customer</strong><span>Account, contact, invoice, and ledger details will appear here.</span></aside>;
   const { customer, sales, balance, lifetimeValue } = record;
-  const ledger = selectCustomerLedgerEntries(state, customer.id);
+  const statementLines = selectCustomerStatementLines(state, customer.id);
   const statement = selectCustomerStatement(state, customer.id);
   const number = contactNumber(customer);
   const whatsappNumber = number.replace(/[^\d]/g, '');
@@ -173,8 +172,9 @@ function CustomerInspector({ record, state, currency, canEdit, canEmail, canView
     </div>
     <div className="customer-inspector-tabs"><button type="button" className={section === 'activity' ? 'is-active' : ''} onClick={() => setSection('activity')}>Invoices</button>{canViewLedger ? <button type="button" className={section === 'statement' ? 'is-active' : ''} onClick={() => setSection('statement')}>Statement</button> : null}</div>
     {section === 'activity' ? <div className="customer-invoice-history">{sales.slice(0, 6).map((sale) => { const due = selectSaleBalanceRemaining(sale); return <Link href={`/sales/${sale.id}`} key={sale.id}><FileText size={14} /><span><strong>{sale.invoiceNumber}</strong><small>{formatRelativeDate(sale.createdAt)} · {sale.paymentMethod}</small></span><span><b>{formatCurrency(sale.totalAmount, currency)}</b><small className={due ? 'customer-balance-due' : ''}>{due ? `${formatCurrency(due, currency)} due` : 'Paid'}</small></span></Link>;})}{!sales.length ? <p className="customer-inspector-empty">No invoices have been recorded for this customer.</p> : null}</div> : <div className="customer-statement">
-      <dl><div><dt>Opening balance</dt><dd>{formatCurrency(statement.openingBalance, currency)}</dd></div><div><dt>Invoice charges</dt><dd>{formatCurrency(statement.invoiceCharges, currency)}</dd></div><div><dt>Payments received</dt><dd>{formatCurrency(statement.paymentsReceived, currency)}</dd></div><div><dt>Closing balance</dt><dd>{formatCurrency(statement.closingBalance, currency)}</dd></div></dl>
-      <div className="customer-ledger-list">{ledger.slice(0, 6).map((entry) => { const display = selectLedgerEntryDisplay(entry); return <div key={entry.id}><i className={`customer-ledger-dot customer-ledger-dot--${display.tone}`} /><span><strong>{display.label}</strong><small>{entry.referenceNumber || entry.note} · {formatRelativeDate(entry.createdAt)}</small></span><b>{formatCurrency(Math.abs(entry.amountDelta), currency)}</b></div>;})}</div>
+      <dl><div><dt>Opening balance</dt><dd>{formatCurrency(statement.openingBalance, currency)}</dd></div><div><dt>Invoice charges</dt><dd>{formatCurrency(statement.invoiceCharges, currency)}</dd></div><div><dt>Payments received</dt><dd>{formatCurrency(statement.paymentsReceived, currency)}</dd></div><div><dt>Closing balance</dt><dd><strong>{formatCurrency(statement.closingBalance, currency)}</strong></dd></div></dl>
+      <div className="statement-lines-heading"><p className="eyebrow">Statement of account</p><span>{statementLines.length} entr{statementLines.length === 1 ? 'y' : 'ies'}</span></div>
+      {statementLines.length ? <div className="statement-lines-wrap"><table className="statement-lines-table"><thead><tr><th>Date</th><th>Details</th><th>Amount</th><th>Balance</th></tr></thead><tbody>{statementLines.map(({ entry, display, amountDelta, runningBalance }) => <tr key={entry.id}><td>{new Date(entry.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td><td><strong>{display.label}</strong><small>{entry.referenceNumber || entry.note || '—'}</small></td><td className={`statement-amount statement-amount--${amountDelta > 0 ? 'charge' : 'credit'}`}>{amountDelta > 0 ? '+' : '−'}{formatCurrency(Math.abs(amountDelta), currency)}</td><td className="statement-balance">{formatCurrency(runningBalance, currency)}</td></tr>)}</tbody></table></div> : <p className="customer-inspector-empty">No ledger activity recorded yet.</p>}
     </div>}
     {customer.taxExempt ? <div className="customer-tax-note"><ShieldCheck size={14} /><span><strong>Tax exempt</strong><small>{customer.taxExemptionReason || 'No exemption reason recorded'}</small></span></div> : null}
   </aside>;

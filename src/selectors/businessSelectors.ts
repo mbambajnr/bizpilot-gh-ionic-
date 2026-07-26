@@ -719,6 +719,30 @@ export function selectCustomerBalance(state: BusinessState, customerId: string) 
   return getSelectorAnalytics(state).customerBalanceById.get(customerId) ?? 0;
 }
 
+export type CustomerStatementLine = {
+  entry: CustomerLedgerEntry;
+  display: LedgerEntryDisplay;
+  /** Signed change to the customer balance (positive = charge, negative = payment/credit). */
+  amountDelta: number;
+  /** Balance carried after this entry, accumulated oldest-to-newest. */
+  runningBalance: number;
+};
+
+/**
+ * A customer's ledger as statement-of-account lines: oldest first, each carrying its display and the
+ * running balance after it. The final line's runningBalance equals the statement closing balance.
+ */
+export function selectCustomerStatementLines(state: BusinessState, customerId: string): CustomerStatementLine[] {
+  const entries = state.customerLedgerEntries
+    .filter((entry) => entry.customerId === customerId)
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+  let runningBalance = 0;
+  return entries.map((entry) => {
+    runningBalance += entry.amountDelta;
+    return { entry, display: selectLedgerEntryDisplay(entry), amountDelta: entry.amountDelta, runningBalance };
+  });
+}
+
 function formatRelativePaymentLabel(dateValue: string, paymentMethod: string) {
   const now = new Date();
   const createdAt = new Date(dateValue);
