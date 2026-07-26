@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { seedState } from '../data/seedBusiness';
 import type { AppPermission } from '../authz/types';
 import type { BusinessState, Expense } from '../data/seedBusiness';
-import { answerAssistant, availableAssistantIntents, matchAssistantIntent } from './assistant';
+import { answerAssistant, availableAssistantIntents, buildAssistantRoutingPrompt, matchAssistantIntent, resolveRoutedIntent } from './assistant';
 
 const NOW = Date.parse('2026-07-15T12:00:00.000Z');
 const hp = (perms: AppPermission[]) => (permission: AppPermission) => perms.includes(permission);
@@ -70,5 +70,23 @@ describe('role-scoped assistant', () => {
   it('never routes to an intent the role cannot use', () => {
     // Asking about expenses while only holding inventory access must not leak an expense intent.
     expect(matchAssistantIntent('any unusual expenses?', hp(['inventory.view']))).toBeNull();
+  });
+
+  it('builds a routing prompt listing only the available intents', () => {
+    const intents = availableAssistantIntents(hp(['expenses.view']));
+    const { system, prompt } = buildAssistantRoutingPrompt('what did I spend?', intents);
+    expect(system).toContain('one available report id');
+    expect(prompt).toContain('top_expenses:');
+    expect(prompt).toContain('Question: what did I spend?');
+    expect(prompt).not.toContain('stockout_risk'); // not available to this role
+  });
+
+  it('resolves a model reply back to an available intent and rejects NONE / unknowns', () => {
+    const intents = availableAssistantIntents(hp(['expenses.view']));
+    expect(resolveRoutedIntent('top_expenses', intents)?.id).toBe('top_expenses');
+    expect(resolveRoutedIntent('  The best is: expense_anomalies.', intents)?.id).toBe('expense_anomalies');
+    expect(resolveRoutedIntent('NONE', intents)).toBeNull();
+    expect(resolveRoutedIntent('stockout_risk', intents)).toBeNull(); // not in this role's set
+    expect(resolveRoutedIntent(null, intents)).toBeNull();
   });
 });

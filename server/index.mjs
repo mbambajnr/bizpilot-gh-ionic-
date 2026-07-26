@@ -19,6 +19,7 @@ import {
 } from './magento/client.mjs';
 import { createCorsPolicy, createSecurity } from './security.mjs';
 import { createStaticServer } from './static.mjs';
+import { createLlmProvider } from './ai/llmProvider.mjs';
 
 const host = process.env.HOST || process.env.EMAIL_SERVER_HOST || '127.0.0.1';
 const port = Number(process.env.PORT || process.env.EMAIL_SERVER_PORT || 8787);
@@ -27,6 +28,7 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const security = createSecurity();
 const applyCors = createCorsPolicy();
+const llm = createLlmProvider();
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist');
 const serveStatic = createStaticServer(distDir);
 
@@ -399,6 +401,41 @@ const server = http.createServer(async (request, response) => {
       json(response, 201, { ok: true, order });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Magento POS checkout failed.';
+      json(response, 502, { ok: false, message });
+    }
+    return;
+  }
+
+  // ---- Authenticated: provider-agnostic AI gateway ----
+
+  if (request.method === 'GET' && request.url === '/api/ai/health') {
+    if (!(await requireUser(request, response))) {
+      return;
+    }
+    json(response, 200, { ok: true, configured: llm.configured, provider: llm.provider, model: llm.model });
+    return;
+  }
+
+  if (request.method === 'POST' && request.url === '/api/ai/complete') {
+    if (!(await requireUser(request, response))) {
+      return;
+    }
+    if (!llm.configured) {
+      json(response, 503, { ok: false, message: 'No language model is configured on the server.' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(request);
+      const prompt = typeof body?.prompt === 'string' ? body.prompt.slice(0, 8000).trim() : '';
+      if (!prompt) {
+        json(response, 400, { ok: false, message: 'A prompt is required.' });
+        return;
+      }
+      const system = typeof body?.system === 'string' ? body.system.slice(0, 4000) : undefined;
+      const text = await llm.complete({ system, prompt, maxTokens: 512 });
+      json(response, 200, { ok: true, text });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The assistant is currently unavailable.';
       json(response, 502, { ok: false, message });
     }
     return;

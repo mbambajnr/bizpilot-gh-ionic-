@@ -1,7 +1,9 @@
 'use client';
 
-import { Building2, CheckCircle2, Cloud, LockKeyhole, Store, Users } from 'lucide-react';
-import { type FormEvent, useMemo, useState } from 'react';
+import { Building2, CheckCircle2, Cloud, LockKeyhole, Sparkles, Store, Users } from 'lucide-react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
+
+import { fetchAiStatus, type AiStatus } from '../../src/lib/aiClient';
 
 import { useBusiness } from '../../src/context/BusinessContext';
 import { getBusinessLaunchState } from '../../src/utils/businessLogic';
@@ -149,6 +151,7 @@ function EnterpriseSettingsView() {
           <div className="connections-grid">
             <section className="settings-panel connection-summary"><div className="settings-panel-heading"><div><p className="eyebrow">Data platform</p><h2>Supabase connection</h2></div><Cloud size={20} /></div><div className="connection-detail"><span className={`status-dot status-dot--${backendStatus.source}`} /><div><strong>{backendStatus.label}</strong><p>{backendStatus.detail}</p></div></div></section>
             <MagentoStatus />
+            <AiConnectionStatus />
           </div>
         ) : null}
         {section === 'security' ? <EmployeeSecuritySettings /> : null}
@@ -173,6 +176,21 @@ function profileToForm(profile: ReturnType<typeof useBusiness>['state']['busines
     expenseApprovalThreshold: profile.expenseApprovalThreshold != null ? String(profile.expenseApprovalThreshold) : '',
     payablesApprovalThreshold: profile.approvalThresholds?.payables != null ? String(profile.approvalThresholds.payables) : '',
   };
+}
+
+function AiConnectionStatus() {
+  const [status, setStatus] = useState<AiStatus | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAiStatus().then((result) => { if (!cancelled) { setStatus(result); setLoaded(true); } });
+    return () => { cancelled = true; };
+  }, []);
+  const configured = Boolean(status?.configured);
+  return <section className="settings-panel connection-summary">
+    <div className="settings-panel-heading"><div><p className="eyebrow">Assistant</p><h2>AI provider</h2></div><Sparkles size={20} /></div>
+    <div className="connection-detail"><span className={`status-dot status-dot--${configured ? 'supabase' : 'local'}`} /><div><strong>{!loaded ? 'Checking…' : configured ? `${status?.provider} · ${status?.model}` : 'Not configured'}</strong><p>{configured ? 'Free-text questions and model-refined insight are live.' : 'Set LLM_API_KEY (and provider/model) in .env.server to enable. The assistant runs in deterministic mode until then.'}</p></div></div>
+  </section>;
 }
 
 function StatusFact({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }

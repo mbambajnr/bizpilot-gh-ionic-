@@ -22,7 +22,8 @@ import { useBusiness } from '../../src/context/BusinessContext';
 import type { ActivityLogEntry } from '../../src/data/seedBusiness';
 import { selectRecentSales } from '../../src/selectors/businessSelectors';
 import { formatCurrency, formatRelativeDate } from '../../src/utils/format';
-import { answerAssistant, availableAssistantIntents, matchAssistantIntent, type AssistantAnswer } from '../../src/utils/assistant';
+import { answerAssistant, availableAssistantIntents, buildAssistantRoutingPrompt, matchAssistantIntent, resolveRoutedIntent, type AssistantAnswer } from '../../src/utils/assistant';
+import { aiComplete, fetchAiStatus, type AiStatus } from '../../src/lib/aiClient';
 import { buildRoleDashboardModel, type DashboardIconKey, type DashboardTone } from '../lib/role-dashboard';
 import { EnterpriseApp } from './enterprise-app';
 import { EnterpriseShell } from './enterprise-shell';
@@ -135,8 +136,17 @@ function RoleAssistant() {
   const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [thinking, setThinking] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAiStatus().then((status) => { if (!cancelled) setAiStatus(status); });
+    return () => { cancelled = true; };
+  }, []);
 
   if (!intents.length) return null;
+  const aiOn = Boolean(aiStatus?.configured);
 
   function ask(intentId: string) {
     const result = answerAssistant(state, intentId, hasPermission, now);
@@ -144,18 +154,28 @@ function RoleAssistant() {
     else { setAnswer(null); setActiveId(null); setNotice(result.message); }
   }
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const trimmed = query.trim();
     if (!trimmed) return;
+    // The model only routes the free-text question to a permission-scoped intent; the deterministic
+    // resolver still produces the answer. Fall back to the keyword matcher whenever AI is unavailable.
+    if (aiOn) {
+      setThinking(true);
+      const { system, prompt } = buildAssistantRoutingPrompt(trimmed, intents);
+      const reply = await aiComplete({ system, prompt });
+      setThinking(false);
+      const routed = resolveRoutedIntent(reply, intents);
+      if (routed) { ask(routed.id); return; }
+    }
     const intent = matchAssistantIntent(trimmed, hasPermission);
     if (intent) ask(intent.id);
     else { setAnswer(null); setActiveId(null); setNotice("I can't answer that one yet — try a suggested question below."); }
   }
 
   return <section className="assistant-panel">
-    <div className="panel-heading"><div><p className="eyebrow assistant-eyebrow"><Sparkles size={13} /> Ask BisaPilot</p><h2>Your assistant</h2></div><span>Read-only · respects your role</span></div>
-    <form className="assistant-ask" onSubmit={submit}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ask about cash, receivables, stock, or expenses…" aria-label="Ask BisaPilot" /><button className="primary-button" type="submit"><Send size={14} /> Ask</button></form>
+    <div className="panel-heading"><div><p className="eyebrow assistant-eyebrow"><Sparkles size={13} /> Ask BisaPilot</p><h2>Your assistant</h2></div><span>{aiOn ? `${aiStatus?.model} · read-only` : 'Read-only · respects your role'}</span></div>
+    <form className="assistant-ask" onSubmit={(event) => void submit(event)}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ask about cash, receivables, stock, or expenses…" aria-label="Ask BisaPilot" /><button className="primary-button" type="submit" disabled={thinking}><Send size={14} /> {thinking ? 'Thinking…' : 'Ask'}</button></form>
     <div className="assistant-suggestions">{intents.map((intent) => <button key={intent.id} type="button" className={activeId === intent.id ? 'assistant-chip assistant-chip--active' : 'assistant-chip'} onClick={() => { setQuery(''); ask(intent.id); }}>{intent.question}</button>)}</div>
     {notice ? <p className="assistant-notice">{notice}</p> : null}
     {answer ? <div className="assistant-answer"><div className="assistant-answer-head"><strong>{answer.title}</strong><span>{answer.summary}</span></div>{answer.rows.length ? <ul className="assistant-answer-rows">{answer.rows.map((row, index) => <li key={index}><span>{row.label}</span><b>{row.value}</b>{row.detail ? <small>{row.detail}</small> : null}</li>)}</ul> : null}<p className="assistant-disclaimer">Generated from your live data. Advisory only — the assistant never makes changes.</p></div> : null}

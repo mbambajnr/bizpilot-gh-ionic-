@@ -192,3 +192,24 @@ export function matchAssistantIntent(query: string, hasPermission: (permission: 
   }
   return bestScore > 0 ? best : null;
 }
+
+/**
+ * Build the prompt that asks a language model to route a free-text question to one available intent id.
+ * The model only chooses the tool; the deterministic resolver still produces the answer, so the model
+ * never touches the ledger — it orchestrates.
+ */
+export function buildAssistantRoutingPrompt(question: string, intents: AssistantIntent[]): { system: string; prompt: string } {
+  const catalogue = intents.map((intent) => `- ${intent.id}: ${intent.question}`).join('\n');
+  return {
+    system: 'You route a small-business owner\'s question to exactly one available report id. Reply with ONLY the id and nothing else. If none fit, reply NONE.',
+    prompt: `Available reports:\n${catalogue}\n\nQuestion: ${question}\n\nBest report id:`,
+  };
+}
+
+/** Map a model reply back to one of the role's available intents, or null when it does not match. */
+export function resolveRoutedIntent(reply: string | null, intents: AssistantIntent[]): AssistantIntent | null {
+  if (!reply) return null;
+  const token = reply.trim().toLowerCase().replace(/[^a-z_]/g, '');
+  if (!token || token === 'none') return null;
+  return intents.find((intent) => intent.id === token) ?? intents.find((intent) => token.includes(intent.id)) ?? null;
+}
