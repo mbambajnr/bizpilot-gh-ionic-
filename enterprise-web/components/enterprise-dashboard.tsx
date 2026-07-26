@@ -6,20 +6,23 @@ import {
   ClipboardList,
   FileText,
   PackageSearch,
+  Send,
   ShieldCheck,
   ShoppingCart,
+  Sparkles,
   Truck,
   Users,
   Warehouse,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
 import type { AppRole } from '../../src/authz/types';
 import { useBusiness } from '../../src/context/BusinessContext';
 import type { ActivityLogEntry } from '../../src/data/seedBusiness';
 import { selectRecentSales } from '../../src/selectors/businessSelectors';
 import { formatCurrency, formatRelativeDate } from '../../src/utils/format';
+import { answerAssistant, availableAssistantIntents, matchAssistantIntent, type AssistantAnswer } from '../../src/utils/assistant';
 import { buildRoleDashboardModel, type DashboardIconKey, type DashboardTone } from '../lib/role-dashboard';
 import { EnterpriseApp } from './enterprise-app';
 import { EnterpriseShell } from './enterprise-shell';
@@ -89,6 +92,8 @@ function EnterpriseDashboardView() {
         })}
       </section>
 
+      <RoleAssistant />
+
       <section className={showCommerce ? 'dashboard-grid' : 'dashboard-grid dashboard-grid--balanced'}>
         <div className="performance-panel role-queue-panel">
           <div className="panel-heading"><div><p className="eyebrow">Role worklist</p><h2>Priority queues</h2></div><span>{model.queues.length} monitored workflows</span></div>
@@ -120,6 +125,41 @@ function EnterpriseDashboardView() {
 function Metric({ label, value, note, tone }: { label: string; value: string; note: string; tone: DashboardTone }) {
   const stateLabel = tone === 'good' ? 'Live' : tone === 'risk' ? 'Action' : tone === 'warn' ? 'Review' : 'Current';
   return <article className="metric"><span>{label}</span><strong>{value}</strong><div className={`metric-change metric-change--${tone}`}><b>{stateLabel}</b><span>{note}</span></div></article>;
+}
+
+function RoleAssistant() {
+  const { state, hasPermission } = useBusiness();
+  const [now] = useState(() => Date.now());
+  const intents = useMemo(() => availableAssistantIntents(hasPermission), [hasPermission]);
+  const [query, setQuery] = useState('');
+  const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [notice, setNotice] = useState('');
+
+  if (!intents.length) return null;
+
+  function ask(intentId: string) {
+    const result = answerAssistant(state, intentId, hasPermission, now);
+    if (result.ok) { setAnswer(result.answer); setActiveId(intentId); setNotice(''); }
+    else { setAnswer(null); setActiveId(null); setNotice(result.message); }
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    const intent = matchAssistantIntent(trimmed, hasPermission);
+    if (intent) ask(intent.id);
+    else { setAnswer(null); setActiveId(null); setNotice("I can't answer that one yet — try a suggested question below."); }
+  }
+
+  return <section className="assistant-panel">
+    <div className="panel-heading"><div><p className="eyebrow assistant-eyebrow"><Sparkles size={13} /> Ask BizPilot</p><h2>Your assistant</h2></div><span>Read-only · respects your role</span></div>
+    <form className="assistant-ask" onSubmit={submit}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ask about cash, receivables, stock, or expenses…" aria-label="Ask BizPilot" /><button className="primary-button" type="submit"><Send size={14} /> Ask</button></form>
+    <div className="assistant-suggestions">{intents.map((intent) => <button key={intent.id} type="button" className={activeId === intent.id ? 'assistant-chip assistant-chip--active' : 'assistant-chip'} onClick={() => { setQuery(''); ask(intent.id); }}>{intent.question}</button>)}</div>
+    {notice ? <p className="assistant-notice">{notice}</p> : null}
+    {answer ? <div className="assistant-answer"><div className="assistant-answer-head"><strong>{answer.title}</strong><span>{answer.summary}</span></div>{answer.rows.length ? <ul className="assistant-answer-rows">{answer.rows.map((row, index) => <li key={index}><span>{row.label}</span><b>{row.value}</b>{row.detail ? <small>{row.detail}</small> : null}</li>)}</ul> : null}<p className="assistant-disclaimer">Generated from your live data. Advisory only — the assistant never makes changes.</p></div> : null}
+  </section>;
 }
 
 function RoleBrief({ role, queueCount, attentionCount, locationCount }: { role: AppRole; queueCount: number; attentionCount: number; locationCount: number }) {
