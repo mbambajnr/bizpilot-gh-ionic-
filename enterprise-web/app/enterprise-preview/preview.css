@@ -545,6 +545,33 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .recon-out { color: var(--danger); font-variant-numeric: tabular-nums; font-weight: 600; }
 @media (max-width: 820px) { .recon-summary { grid-template-columns: 1fr 1fr; } }
 
+/* Sale fulfilment lifecycle */
+.fulfilment-panel { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.fulfilment-panel > .purchase-section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.fulfilment-panel .purchase-section-heading > div { display: flex; align-items: center; gap: 8px; }
+.fulfilment-badge { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.fulfilment-badge--idle { color: var(--muted); background: #f1f3f2; }
+.fulfilment-badge--active { color: #8a4b16; background: #fdf4e7; }
+.fulfilment-badge--done { color: var(--forest); background: var(--forest-soft); }
+.fulfilment-badge--failed { color: var(--danger); background: #fbeaea; }
+.fulfilment-empty { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.fulfilment-steps { list-style: none; display: flex; gap: 6px; margin: 0 0 12px; padding: 0; }
+.fulfilment-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; position: relative; }
+.fulfilment-step i { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: #f1f3f2; color: var(--muted); font-size: 11px; font-weight: 700; font-style: normal; border: 1px solid var(--line); }
+.fulfilment-step span { font-size: 10px; color: var(--muted); text-align: center; }
+.fulfilment-step.is-done i { background: var(--forest); color: #fff; border-color: var(--forest); }
+.fulfilment-step.is-current i { background: var(--gold, #c9a23a); color: #fff; border-color: var(--gold, #c9a23a); }
+.fulfilment-step.is-current span { color: var(--ink); font-weight: 700; }
+.fulfilment-pod { display: flex; align-items: center; gap: 6px; color: var(--forest); font-size: 12px; margin: 0 0 8px; }
+.fulfilment-owner { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+.fulfilment-error { display: flex; align-items: center; gap: 6px; color: var(--danger); font-size: 12px; margin: 8px 0 0; }
+.fulfilment-timeline { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; }
+.fulfilment-timeline > div { display: flex; align-items: flex-start; gap: 9px; }
+.fulfilment-timeline i { flex-shrink: 0; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--forest); }
+.fulfilment-timeline strong { display: block; font-size: 12px; }
+.fulfilment-timeline small { color: var(--muted); font-size: 11px; }
+.fulfilment-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
 .settings-panel-heading--sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .settings-panel-heading--sub h3 { font-size: 15px; margin: 0; }
 .settings-panel-heading--sub p { margin: 5px 0 0; color: var(--muted); font-size: 13px; max-width: 640px; }

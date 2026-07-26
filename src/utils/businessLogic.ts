@@ -1674,6 +1674,7 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     expenses: (raw.expenses ?? []).map((expense) => ({ ...expense, status: expense.status ?? 'auto_approved' })),
     approvalDelegations: raw.approvalDelegations ?? [],
     closedAccountingPeriods: raw.closedAccountingPeriods ?? [],
+    fulfilments: raw.fulfilments ?? [],
     themePreference: raw.themePreference ?? 'system',
   };
 }

@@ -125,6 +125,7 @@ import {
   setCustomerCreditHoldInState,
   setPaymentReconciledInState,
 } from '../utils/businessLogic';
+import { startFulfilmentInState, advanceFulfilmentInState, assignFulfilmentInState, type AdvanceFulfilmentInput } from '../utils/fulfilment';
 import type { ApprovalDelegationCategory } from '../data/seedBusiness';
 // Offline-resilient wrappers: identical behavior online; when the network is
 // down, writes are captured in a durable queue and replayed on reconnect.
@@ -218,6 +219,9 @@ type BusinessContextValue = {
   updateCustomer: (input: UpdateCustomerInput) => ActionResult;
   setCustomerCreditHold: (input: { customerId: string; released: boolean }) => ActionResult;
   setPaymentReconciled: (input: { paymentId: string; reconciled: boolean }) => ActionResult;
+  startFulfilment: (input: { saleId: string }) => ActionResult;
+  advanceFulfilment: (input: Omit<AdvanceFulfilmentInput, 'byUserId' | 'byName'>) => ActionResult;
+  assignFulfilment: (input: { fulfilmentId: string; assignToUserId: string; assignToName: string }) => ActionResult;
   updateCustomerStatus: (input: UpdateCustomerStatusInput) => ActionResult;
   updateBusinessProfile: (input: UpdateBusinessProfileInput) => Promise<ActionResult>;
   launchBusinessWorkspace: (input?: LaunchBusinessWorkspaceInput) => Promise<ActionResult>;
@@ -1019,6 +1023,36 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         }
         const result = setPaymentReconciledInState(stateRef.current, { ...input, reconciledByUserId: currentUser.userId });
         if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not update the reconciliation.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      startFulfilment(input) {
+        if (!hasPermission(currentUser, 'fulfilment.manage')) {
+          return { ok: false, message: 'You are not authorized to manage fulfilment.' };
+        }
+        const result = startFulfilmentInState(stateRef.current, { saleId: input.saleId, byUserId: currentUser.userId, byName: currentUser.name });
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not start fulfilment.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      advanceFulfilment(input) {
+        if (!hasPermission(currentUser, 'fulfilment.manage')) {
+          return { ok: false, message: 'You are not authorized to manage fulfilment.' };
+        }
+        const result = advanceFulfilmentInState(stateRef.current, { ...input, byUserId: currentUser.userId, byName: currentUser.name });
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not update the fulfilment.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      assignFulfilment(input) {
+        if (!hasPermission(currentUser, 'fulfilment.manage')) {
+          return { ok: false, message: 'You are not authorized to manage fulfilment.' };
+        }
+        const result = assignFulfilmentInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not assign the fulfilment.' };
         stateRef.current = result.data;
         setState(result.data);
         return { ok: true };

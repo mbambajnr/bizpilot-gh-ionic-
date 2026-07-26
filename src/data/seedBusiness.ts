@@ -625,6 +625,38 @@ export type AppNotification = {
   actionUrl?: string;
 };
 
+/** Physical fulfilment pipeline for a completed sale. "Unfulfilled" is the implicit state with no record. */
+export type FulfilmentStatus = 'picking' | 'packed' | 'dispatched' | 'delivered' | 'failed';
+
+export type FulfilmentEvent = {
+  status: FulfilmentStatus;
+  at: string;
+  byUserId: string;
+  byName: string;
+  note?: string;
+};
+
+export type ProofOfDelivery = {
+  recipientName: string;
+  note?: string;
+  capturedAt: string;
+  capturedByName: string;
+};
+
+export type Fulfilment = {
+  id: string;
+  saleId: string;
+  status: FulfilmentStatus;
+  /** Employee who owns moving this delivery forward. */
+  assignedToUserId?: string;
+  assignedToName?: string;
+  events: FulfilmentEvent[];
+  proofOfDelivery?: ProofOfDelivery;
+  failureReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type BusinessState = {
   businessProfile: BusinessProfile;
   locations: BusinessLocation[];
@@ -651,6 +683,7 @@ export type BusinessState = {
   expenses: Expense[];
   approvalDelegations: ApprovalDelegation[];
   closedAccountingPeriods: ClosedAccountingPeriod[];
+  fulfilments: Fulfilment[];
   themePreference: 'system' | 'light' | 'dark';
 };
 
@@ -938,6 +971,7 @@ export const seedState: BusinessState = {
   ],
   approvalDelegations: [],
   closedAccountingPeriods: [],
+  fulfilments: [],
   themePreference: 'system',
 };
 

@@ -20,6 +20,8 @@ export type AppPermission =
   | 'quotations.create'
   | 'quotations.convert'
   | 'invoices.view'
+  | 'fulfilment.view'
+  | 'fulfilment.manage'
   | 'inventory.view'
   | 'inventory.create'
   | 'inventory.edit'
