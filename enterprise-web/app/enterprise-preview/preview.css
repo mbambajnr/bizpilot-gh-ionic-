@@ -572,6 +572,25 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .fulfilment-timeline small { color: var(--muted); font-size: 11px; }
 .fulfilment-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
+/* Printable credit note document */
+.credit-note-line-table { width: 100%; border-collapse: collapse; margin: 22px 0 0; font-size: 13px; }
+.credit-note-line-table thead th { text-align: left; padding: 9px 12px; background: #f8faf9; border-bottom: 1.5px solid var(--line-strong, var(--line)); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+.credit-note-line-table thead th:nth-child(3), .credit-note-line-table thead th:nth-child(4), .credit-note-line-table thead th:nth-child(5) { text-align: right; }
+.credit-note-line-table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.credit-note-line-table tbody td:nth-child(3), .credit-note-line-table tbody td:nth-child(4), .credit-note-line-table tbody td:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
+.credit-note-line-table td strong { display: block; font-size: 13px; }
+.credit-note-line-table td span { color: var(--muted); font-size: 11px; }
+.credit-note-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, auto); gap: 28px; margin: 22px 0; align-items: start; }
+.credit-note-reason p { margin: 0 0 5px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+.credit-note-reason span { font-size: 13px; line-height: 1.5; }
+.credit-note-totals { margin: 0; }
+.credit-note-totals > div { display: flex; justify-content: space-between; gap: 24px; padding: 6px 0; font-size: 13px; }
+.credit-note-totals dt { color: var(--muted); }
+.credit-note-totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+.credit-note-totals .credit-note-total { border-top: 1.5px solid var(--line-strong, var(--line)); margin-top: 4px; padding-top: 10px; font-weight: 700; }
+.credit-note-totals .credit-note-total dt, .credit-note-totals .credit-note-total dd { color: var(--ink); font-size: 15px; }
+@media (max-width: 720px) { .credit-note-summary { grid-template-columns: 1fr; } }
+
 .settings-panel-heading--sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .settings-panel-heading--sub h3 { font-size: 15px; margin: 0; }
 .settings-panel-heading--sub p { margin: 5px 0 0; color: var(--muted); font-size: 13px; max-width: 640px; }
