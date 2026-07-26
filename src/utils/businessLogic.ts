@@ -1067,6 +1067,14 @@ function toSaleAuditEvents(activityEntries: ActivityLogEntry[]): SaleAuditEvent[
     }));
 }
 
+/** Keep only positive per-type thresholds; return undefined when none are set so the field stays clean. */
+function normalizeApprovalThresholds(input?: BusinessProfile['approvalThresholds']): BusinessProfile['approvalThresholds'] {
+  const payables = input?.payables != null && input.payables > 0 ? input.payables : undefined;
+  const expenses = input?.expenses != null && input.expenses > 0 ? input.expenses : undefined;
+  if (payables == null && expenses == null) return undefined;
+  return { ...(payables != null ? { payables } : {}), ...(expenses != null ? { expenses } : {}) };
+}
+
 function ensureBusinessProfile(profile?: Partial<BusinessProfile>): BusinessProfile {
   return {
     id: profile?.id ?? 'biz-001',
@@ -1098,6 +1106,7 @@ function ensureBusinessProfile(profile?: Partial<BusinessProfile>): BusinessProf
       profile?.expenseApprovalThreshold != null && profile.expenseApprovalThreshold > 0
         ? profile.expenseApprovalThreshold
         : undefined,
+    approvalThresholds: normalizeApprovalThresholds(profile?.approvalThresholds),
     launchedAt: profile?.launchedAt?.trim() || undefined,
   };
 }
@@ -2159,6 +2168,7 @@ export function updateBusinessProfileInState(current: BusinessState, input: Upda
       input.expenseApprovalThreshold != null && input.expenseApprovalThreshold > 0
         ? input.expenseApprovalThreshold
         : undefined,
+    approvalThresholds: normalizeApprovalThresholds(input.approvalThresholds ?? current.businessProfile.approvalThresholds),
   };
   const createdAt = new Date().toISOString();
 
@@ -2726,6 +2736,10 @@ export function createPayableFromPurchaseInState(current: BusinessState, input: 
   }
 
   const createdAt = new Date().toISOString();
+  // Configurable approval routing: a bill below the payables threshold is auto-approved. An unset
+  // threshold keeps the default where every bill requires approval.
+  const payablesThreshold = current.businessProfile.approvalThresholds?.payables;
+  const autoApprove = payablesThreshold != null && payablesThreshold > 0 && purchase.totalAmount < payablesThreshold;
   const payable: AccountsPayable = {
     id: crypto.randomUUID(),
     payableCode: nextPayableCode(current.accountsPayable),
@@ -2736,7 +2750,8 @@ export function createPayableFromPurchaseInState(current: BusinessState, input: 
     amountPaid: 0,
     balance: purchase.totalAmount,
     dueDate: input.dueDate?.trim() || undefined,
-    status: 'pendingReview',
+    status: autoApprove ? 'approved' : 'pendingReview',
+    approvedBy: autoApprove ? 'system' : undefined,
     createdBy: input.createdBy,
     createdAt,
     updatedAt: createdAt,
@@ -2752,8 +2767,10 @@ export function createPayableFromPurchaseInState(current: BusinessState, input: 
           entityType: 'business',
           entityId: payable.id,
           actionType: 'payable_created',
-          title: 'Payable created',
-          detail: `${payable.payableCode} was created from ${purchase.purchaseCode}.`,
+          title: autoApprove ? 'Payable auto-approved' : 'Payable created',
+          detail: autoApprove
+            ? `${payable.payableCode} from ${purchase.purchaseCode} was auto-approved (below the approval threshold).`
+            : `${payable.payableCode} was created from ${purchase.purchaseCode}.`,
           status: 'success',
           createdAt,
           referenceNumber: payable.payableCode,
@@ -5077,7 +5094,7 @@ export function addExpenseToState(
   }
 
   const createdAt = new Date().toISOString();
-  const threshold = current.businessProfile.expenseApprovalThreshold;
+  const threshold = current.businessProfile.approvalThresholds?.expenses ?? current.businessProfile.expenseApprovalThreshold;
   const requiresApproval = threshold != null && threshold > 0 && input.amount >= threshold;
   const expense: Expense = {
     id: `exp-${crypto.randomUUID()}`,

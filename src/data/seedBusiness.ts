@@ -64,6 +64,15 @@ export type BusinessProfile = {
   defaultWithholdingTaxBasis: WithholdingTaxBasis;
   /** Expenses at or above this amount must be approved before posting. 0 or undefined = every expense is auto-approved. */
   expenseApprovalThreshold?: number;
+  /**
+   * Per-document-type approval thresholds. A document at or above its threshold routes to approval; below
+   * it, it is auto-approved. `expenses` supersedes the legacy `expenseApprovalThreshold` when set. For
+   * `payables`, an unset value keeps the default behaviour where every bill requires approval.
+   */
+  approvalThresholds?: {
+    payables?: number;
+    expenses?: number;
+  };
   launchedAt?: string;
 };
 

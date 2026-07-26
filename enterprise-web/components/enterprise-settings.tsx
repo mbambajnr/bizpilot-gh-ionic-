@@ -55,7 +55,8 @@ function EnterpriseSettingsView() {
     event.preventDefault();
     setSaving(true);
     setMessage('');
-    const result = await updateBusinessProfile({ ...activeForm, website: activeForm.website.trim() || undefined, expenseApprovalThreshold: activeForm.expenseApprovalThreshold.trim() ? Number(activeForm.expenseApprovalThreshold) : undefined });
+    const { payablesApprovalThreshold, ...profileForm } = activeForm;
+    const result = await updateBusinessProfile({ ...profileForm, website: activeForm.website.trim() || undefined, expenseApprovalThreshold: activeForm.expenseApprovalThreshold.trim() ? Number(activeForm.expenseApprovalThreshold) : undefined, approvalThresholds: { payables: payablesApprovalThreshold.trim() ? Number(payablesApprovalThreshold) : undefined } });
     if (result.ok) setEdited(false);
     setMessage(result.message ?? (result.ok ? 'Business profile saved.' : 'The business profile could not be saved.'));
     setSaving(false);
@@ -132,9 +133,10 @@ function EnterpriseSettingsView() {
               <Field label="Website" type="url" value={activeForm.website} disabled={!canEdit} onChange={(value) => updateForm({ website: value })} />
               <label className="form-field form-field--wide"><span>Business address</span><textarea value={activeForm.address} disabled={!canEdit} onChange={(event) => updateForm({ address: event.target.value })} /></label>
             </div>
-            <div className="settings-panel-heading settings-panel-heading--sub"><div><p className="eyebrow">Financial controls</p><h3>Expense approval</h3><p>Expenses at or above this amount route to the General Manager for approval before they post. Leave blank to auto-approve every expense.</p></div></div>
+            <div className="settings-panel-heading settings-panel-heading--sub"><div><p className="eyebrow">Financial controls</p><h3>Approval rules</h3><p>A document at or above its threshold routes for approval before it posts. Leave a threshold blank to auto-approve every document of that type; leave the supplier bill threshold blank to keep requiring approval on every bill.</p></div></div>
             <div className="form-grid">
               <Field label={`Expense approval threshold (${activeForm.currency || 'GHS'})`} type="number" value={activeForm.expenseApprovalThreshold} disabled={!canEdit} onChange={(value) => updateForm({ expenseApprovalThreshold: value })} />
+              <Field label={`Supplier bill approval threshold (${activeForm.currency || 'GHS'})`} type="number" value={activeForm.payablesApprovalThreshold} disabled={!canEdit} onChange={(value) => updateForm({ payablesApprovalThreshold: value })} />
             </div>
             {canEdit ? <div className="form-actions"><button type="submit" className="primary-button" disabled={saving}>{saving ? 'Saving...' : 'Save business details'}</button></div> : null}
           </form>
@@ -169,6 +171,7 @@ function profileToForm(profile: ReturnType<typeof useBusiness>['state']['busines
     website: profile.website ?? '',
     waybillPrefix: profile.waybillPrefix,
     expenseApprovalThreshold: profile.expenseApprovalThreshold != null ? String(profile.expenseApprovalThreshold) : '',
+    payablesApprovalThreshold: profile.approvalThresholds?.payables != null ? String(profile.approvalThresholds.payables) : '',
   };
 }
 
