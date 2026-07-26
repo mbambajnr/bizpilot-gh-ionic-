@@ -3,12 +3,12 @@ import type { BusinessState, Expense } from '../data/seedBusiness';
 /**
  * Deterministic, explainable anomaly signals for expenses.
  *
- * This is the first capability of BizPilot's governed "propose -> approve" AI layer. It is intentionally
+ * This is the first capability of BisaPilot's governed "propose -> approve" AI layer. It is intentionally
  * rule/statistics based rather than generative: every flag carries a plain-language `reason`, the output
  * is stable for the same input, and it never mutates state. Flags are advisory only — a human still
  * approves or rejects each expense through the existing approval gates.
  *
- * It is structured so a server-side LLM scorer (behind the BizPilot proxy) can later contribute an
+ * It is structured so a server-side LLM scorer (behind the BisaPilot proxy) can later contribute an
  * additional `ExpenseAnomaly` for the same expense without changing this contract or the UI.
  */
 

@@ -150,7 +150,7 @@ function EnterpriseProcurementView() {
   function openReorderDraft(item: MagentoReorderItem) {
     const product = state.products.find((entry) => entry.inventoryId.toLowerCase() === item.sku.toLowerCase());
     if (!product) {
-      setActionMessage(`${item.sku} is not mapped to a BizPilot inventory item yet.`);
+      setActionMessage(`${item.sku} is not mapped to a BisaPilot inventory item yet.`);
       return;
     }
     setComposerPrefill({ productId: product.id, quantity: item.suggested_reorder || 1 });

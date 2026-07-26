@@ -78,10 +78,10 @@ function AuthForm() {
 
   return (
     <main className={styles.shell}>
-      <section className={styles.brandPanel} aria-label="BizPilot Enterprise">
+      <section className={styles.brandPanel} aria-label="BisaPilot Enterprise">
         <div className={styles.brand}>
           <span className={styles.mark}>BP</span>
-          <span><strong>BizPilot</strong><small>Enterprise</small></span>
+          <span><strong>BisaPilot</strong><small>Enterprise</small></span>
         </div>
         <div className={styles.promise}>
           <p className={styles.eyebrow}>One operating workspace</p>
@@ -121,7 +121,7 @@ function AuthForm() {
             {!isConfigured ? <p className={styles.connection}><b>Employee access remains available.</b> Connect Supabase to enable owner sign-in, registration, and password recovery.</p> : null}
           </form>
         </div>
-        <footer>Protected enterprise workspace <span>•</span> BizPilot Ghana</footer>
+        <footer>Protected enterprise workspace <span>•</span> BisaPilot Ghana</footer>
       </section>
     </main>
   );

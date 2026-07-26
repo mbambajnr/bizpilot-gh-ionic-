@@ -97,7 +97,7 @@ async function syncEmployeeWorkflow(user: UserAccessProfile, workflowType: strin
 }
 
 /**
- * Generic sync helper for BizPilot entities.
+ * Generic sync helper for BisaPilot entities.
  * Follows an 'upsert' pattern (ID-based insert or update).
  * Returns true if sync successful or skipped (no config), false on error.
  */

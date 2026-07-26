@@ -85,5 +85,5 @@ function AccessState({ icon: Icon, eyebrow, title, detail, href, action }: { ico
     router.replace('/auth');
   }
 
-  return <main className="enterprise-access-page"><section className="enterprise-access-panel"><i><Icon size={23} /></i><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{detail}</p>{href && action ? <Link className="primary-button" href={href}>{action} <ArrowRight size={15} /></Link> : null}<button type="button" className="access-sign-out" onClick={() => void handleSignOut()}><LogOut size={15} /> Sign out</button><small>Contact your BizPilot administrator if your responsibilities have changed.</small></section></main>;
+  return <main className="enterprise-access-page"><section className="enterprise-access-panel"><i><Icon size={23} /></i><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{detail}</p>{href && action ? <Link className="primary-button" href={href}>{action} <ArrowRight size={15} /></Link> : null}<button type="button" className="access-sign-out" onClick={() => void handleSignOut()}><LogOut size={15} /> Sign out</button><small>Contact your BisaPilot administrator if your responsibilities have changed.</small></section></main>;
 }

@@ -69,7 +69,7 @@ export function getMagentoIntegrationStatus() {
 export async function fetchMagentoCatalog() {
   const config = getConfig();
   if (!config.baseUrl || !config.accessToken) {
-    throw new Error('Magento integration is not configured on the BizPilot server.');
+    throw new Error('Magento integration is not configured on the BisaPilot server.');
   }
 
   const controller = new AbortController();
@@ -116,7 +116,7 @@ export async function fetchMagentoCatalog() {
 export async function fetchMagentoStock() {
   const config = getConfig();
   if (!config.baseUrl || !config.accessToken) {
-    throw new Error('Magento integration is not configured on the BizPilot server.');
+    throw new Error('Magento integration is not configured on the BisaPilot server.');
   }
   const payload = await magentoRequest('/V1/custom-storefront/pos/stock');
   if (!payload || !Array.isArray(payload.items)) {
@@ -132,7 +132,7 @@ export async function fetchMagentoStock() {
 export async function initiateMagentoMomo(input) {
   const config = getConfig();
   if (!config.baseUrl || !config.accessToken) {
-    throw new Error('Magento integration is not configured on the BizPilot server.');
+    throw new Error('Magento integration is not configured on the BisaPilot server.');
   }
   return magentoRequest('/V1/custom-storefront/pos/sale/momo/initiate', {
     method: 'POST',
@@ -155,7 +155,7 @@ export async function initiateMagentoMomo(input) {
 export async function fetchMagentoReorder(days) {
   const config = getConfig();
   if (!config.baseUrl || !config.accessToken) {
-    throw new Error('Magento integration is not configured on the BizPilot server.');
+    throw new Error('Magento integration is not configured on the BisaPilot server.');
   }
   const query = Number.isFinite(days) && days > 0 ? `?days=${Math.floor(days)}` : '';
   const payload = await magentoRequest('/V1/custom-storefront/pos/reorder' + query);
@@ -168,12 +168,12 @@ export async function fetchMagentoReorder(days) {
 /**
  * Recent Magento orders for the enterprise activity feed. Keep the response
  * deliberately narrow so payment details and raw Magento extension data never
- * cross the BizPilot server boundary.
+ * cross the BisaPilot server boundary.
  */
 export async function fetchMagentoActivity(limit = 8) {
   const config = getConfig();
   if (!config.baseUrl || !config.accessToken) {
-    throw new Error('Magento integration is not configured on the BizPilot server.');
+    throw new Error('Magento integration is not configured on the BisaPilot server.');
   }
 
   const pageSize = Math.min(Math.max(Number(limit) || 8, 1), 20);
@@ -209,7 +209,7 @@ export async function fetchMagentoActivity(limit = 8) {
 export async function getMagentoMomoStatus(clientRef) {
   const config = getConfig();
   if (!config.baseUrl || !config.accessToken) {
-    throw new Error('Magento integration is not configured on the BizPilot server.');
+    throw new Error('Magento integration is not configured on the BisaPilot server.');
   }
   return magentoRequest('/V1/custom-storefront/pos/sale/momo/status/' + encodeURIComponent(clientRef));
 }
@@ -217,7 +217,7 @@ export async function getMagentoMomoStatus(clientRef) {
 export async function createMagentoPosOrder(input) {
   const config = getConfig();
   if (!config.baseUrl || !config.accessToken) {
-    throw new Error('Magento integration is not configured on the BizPilot server.');
+    throw new Error('Magento integration is not configured on the BisaPilot server.');
   }
 
   // One idempotent call: Magento validates the branch, SKUs and quantities,

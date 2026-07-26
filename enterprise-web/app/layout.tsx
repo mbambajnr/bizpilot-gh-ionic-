@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import './workflow.css';
 
 export const metadata: Metadata = {
-  title: 'BizPilot Enterprise',
+  title: 'BisaPilot Enterprise',
   description: 'Enterprise operations, inventory, finance, and commerce control.',
 };
 

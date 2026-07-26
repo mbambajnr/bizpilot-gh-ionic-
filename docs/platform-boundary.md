@@ -1,6 +1,6 @@
-# BizPilot platform boundary
+# BisaPilot platform boundary
 
-BizPilot has two delivery targets that share business logic and data contracts but do not share a browser shell.
+BisaPilot has two delivery targets that share business logic and data contracts but do not share a browser shell.
 
 ## Enterprise web
 

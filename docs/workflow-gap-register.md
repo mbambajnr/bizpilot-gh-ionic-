@@ -1,4 +1,4 @@
-# BizPilot workflow gap register
+# BisaPilot workflow gap register
 
 This register tracks end-to-end enterprise workflows across the Next.js web application, Ionic mobile applications, shared business engine, Supabase persistence, and external commerce integrations.
 

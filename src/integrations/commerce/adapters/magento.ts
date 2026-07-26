@@ -77,7 +77,7 @@ export function magentoOrderToCommerce(order: MagentoPosOrder): CommerceOrder {
   };
 }
 
-// --- Adapter (I/O via the BizPilot server proxy) ---
+// --- Adapter (I/O via the BisaPilot server proxy) ---
 
 export function createMagentoAdapter(deps: {
   loadCatalog?: typeof loadMagentoCatalog;

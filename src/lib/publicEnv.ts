@@ -2,14 +2,14 @@ type ViteImportMeta = ImportMeta & {
   env?: Record<string, string | undefined>;
 };
 
-type BizPilotRuntimeEnv = {
+type BisaPilotRuntimeEnv = {
   supabaseUrl?: string;
   supabasePublishableKey?: string;
   apiBaseUrl?: string;
 };
 
 declare global {
-  var __BIZPILOT_PUBLIC_ENV__: BizPilotRuntimeEnv | undefined;
+  var __BIZPILOT_PUBLIC_ENV__: BisaPilotRuntimeEnv | undefined;
 }
 
 const viteEnv = (import.meta as ViteImportMeta).env;

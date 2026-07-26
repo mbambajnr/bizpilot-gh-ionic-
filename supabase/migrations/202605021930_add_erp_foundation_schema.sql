@@ -1,4 +1,4 @@
--- BizPilot ERP foundation schema alignment
+-- BisaPilot ERP foundation schema alignment
 -- Brings Supabase up to the current local-first ERP data model.
 
 alter table public.business_locations

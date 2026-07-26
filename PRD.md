@@ -1,11 +1,11 @@
   
 ───  
-BizPilot Product Requirements Document (Final Product)  
+BisaPilot Product Requirements Document (Final Product)  
 1\. Product Name  
-**BizPilot**  
+**BisaPilot**  
 2\. Product Vision  
-BizPilot is a mobile-first business operating system for your scaling partner in Africa, starting with Ghana, designed to help merchants, retailers, distributors, and service-led SMEs manage sales, inventory, customer balances, quotations, payments, receipts, and operational visibility from one simple platform.  
-BizPilot is built to give small businesses the structure of an ERP without the complexity of enterprise software.  
+BisaPilot is a mobile-first business operating system for your scaling partner in Africa, starting with Ghana, designed to help merchants, retailers, distributors, and service-led SMEs manage sales, inventory, customer balances, quotations, payments, receipts, and operational visibility from one simple platform.  
+BisaPilot is built to give small businesses the structure of an ERP without the complexity of enterprise software.  
 3\. Product Mission  
 Enable African small businesses to run daily operations with confidence using a simple, fast, mobile-first system that tracks stock, sales, receivables, payments, and business performance in real time.  
 4\. Problem Statement  
@@ -26,7 +26,7 @@ This leads to:
 • weak reporting  
 • difficulty scaling operations  
 Existing ERP tools are often too expensive, too complex, desktop-heavy, or poorly adapted for the workflow realities of African SMEs.  
-BizPilot solves this by providing an operational system that is:  
+BisaPilot solves this by providing an operational system that is:  
 • mobile-first  
 • easy to use  
 • structured like a business system  
@@ -41,7 +41,7 @@ Primary goals
 • reduce dependence on manual bookkeeping  
 • create an upgrade path from informal business management to structured digital operations  
 Business goals  
-• establish BizPilot as a trusted SME operations platform  
+• establish BisaPilot as a trusted SME operations platform  
 • achieve repeat weekly usage from active businesses  
 • create a modular product that can expand into payments, procurement, expenses, and reporting  
 • build a strong market fit in Ghana before regional expansion  
@@ -61,7 +61,7 @@ Secondary users
 • accountants/bookkeepers in small businesses  
 • growing SMEs with multiple staff roles  
 7\. Market Context  
-BizPilot is designed for businesses that need:  
+BisaPilot is designed for businesses that need:  
 • better operational control  
 • simple inventory and sales tracking  
 • mobile accessibility  
@@ -80,7 +80,7 @@ BizPilot is designed for businesses that need:
 ───  
 9\. Core Product Scope  
 9.1 Business Setup & Identity  
-BizPilot must support business-level configuration.  
+BisaPilot must support business-level configuration.  
 Features  
 • business onboarding wizard  
 • business name  
@@ -371,7 +371,7 @@ The product feels designed for the market, not imported blindly.
 ───  
 10\. System Architecture Requirements  
 10.1 Data Model Principles  
-BizPilot must separate:  
+BisaPilot must separate:  
 • **master data**  
 • **transactions**  
 • **derived views**  
@@ -543,7 +543,7 @@ Phase 4 — Regional product scale
 • building generic features without local relevance  
 ───  
 16\. Strategic Product Positioning  
-BizPilot should be positioned as:  
+BisaPilot should be positioned as:  
 **“Your scaling partner for African SMEs.”**  
 Not:  
 • just an invoicing app  
@@ -553,7 +553,7 @@ Not:
 But a practical operating layer for real business activity.  
 ───  
 17\. Summary  
-BizPilot’s final product is a structured, mobile-first SME operations platform that combines:  
+BisaPilot’s final product is a structured, mobile-first SME operations platform that combines:  
 • sales  
 • inventory  
 • customer balances  

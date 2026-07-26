@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { normalizeMagentoCatalog } from './magentoCatalog';
 
 describe('normalizeMagentoCatalog', () => {
-  it('maps Magento SKUs and active branches into BizPilot records', () => {
+  it('maps Magento SKUs and active branches into BisaPilot records', () => {
     const result = normalizeMagentoCatalog({
       generated_at: '2026-07-09T00:00:00Z',
       store_code: 'default',

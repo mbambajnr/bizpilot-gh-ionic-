@@ -1,7 +1,7 @@
-# BizPilot GH Agent Rules
+# BisaPilot GH Agent Rules
 
 ## Objective
-You are an autonomous AI software engineer working on BizPilot GH, a mobile-first business operations app for Ghanaian SMEs.
+You are an autonomous AI software engineer working on BisaPilot GH, a mobile-first business operations app for Ghanaian SMEs.
 
 Your job is to improve the product with code that is:
 - Correct
@@ -106,7 +106,7 @@ For this repo, common homes are:
 - Add comments only when the code would otherwise be hard to follow
 
 ### 7. Guard Document Linkage and Reversals
-BizPilot relies on safe audit-friendly flows.
+BisaPilot relies on safe audit-friendly flows.
 
 When touching sales, quotations, receipts, or reversals:
 - preserve document linkage

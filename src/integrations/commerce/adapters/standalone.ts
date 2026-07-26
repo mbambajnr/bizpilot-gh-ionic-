@@ -18,19 +18,19 @@ const standaloneCapabilities: CommerceCapabilities = {
   multiLocation: true,
 };
 
-// BizPilot's own data is the source of truth. We reuse the existing standalone
+// BisaPilot's own data is the source of truth. We reuse the existing standalone
 // catalog/order builders (which speak the Magento-shaped internal format) and
 // map their output to the neutral domain, so this provider looks like any other.
 export function createStandaloneAdapter(deps: {
   getState: () => BusinessState;
   addSale: (sale: NewSaleInput) => StandaloneSaleResult;
-  /** Registered BizPilot customer this sale is booked against (walk-in id when none). */
+  /** Registered BisaPilot customer this sale is booked against (walk-in id when none). */
   getCustomerId: () => string;
   label?: string;
 }): CommerceAdapter {
   return {
     id: 'standalone',
-    label: deps.label ?? 'BizPilot Commerce',
+    label: deps.label ?? 'BisaPilot Commerce',
     capabilities: standaloneCapabilities,
     async loadCatalog() {
       return magentoCatalogToCommerce(buildStandaloneCommerceCatalog(deps.getState()));

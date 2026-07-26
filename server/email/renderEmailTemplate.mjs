@@ -8,7 +8,7 @@ function escapeHtml(value) {
 }
 
 export function renderEmailTemplate({ businessName, logoUrl, subject, message }) {
-  const safeBusinessName = escapeHtml(businessName || 'BizPilot');
+  const safeBusinessName = escapeHtml(businessName || 'BisaPilot');
   const safeSubject = escapeHtml(subject);
   const safeMessage = escapeHtml(message).replaceAll('\n', '<br />');
   const logoMarkup =
@@ -23,7 +23,7 @@ export function renderEmailTemplate({ businessName, logoUrl, subject, message })
           <div style="display:flex;align-items:center;gap:16px;">
             ${logoMarkup}
             <div>
-              <p style="margin:0 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.8;">BizPilot Email</p>
+              <p style="margin:0 0 6px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.8;">BisaPilot Email</p>
               <h1 style="margin:0;font-size:28px;line-height:1.1;">${safeBusinessName}</h1>
             </div>
           </div>

@@ -32,7 +32,7 @@ const NETWORK_ERROR_PATTERNS = [
   /load failed/i, // WebKit (iOS/Safari)
   /networkerror/i, // Firefox
   /network request failed/i,
-  /did not respond/i, // BizPilot server timeout wording
+  /did not respond/i, // BisaPilot server timeout wording
   /service is unavailable/i, // client-lib wording when the server is down
   /fetch failed/i, // Node undici (tests)
 ];

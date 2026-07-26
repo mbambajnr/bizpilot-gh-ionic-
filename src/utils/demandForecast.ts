@@ -4,7 +4,7 @@ import { selectActiveLocations, selectProductQuantityOnHand } from '../selectors
 /**
  * Deterministic, explainable demand forecast for inventory replenishment.
  *
- * Capability #3 of BizPilot's governed "propose -> approve" AI layer. Like the anomaly and collections
+ * Capability #3 of BisaPilot's governed "propose -> approve" AI layer. Like the anomaly and collections
  * engines it is rule/statistics based, every entry carries plain-language `signals`, and it never mutates
  * state or raises a purchase order. It projects each product's stockout from its own recent sales velocity
  * so a buyer can act before stock crosses the static reorder level — the human still confirms the request.

@@ -68,7 +68,7 @@ export function EnterpriseShell({ active, children }: { active: string; children
       <aside className={mobileNavOpen ? 'sidebar sidebar--open' : 'sidebar'}>
         <div className="brand-lockup">
           <div className="brand-mark">BP</div>
-          <div><strong>BizPilot</strong><span>Enterprise</span></div>
+          <div><strong>BisaPilot</strong><span>Enterprise</span></div>
           <button className="icon-button sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation" title="Close navigation"><X size={18} /></button>
         </div>
         <div className="workspace-switcher">

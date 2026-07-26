@@ -2,9 +2,9 @@ import { supabase } from './supabase';
 import { publicEnv } from './publicEnv';
 
 /**
- * Where the BizPilot server lives.
+ * Where the BisaPilot server lives.
  *
- * - Web version: served BY the BizPilot server itself → same origin → leave
+ * - Web version: served BY the BisaPilot server itself → same origin → leave
  *   VITE_API_BASE_URL unset and relative /api paths just work.
  * - Local dev: Vite proxies /api to 127.0.0.1:8787 → also leave it unset.
  * - Packaged mobile app (Capacitor): there is no proxy and no same origin —
@@ -23,7 +23,7 @@ export function apiUrl(path: string): string {
 }
 
 /**
- * fetch() for BizPilot server routes: resolves the base URL and attaches the
+ * fetch() for BisaPilot server routes: resolves the base URL and attaches the
  * caller's Supabase session token so the server can authenticate the request.
  */
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {

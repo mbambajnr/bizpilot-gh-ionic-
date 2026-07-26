@@ -3,11 +3,11 @@ import type { BusinessState, Customer, CustomerLedgerEntry, Sale } from '../data
 /**
  * Deterministic, explainable accounts-receivable collections forecast.
  *
- * Capability #2 of BizPilot's governed "propose -> approve" AI layer. Like the anomaly engine it is
+ * Capability #2 of BisaPilot's governed "propose -> approve" AI layer. Like the anomaly engine it is
  * rule/statistics based rather than generative: it predicts payment behaviour from each customer's own
  * history, every risk carries plain-language `signals`, and it never mutates state or takes an action.
  * Suggested actions are advisory — a human still sends the reminder or applies a credit hold through the
- * existing gates. Structured so a server-side model behind the BizPilot proxy can later refine the score
+ * existing gates. Structured so a server-side model behind the BisaPilot proxy can later refine the score
  * without changing this contract or the UI.
  */
 

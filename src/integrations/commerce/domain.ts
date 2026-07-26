@@ -2,7 +2,7 @@
 //
 // This is the contract every commerce platform is mapped INTO. Adapters
 // translate a provider's native payloads (Magento REST, a custom store's API,
-// BizPilot's own state, …) to and from these shapes, so the POS and inventory
+// BisaPilot's own state, …) to and from these shapes, so the POS and inventory
 // features never learn which platform a given tenant runs. Field names are
 // camelCase and platform-agnostic on purpose — no provider's naming leaks here.
 

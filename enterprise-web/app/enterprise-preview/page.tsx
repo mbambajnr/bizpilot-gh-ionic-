@@ -51,7 +51,7 @@ export default function DashboardPage() {
       <aside className="sidebar">
         <div className="brand-lockup">
           <div className="brand-mark">BP</div>
-          <div><strong>BizPilot</strong><span>Enterprise</span></div>
+          <div><strong>BisaPilot</strong><span>Enterprise</span></div>
         </div>
         <div className="workspace-switcher">
           <Building2 size={17} />

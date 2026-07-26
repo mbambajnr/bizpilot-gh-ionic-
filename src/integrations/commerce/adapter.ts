@@ -23,7 +23,7 @@ export type CommerceProviderConfig = {
   settings?: Record<string, unknown>;
 };
 
-// Minimal HTTP transport so adapters that talk to the BizPilot server proxy can
+// Minimal HTTP transport so adapters that talk to the BisaPilot server proxy can
 // be unit-tested with an injected fake instead of real network calls.
 export interface CommerceTransport {
   get(path: string): Promise<unknown>;

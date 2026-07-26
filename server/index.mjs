@@ -33,14 +33,14 @@ const serveStatic = createStaticServer(distDir);
 const isLoopback = ['127.0.0.1', 'localhost', '::1'].includes(host);
 if (!security.configured && !isLoopback) {
   console.error(
-    '[BizPilot Server] Refusing to bind to a non-loopback address without authentication. ' +
+    '[BisaPilot Server] Refusing to bind to a non-loopback address without authentication. ' +
       'Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in .env.server so API requests can be verified.'
   );
   process.exit(1);
 }
 if (!security.configured) {
   console.warn(
-    '[BizPilot Server] OPEN DEV MODE: Supabase auth env is not set, API routes are unauthenticated. ' +
+    '[BisaPilot Server] OPEN DEV MODE: Supabase auth env is not set, API routes are unauthenticated. ' +
       'This is only acceptable on 127.0.0.1.'
   );
 }
@@ -494,5 +494,5 @@ const server = http.createServer(async (request, response) => {
 
 server.listen(port, host, () => {
   const mode = serveStatic ? 'web app + API' : 'API only (no dist/ build found)';
-  console.log(`[BizPilot Server] listening on http://${host}:${port} — ${mode}`);
+  console.log(`[BisaPilot Server] listening on http://${host}:${port} — ${mode}`);
 });

@@ -86,4 +86,4 @@ Internal stock follows `request -> General Manager approval -> Warehouse Manager
 
 ## Current implementation
 
-BizPilot now enforces dock arrival, GRN creation, pending inspection, reconciled inspection quantities, accepted-only stock posting, receipt exceptions, three-way matching, transfer role separation, and dispatch-before-receipt for internal transfers. The next control increments are configurable delivery tolerances, quarantine release, supplier return authorization, PO amendment approval, and supplier scorecards.
+BisaPilot now enforces dock arrival, GRN creation, pending inspection, reconciled inspection quantities, accepted-only stock posting, receipt exceptions, three-way matching, transfer role separation, and dispatch-before-receipt for internal transfers. The next control increments are configurable delivery tolerances, quarantine release, supplier return authorization, PO amendment approval, and supplier scorecards.

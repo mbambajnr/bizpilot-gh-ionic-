@@ -7,7 +7,7 @@ import { forecastCollections } from './collectionsForecast';
 import { forecastDemand } from './demandForecast';
 
 /**
- * Capability #4 of BizPilot's governed "propose -> approve" AI layer: a role-scoped, READ-ONLY assistant.
+ * Capability #4 of BisaPilot's governed "propose -> approve" AI layer: a role-scoped, READ-ONLY assistant.
  *
  * v1 is deterministic on purpose. Each intent is a permission-gated question with a resolver that answers
  * from BusinessState using existing selectors and the other three AI engines — it never writes, and it only

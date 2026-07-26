@@ -154,8 +154,8 @@ function RoleAssistant() {
   }
 
   return <section className="assistant-panel">
-    <div className="panel-heading"><div><p className="eyebrow assistant-eyebrow"><Sparkles size={13} /> Ask BizPilot</p><h2>Your assistant</h2></div><span>Read-only · respects your role</span></div>
-    <form className="assistant-ask" onSubmit={submit}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ask about cash, receivables, stock, or expenses…" aria-label="Ask BizPilot" /><button className="primary-button" type="submit"><Send size={14} /> Ask</button></form>
+    <div className="panel-heading"><div><p className="eyebrow assistant-eyebrow"><Sparkles size={13} /> Ask BisaPilot</p><h2>Your assistant</h2></div><span>Read-only · respects your role</span></div>
+    <form className="assistant-ask" onSubmit={submit}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ask about cash, receivables, stock, or expenses…" aria-label="Ask BisaPilot" /><button className="primary-button" type="submit"><Send size={14} /> Ask</button></form>
     <div className="assistant-suggestions">{intents.map((intent) => <button key={intent.id} type="button" className={activeId === intent.id ? 'assistant-chip assistant-chip--active' : 'assistant-chip'} onClick={() => { setQuery(''); ask(intent.id); }}>{intent.question}</button>)}</div>
     {notice ? <p className="assistant-notice">{notice}</p> : null}
     {answer ? <div className="assistant-answer"><div className="assistant-answer-head"><strong>{answer.title}</strong><span>{answer.summary}</span></div>{answer.rows.length ? <ul className="assistant-answer-rows">{answer.rows.map((row, index) => <li key={index}><span>{row.label}</span><b>{row.value}</b>{row.detail ? <small>{row.detail}</small> : null}</li>)}</ul> : null}<p className="assistant-disclaimer">Generated from your live data. Advisory only — the assistant never makes changes.</p></div> : null}

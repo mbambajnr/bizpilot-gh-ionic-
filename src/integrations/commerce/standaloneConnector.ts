@@ -51,11 +51,11 @@ export function placeStandaloneCommerceOrder(
   const stores = activeLocations.filter((location) => location.type === 'store');
   const locations = stores.length ? stores : activeLocations;
   const location = locations[input.branchId - 1];
-  if (!location) throw new Error('Choose a valid BizPilot location.');
+  if (!location) throw new Error('Choose a valid BisaPilot location.');
 
   const items = input.items.map((item) => {
     const product = state.products.find((entry) => entry.inventoryId.toLowerCase() === item.sku.toLowerCase());
-    if (!product) throw new Error(`BizPilot product not found for SKU ${item.sku}.`);
+    if (!product) throw new Error(`BisaPilot product not found for SKU ${item.sku}.`);
     return { productId: product.id, quantity: item.quantity };
   });
   const subtotal = items.reduce((sum, item) => {

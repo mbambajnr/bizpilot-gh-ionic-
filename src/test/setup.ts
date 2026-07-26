@@ -1,4 +1,4 @@
-// Shared vitest setup for the BizPilot domain/business-logic tests.
+// Shared vitest setup for the BisaPilot domain/business-logic tests.
 //
 // jest-dom adds custom jest matchers for asserting on DOM nodes, e.g.
 //   expect(element).toHaveTextContent(/react/i)

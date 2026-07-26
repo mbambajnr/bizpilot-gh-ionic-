@@ -29,7 +29,7 @@ function setCached(map, key, value) {
 }
 
 /**
- * Supabase-backed request authentication for the BizPilot server.
+ * Supabase-backed request authentication for the BisaPilot server.
  *
  * Tokens are the SAME Supabase session JWTs the app already holds — the
  * client attaches them as `Authorization: Bearer <token>` (see

@@ -6,7 +6,7 @@
   ],
   "version": "0.0.1",
   "type": "module",
-  "description": "BizPilot enterprise web workspace.",
+  "description": "BisaPilot enterprise web workspace.",
   "scripts": {
     "dev": "npm run dev:web",
     "dev:web": "concurrently -n API,NEXT -c cyan,green \"npm run dev:api\" \"npm run dev:next\"",

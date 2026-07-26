@@ -1,6 +1,6 @@
-# BizPilot GH Supabase Schema
+# BisaPilot GH Supabase Schema
 
-This folder contains the initial Supabase database migration for BizPilot GH.
+This folder contains the initial Supabase database migration for BisaPilot GH.
 
 The schema is designed to match the current local-first model without adding heavy ERP complexity.
 

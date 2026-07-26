@@ -1,6 +1,6 @@
 # Offline Support
 
-BizPilot keeps working when the network doesn't. The app was already
+BisaPilot keeps working when the network doesn't. The app was already
 local-first for reads (full business state persists to localStorage); this
 layer makes **writes** survive offline too.
 

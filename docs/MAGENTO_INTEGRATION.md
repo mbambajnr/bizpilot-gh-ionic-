@@ -1,11 +1,11 @@
 # Magento POS Integration
 
-BizPilot connects to Magento through the local BizPilot server. The Magento access token must never be added to a `VITE_` variable or bundled into the Ionic application.
+BisaPilot connects to Magento through the local BisaPilot server. The Magento access token must never be added to a `VITE_` variable or bundled into the Ionic application.
 
 ## Magento setup
 
 1. In Magento Admin, open **System > Extensions > Integrations**.
-2. Create an integration named **BizPilot POS**.
+2. Create an integration named **BisaPilot POS**.
 3. Grant exactly these resources (least privilege — never "All"):
    - **Catalog > Products** (`Magento_Catalog::products`) — catalog feed
    - **Sales** (`Magento_Sales::sales`) and **Sales > Create** (`Magento_Sales::create`) — recording sales
@@ -44,14 +44,14 @@ moved from.
 → `{order_id, increment_id, status, grand_total, currency, branch_name, duplicate}`.
 
 - **Idempotent on `clientRef`** (max 64 chars): retrying with the same value returns the original
-  order with `duplicate: true` instead of creating a second one. BizPilot generates the ref on the
+  order with `duplicate: true` instead of creating a second one. BisaPilot generates the ref on the
   first submit attempt of a sale and reuses it for retries of that sale.
 - Magento owns pricing (incl. Ghana VAT/levies), stock reservation, branch attribution and the
   tender record (`paymentMethod`/`paymentReference` appear in the admin payment block and the
   order's audit comment).
 - Invalid branch / SKU / qty → HTTP 400 with a readable message.
 
-## BizPilot server setup
+## BisaPilot server setup
 
 Add these values to `.env.server`:
 
@@ -71,4 +71,4 @@ GET  /api/magento/catalog
 POST /api/magento/orders
 ```
 
-The BizPilot server adds the Magento authorization header and does not expose the token to the browser.
+The BisaPilot server adds the Magento authorization header and does not expose the token to the browser.

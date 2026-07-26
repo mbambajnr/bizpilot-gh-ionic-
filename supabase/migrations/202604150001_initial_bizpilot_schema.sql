@@ -1,4 +1,4 @@
--- BizPilot GH initial Supabase schema
+-- BisaPilot GH initial Supabase schema
 -- This schema mirrors the current local-first product model while keeping the
 -- database simple enough for the MVP: businesses own products, customers,
 -- invoices, quotations, stock movements, ledger entries, and activity events.

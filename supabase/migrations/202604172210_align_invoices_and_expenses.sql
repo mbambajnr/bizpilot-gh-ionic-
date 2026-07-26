@@ -1,4 +1,4 @@
--- BizPilot GH Schema Alignment v2026.04.17
+-- BisaPilot GH Schema Alignment v2026.04.17
 -- Adds multi-item support to invoices and establishes the missing expenses infrastructure.
 
 -- 1. Add items JSONB to invoices/sales

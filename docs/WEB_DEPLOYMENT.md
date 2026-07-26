@@ -1,13 +1,13 @@
-# BizPilot Web Version — Deployment Guide
+# BisaPilot Web Version — Deployment Guide
 
-BizPilot runs in a normal browser (laptop/desktop clients) as well as the
+BisaPilot runs in a normal browser (laptop/desktop clients) as well as the
 Capacitor mobile app. The Node server in `server/` serves **both the built web
 app and the `/api` routes from one port**, so a single small host runs
 everything.
 
 ```
 Browser (laptop) ──┐
-                   ├──► BizPilot server (Node, :8787) ──► Supabase (auth + data, RLS)
+                   ├──► BisaPilot server (Node, :8787) ──► Supabase (auth + data, RLS)
 Capacitor app ─────┘          │
                               ├──► SMTP (business email)
                               └──► Magento (POS catalog + sales)

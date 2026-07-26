@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getBizPilotApiUrl } from '@/lib/bizpilot-api';
+import { getBisaPilotApiUrl } from '@/lib/bizpilot-api';
 
 const supportedMethods = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -10,7 +10,7 @@ async function proxyRequest(request: NextRequest, context: { params: Promise<{ p
   }
 
   const { path } = await context.params;
-  const upstreamUrl = new URL(getBizPilotApiUrl(`/api/${path.join('/')}`));
+  const upstreamUrl = new URL(getBisaPilotApiUrl(`/api/${path.join('/')}`));
   upstreamUrl.search = request.nextUrl.search;
 
   const headers = new Headers({ Accept: 'application/json' });
@@ -34,7 +34,7 @@ async function proxyRequest(request: NextRequest, context: { params: Promise<{ p
     });
   } catch {
     return NextResponse.json(
-      { ok: false, message: 'The BizPilot service is currently unavailable.' },
+      { ok: false, message: 'The BisaPilot service is currently unavailable.' },
       { status: 503 }
     );
   }

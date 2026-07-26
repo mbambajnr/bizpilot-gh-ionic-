@@ -137,7 +137,7 @@ export function MagentoStatus() {
   }, []);
 
   const details = {
-    loading: ['Checking connection', 'Contacting the BizPilot service'],
+    loading: ['Checking connection', 'Contacting the BisaPilot service'],
     connected: ['Live connection', `Magento store: ${storeCode}`],
     unconfigured: ['Configuration required', 'Magento credentials are not set on the server'],
     unavailable: ['Service unavailable', statusMessage || 'The Magento service could not be reached'],

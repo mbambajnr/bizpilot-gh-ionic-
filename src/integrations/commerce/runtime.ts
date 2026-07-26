@@ -4,7 +4,7 @@ import type { CommerceRuntime } from './types';
 const standaloneRuntime: CommerceRuntime = {
   mode: 'standalone',
   provider: 'standalone',
-  label: 'BizPilot Commerce',
+  label: 'BisaPilot Commerce',
   configured: true,
   capabilities: {
     catalog: true,
