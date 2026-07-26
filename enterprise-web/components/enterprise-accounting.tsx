@@ -30,6 +30,7 @@ import type { AccountsPayable, Expense, Payment, PaymentChannel } from '../../sr
 import { selectDashboardMetrics, selectSaleBalanceRemaining } from '../../src/selectors/businessSelectors';
 import { canApproveCategory, isCustomerOnCreditHold, selectCustomerOutstanding } from '../../src/utils/businessLogic';
 import { detectExpenseAnomalies, groupAnomaliesByExpense, type AnomalyCode, type ExpenseAnomaly } from '../../src/utils/anomalyDetection';
+import { forecastCollections, type CollectionForecast, type CollectionAction } from '../../src/utils/collectionsForecast';
 import { formatCurrency, formatRelativeDate } from '../../src/utils/format';
 import { EnterpriseApp } from './enterprise-app';
 import { EnterpriseShell } from './enterprise-shell';
@@ -91,6 +92,7 @@ function AccountingWorkspace() {
   const [accountingOpenedAt] = useState(() => new Date());
   const metrics = useMemo(() => selectDashboardMetrics(state), [state]);
   const expenseAnomalies = useMemo(() => (canViewExpenses ? groupAnomaliesByExpense(detectExpenseAnomalies(state)) : new Map<string, ExpenseAnomaly[]>()), [state, canViewExpenses]);
+  const collectionsForecast = useMemo(() => (canViewSales ? forecastCollections(state, accountingOpenedAt.getTime()) : []), [state, canViewSales, accountingOpenedAt]);
   const currency = state.businessProfile.currency;
 
   const todayKey = accountingOpenedAt.toDateString();
@@ -195,7 +197,7 @@ function AccountingWorkspace() {
         {actionMessage ? <div className="settings-message" role="status">{actionMessage}</div> : null}
 
         {view === 'overview' ? <AccountingOverview currency={currency} pendingApprovalCount={pendingApprovalCount} payableReadyCount={payableReadyCount} overduePayableCount={overduePayableCount} missingCashReferences={missingCashReferences.length} expenseToday={expenseToday} supplierPaidToday={supplierPaidToday} monthlyExpenses={monthlyExpenses} metrics={metrics} onOpen={setView} canViewPayables={canViewPayables} canViewExpenses={canViewExpenses || canCreateExpenses} canViewCash={canViewSales} /> : null}
-        {view === 'receivables' && canViewSales ? <ReceivablesWorkspace sales={state.sales} customers={state.customers} currency={currency} now={accountingOpenedAt.getTime()} canOpenInvoice={hasPermission('invoices.view')} /> : null}
+        {view === 'receivables' && canViewSales ? <ReceivablesWorkspace sales={state.sales} customers={state.customers} currency={currency} now={accountingOpenedAt.getTime()} canOpenInvoice={hasPermission('invoices.view')} forecast={collectionsForecast} canManageCredit={canManageCredit} onReviewCredit={() => setView('credit')} /> : null}
         {view === 'payables' && canViewPayables ? <PayablesWorkspace rows={filteredPayables} selected={selectedPayableRow} query={query} statusFilter={statusFilter} currency={currency} busy={busy} canApprove={selectedPayableRow ? canApproveCategory(state, currentUser, 'payables', hasPermission, selectedPayableRow.payable.amountDue) : canApprovePayables} canPay={canPayPayables} onQuery={setQuery} onStatusFilter={setStatusFilter} onSelect={setSelectedPayableId} onApprove={(payable) => void approve(payable)} onPay={setPaymentTarget} /> : null}
         {view === 'expenses' && (canViewExpenses || canCreateExpenses) ? <ExpensesWorkspace expenses={state.expenses} currency={currency} canView={canViewExpenses} canCreate={canCreateExpenses} canApprove={canApproveExpenses} threshold={state.businessProfile.expenseApprovalThreshold} anomalies={expenseAnomalies} onCreate={() => setExpenseEditorOpen(true)} onDecide={decideExpense} /> : null}
         {view === 'cash' && canViewSales ? <CashControl sales={todaysSales} customers={state.customers} currency={currency} missingReferenceCount={missingCashReferences.length} /> : null}
@@ -368,13 +370,29 @@ function FinancialStatements({ state, currency }: { state: ReturnType<typeof use
   </section>;
 }
 
-function ReceivablesWorkspace({ sales, customers, currency, now, canOpenInvoice }: { sales: ReturnType<typeof useBusiness>['state']['sales']; customers: ReturnType<typeof useBusiness>['state']['customers']; currency: string; now: number; canOpenInvoice: boolean }) {
+const COLLECTION_ACTION_LABELS: Record<CollectionAction, string> = { monitor: 'Monitor', send_reminder: 'Send reminder', review_credit_hold: 'Review credit hold' };
+
+function CollectionsForecast({ forecast, currency, canManageCredit, onReviewCredit }: { forecast: CollectionForecast[]; currency: string; canManageCredit: boolean; onReviewCredit: () => void }) {
+  if (!forecast.length) return null;
+  const exposure = forecast.reduce((sum, entry) => sum + entry.outstanding, 0);
+  const highCount = forecast.filter((entry) => entry.riskBand === 'high').length;
+  return <section className="collections-forecast">
+    <div className="accounting-panel-heading"><div><p className="eyebrow"><Sparkles size={13} /> AI collections forecast</p><h2>Who to chase first</h2><p>Customers ranked by risk-weighted exposure from their own payment history. Advisory — reminders and holds stay with an authorized user.</p></div><span>{formatCurrency(exposure, currency)} owed{highCount ? ` · ${highCount} high risk` : ''}</span></div>
+    <div className="collections-list">{forecast.map((entry) => <article key={entry.customerId} className={`collections-row collections-row--${entry.riskBand}`}>
+      <div className="collections-lead"><span className={`risk-band risk-band--${entry.riskBand}`}>{entry.riskBand} risk</span><strong>{entry.customerName}</strong><small>{formatCurrency(entry.outstanding, currency)} · {entry.openInvoiceCount} invoice{entry.openInvoiceCount === 1 ? '' : 's'} · oldest {entry.oldestOpenAgeDays}d{entry.expectedDaysToPay != null ? ` · usually pays in ${entry.expectedDaysToPay}d` : ' · no history yet'}</small></div>
+      <ul className="collections-signals">{entry.signals.map((signal, index) => <li key={index}>{signal}</li>)}</ul>
+      <div className="collections-action"><span className={`collections-suggestion collections-suggestion--${entry.suggestedAction}`}>{COLLECTION_ACTION_LABELS[entry.suggestedAction]}</span>{entry.suggestedAction === 'review_credit_hold' && canManageCredit ? <button className="text-button" type="button" onClick={onReviewCredit}>Open credit control<ChevronRight size={13} /></button> : null}</div>
+    </article>)}</div>
+  </section>;
+}
+
+function ReceivablesWorkspace({ sales, customers, currency, now, canOpenInvoice, forecast, canManageCredit, onReviewCredit }: { sales: ReturnType<typeof useBusiness>['state']['sales']; customers: ReturnType<typeof useBusiness>['state']['customers']; currency: string; now: number; canOpenInvoice: boolean; forecast: CollectionForecast[]; canManageCredit: boolean; onReviewCredit: () => void }) {
   const rows = sales
     .filter((sale) => sale.status !== 'Reversed' && selectSaleBalanceRemaining(sale) > 0)
     .map((sale) => ({ sale, balance: selectSaleBalanceRemaining(sale), ageDays: Math.max(0, Math.floor((now - Date.parse(sale.createdAt)) / 86400000)) }))
     .sort((left, right) => right.balance - left.balance);
   const total = rows.reduce((sum, row) => sum + row.balance, 0);
-  return <section className="accounting-wide-panel"><div className="accounting-panel-heading"><div><p className="eyebrow">Accounts receivable</p><h2>Outstanding receivables</h2><p>Completed customer invoices that still carry an unpaid balance.</p></div><span>{formatCurrency(total, currency)} across {rows.length} invoices</span></div><div className="accounting-table-wrap"><table className="payment-ledger-table"><thead><tr><th>Invoice</th><th>Customer</th><th>Invoiced</th><th>Paid</th><th>Balance due</th><th>Age</th><th /></tr></thead><tbody>{rows.map(({ sale, balance, ageDays }) => <tr key={sale.id}><td><strong>{sale.invoiceNumber}</strong><span>{formatRelativeDate(sale.createdAt)}</span></td><td>{customers.find((customer) => customer.id === sale.customerId)?.name ?? sale.customerSnapshot?.name ?? 'Walk-in customer'}</td><td>{formatCurrency(sale.totalAmount, currency)}</td><td>{formatCurrency(sale.paidAmount, currency)}</td><td><strong className="accounting-negative">{formatCurrency(balance, currency)}</strong></td><td><span className={`payable-status payable-status--${ageDays > 30 ? 'risk' : ageDays > 14 ? 'warn' : 'good'}`}>{ageDays} day{ageDays === 1 ? '' : 's'}</span></td><td>{canOpenInvoice ? <Link className="icon-button" aria-label={`Open ${sale.invoiceNumber}`} title={`Open ${sale.invoiceNumber}`} href={`/sales/${sale.id}`}><ChevronRight size={14} /></Link> : null}</td></tr>)}</tbody></table>{!rows.length ? <AccountingEmpty icon={WalletCards} title="No outstanding receivables" detail="Fully paid and unpaid customer invoices will appear here when a balance is due." /> : null}</div></section>;
+  return <><CollectionsForecast forecast={forecast} currency={currency} canManageCredit={canManageCredit} onReviewCredit={onReviewCredit} /><section className="accounting-wide-panel"><div className="accounting-panel-heading"><div><p className="eyebrow">Accounts receivable</p><h2>Outstanding receivables</h2><p>Completed customer invoices that still carry an unpaid balance.</p></div><span>{formatCurrency(total, currency)} across {rows.length} invoices</span></div><div className="accounting-table-wrap"><table className="payment-ledger-table"><thead><tr><th>Invoice</th><th>Customer</th><th>Invoiced</th><th>Paid</th><th>Balance due</th><th>Age</th><th /></tr></thead><tbody>{rows.map(({ sale, balance, ageDays }) => <tr key={sale.id}><td><strong>{sale.invoiceNumber}</strong><span>{formatRelativeDate(sale.createdAt)}</span></td><td>{customers.find((customer) => customer.id === sale.customerId)?.name ?? sale.customerSnapshot?.name ?? 'Walk-in customer'}</td><td>{formatCurrency(sale.totalAmount, currency)}</td><td>{formatCurrency(sale.paidAmount, currency)}</td><td><strong className="accounting-negative">{formatCurrency(balance, currency)}</strong></td><td><span className={`payable-status payable-status--${ageDays > 30 ? 'risk' : ageDays > 14 ? 'warn' : 'good'}`}>{ageDays} day{ageDays === 1 ? '' : 's'}</span></td><td>{canOpenInvoice ? <Link className="icon-button" aria-label={`Open ${sale.invoiceNumber}`} title={`Open ${sale.invoiceNumber}`} href={`/sales/${sale.id}`}><ChevronRight size={14} /></Link> : null}</td></tr>)}</tbody></table>{!rows.length ? <AccountingEmpty icon={WalletCards} title="No outstanding receivables" detail="Fully paid and unpaid customer invoices will appear here when a balance is due." /> : null}</div></section></>;
 }
 
 function PaymentLedger({ payments, payables, vendors, sales, customers, users, currency }: { payments: Payment[]; payables: AccountsPayable[]; vendors: ReturnType<typeof useBusiness>['state']['vendors']; sales: ReturnType<typeof useBusiness>['state']['sales']; customers: ReturnType<typeof useBusiness>['state']['customers']; users: ReturnType<typeof useBusiness>['state']['users']; currency: string }) {
