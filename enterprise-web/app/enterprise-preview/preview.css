@@ -440,6 +440,31 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .collections-action .text-button { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; }
 @media (max-width: 820px) { .collections-row { grid-template-columns: 1fr; gap: 10px; } .collections-action { align-items: flex-start; } }
 
+/* AI demand forecast (replenishment) */
+.inventory-ai-eyebrow { display: inline-flex; align-items: center; gap: 5px; color: #6d5bd0; }
+.inventory-ai-eyebrow svg { flex-shrink: 0; }
+.demand-forecast-list { display: flex; flex-direction: column; gap: 10px; }
+.demand-row { display: grid; grid-template-columns: minmax(150px, 1fr) auto minmax(0, 1.3fr) auto; align-items: center; gap: 18px; padding: 13px 15px; background: #fff; border: 1px solid var(--line); border-left-width: 3px; border-radius: 8px; }
+.demand-row--healthy { border-left-color: var(--forest); }
+.demand-row--watch { border-left-color: #d99a2b; }
+.demand-row--reorder_now { border-left-color: var(--danger); }
+.demand-row--stockout { border-left-color: var(--danger); background: #fdf5f5; }
+.demand-lead { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.demand-lead strong { font-size: 14px; }
+.demand-lead small { color: var(--muted); font-size: 11px; }
+.demand-band { align-self: flex-start; display: inline-flex; padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+.demand-band--watch { color: #8a4b16; background: #fdf4e7; }
+.demand-band--reorder_now, .demand-band--stockout { color: var(--danger); background: #fbeaea; }
+.demand-band--healthy { color: var(--forest); background: var(--forest-soft); }
+.demand-metrics { display: flex; gap: 18px; }
+.demand-metrics > div { display: flex; flex-direction: column; gap: 1px; }
+.demand-metrics span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
+.demand-metrics strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+.demand-signals { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.demand-signals li { position: relative; padding-left: 13px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.demand-signals li::before { content: "•"; position: absolute; left: 2px; color: #6d5bd0; }
+@media (max-width: 900px) { .demand-row { grid-template-columns: 1fr; gap: 12px; } .demand-metrics { flex-wrap: wrap; } }
+
 .settings-panel-heading--sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .settings-panel-heading--sub h3 { font-size: 15px; margin: 0; }
 .settings-panel-heading--sub p { margin: 5px 0 0; color: var(--muted); font-size: 13px; max-width: 640px; }
