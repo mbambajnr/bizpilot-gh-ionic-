@@ -666,6 +666,25 @@ export type Fulfilment = {
   updatedAt: string;
 };
 
+/**
+ * A soft hold on stock for an order or quote: it reduces AVAILABLE quantity without moving on-hand stock,
+ * so the same unit can't be promised to two customers. Released (or fulfilled into a real stock movement)
+ * when the order ships or is cancelled. This is the SME-scaled version of Acumatica's plan types.
+ */
+export type StockReservation = {
+  id: string;
+  productId: string;
+  locationId: string;
+  quantity: number;
+  status: 'active' | 'released' | 'fulfilled';
+  /** What the hold is for, e.g. a sales order or quotation. */
+  reason: 'sales_order' | 'quotation' | 'manual';
+  referenceId?: string;
+  referenceLabel?: string;
+  createdAt: string;
+  createdByName?: string;
+};
+
 export type BusinessState = {
   businessProfile: BusinessProfile;
   locations: BusinessLocation[];
@@ -693,6 +712,7 @@ export type BusinessState = {
   approvalDelegations: ApprovalDelegation[];
   closedAccountingPeriods: ClosedAccountingPeriod[];
   fulfilments: Fulfilment[];
+  stockReservations: StockReservation[];
   themePreference: 'system' | 'light' | 'dark';
 };
 
@@ -981,6 +1001,7 @@ export const seedState: BusinessState = {
   approvalDelegations: [],
   closedAccountingPeriods: [],
   fulfilments: [],
+  stockReservations: [],
   themePreference: 'system',
 };
 

@@ -597,6 +597,19 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .quotation-po-unavailable small { display: block; margin-top: 3px; font-size: 12px; line-height: 1.5; }
 .quotation-po-unavailable code { padding: 1px 5px; background: rgba(138, 75, 22, 0.12); border-radius: 4px; font-size: 11px; }
 
+/* Inventory reservations (availability) */
+.inventory-table td span { display: block; color: var(--muted); font-size: 11px; }
+.inventory-reservation-section { margin-top: 18px; }
+.inventory-reservation-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.inventory-reservation-row:first-of-type { border-top: 0; }
+.inventory-reservation-row strong { display: block; font-size: 13px; }
+.inventory-reservation-row small { color: var(--muted); font-size: 11px; text-transform: capitalize; }
+.inventory-reservation-empty { color: var(--muted); font-size: 12px; margin: 6px 0; }
+.inventory-reservation-form { display: flex; gap: 8px; margin-top: 10px; }
+.inventory-reservation-form input { width: 72px; min-height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.inventory-reservation-form select { flex: 1; min-height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-size: 13px; }
+.inventory-reservation-error { color: var(--danger); font-size: 12px; margin: 8px 0 0; }
+
 .settings-panel-heading--sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .settings-panel-heading--sub h3 { font-size: 15px; margin: 0; }
 .settings-panel-heading--sub p { margin: 5px 0 0; color: var(--muted); font-size: 13px; max-width: 640px; }

@@ -126,6 +126,7 @@ import {
   setPaymentReconciledInState,
 } from '../utils/businessLogic';
 import { startFulfilmentInState, advanceFulfilmentInState, assignFulfilmentInState, type AdvanceFulfilmentInput } from '../utils/fulfilment';
+import { reserveStockInState, releaseReservationInState, type ReserveStockInput } from '../utils/inventoryAvailability';
 import type { ApprovalDelegationCategory } from '../data/seedBusiness';
 // Offline-resilient wrappers: identical behavior online; when the network is
 // down, writes are captured in a durable queue and replayed on reconnect.
@@ -222,6 +223,8 @@ type BusinessContextValue = {
   startFulfilment: (input: { saleId: string }) => ActionResult;
   advanceFulfilment: (input: Omit<AdvanceFulfilmentInput, 'byUserId' | 'byName'>) => ActionResult;
   assignFulfilment: (input: { fulfilmentId: string; assignToUserId: string; assignToName: string }) => ActionResult;
+  reserveStock: (input: Omit<ReserveStockInput, 'createdByName'>) => ActionResult;
+  releaseReservation: (input: { reservationId: string }) => ActionResult;
   updateCustomerStatus: (input: UpdateCustomerStatusInput) => ActionResult;
   updateBusinessProfile: (input: UpdateBusinessProfileInput) => Promise<ActionResult>;
   launchBusinessWorkspace: (input?: LaunchBusinessWorkspaceInput) => Promise<ActionResult>;
@@ -1053,6 +1056,26 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         }
         const result = assignFulfilmentInState(stateRef.current, input);
         if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not assign the fulfilment.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      reserveStock(input) {
+        if (!hasPermission(currentUser, 'inventory.adjust')) {
+          return { ok: false, message: 'You are not authorized to reserve stock.' };
+        }
+        const result = reserveStockInState(stateRef.current, { ...input, createdByName: currentUser.name });
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not reserve the stock.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      releaseReservation(input) {
+        if (!hasPermission(currentUser, 'inventory.adjust')) {
+          return { ok: false, message: 'You are not authorized to release reservations.' };
+        }
+        const result = releaseReservationInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not release the reservation.' };
         stateRef.current = result.data;
         setState(result.data);
         return { ok: true };

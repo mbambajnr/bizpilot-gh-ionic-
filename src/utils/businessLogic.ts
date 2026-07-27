@@ -1684,6 +1684,7 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     approvalDelegations: raw.approvalDelegations ?? [],
     closedAccountingPeriods: raw.closedAccountingPeriods ?? [],
     fulfilments: raw.fulfilments ?? [],
+    stockReservations: raw.stockReservations ?? [],
     themePreference: raw.themePreference ?? 'system',
   };
 }
