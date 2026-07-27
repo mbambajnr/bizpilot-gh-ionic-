@@ -40,8 +40,9 @@ import { formatCurrency, formatRelativeDate } from '../../src/utils/format';
 import { EnterpriseApp } from './enterprise-app';
 import { EnterpriseShell } from './enterprise-shell';
 import { deleteClientPurchaseOrder, fetchDocumentStorageConfigured, getClientPurchaseOrderUrl, uploadClientPurchaseOrder } from '../lib/sales-documents';
+import { selectProcessableQuotes, defaultOrderTypeAutoReserves, selectQuotesForAutoReserve } from '../../src/utils/orderProcessing';
 
-type PipelineView = 'active' | 'converted' | 'expired' | 'all';
+type PipelineView = 'active' | 'converted' | 'expired' | 'all' | 'process';
 type DraftLine = { id: number; productId: string; quantity: number; productSearch: string; pickerOpen: boolean };
 
 function normalizedStatus(quotation: Quotation) {
@@ -158,11 +159,11 @@ function EnterpriseQuotationsView({ initialQuotationId }: { initialQuotationId: 
       <QuotationMetric icon={ReceiptText} label="Converted" value={String(converted.length)} note="Invoices created from quotes" tone="good" />
       <QuotationMetric icon={CircleDollarSign} label="Converted value" value={formatCurrency(converted.reduce((sum, quotation) => sum + quotation.totalAmount, 0), currency)} note="Historical quoted value" />
     </section>
-    <nav className="quotation-tabs" aria-label="Quotation pipeline views">{([['active', `Active (${active.length})`], ['converted', `Converted (${converted.length})`], ['expired', `Expired (${expired.length})`], ['all', `All (${state.quotations.length})`]] as const).map(([value, label]) => <button type="button" className={view === value ? 'quotation-tab quotation-tab--active' : 'quotation-tab'} onClick={() => setView(value)} key={value}>{label}</button>)}</nav>
+    <nav className="quotation-tabs" aria-label="Quotation pipeline views">{([['active', `Active (${active.length})`], ['converted', `Converted (${converted.length})`], ['expired', `Expired (${expired.length})`], ['all', `All (${state.quotations.length})`], ['process', 'Process orders']] as const).map(([value, label]) => <button type="button" className={view === value ? 'quotation-tab quotation-tab--active' : 'quotation-tab'} onClick={() => setView(value)} key={value}>{label}</button>)}</nav>
     {message ? <div className="settings-message" role="status">{message}</div> : null}
-    <section className="quotation-workspace"><div className="quotation-list-panel"><div className="quotation-toolbar"><label><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search quotation, customer, or item" /></label><span>{filtered.length} documents</span></div><div className="quotation-table-wrap"><table className="quotation-table"><thead><tr><th>Quotation</th><th>Customer</th><th>Validity</th><th>Value</th><th>Status</th><th /></tr></thead><tbody>{filtered.map((quotation) => { const display = selectQuotationStatusDisplay(quotation); return <tr className={selected?.id === quotation.id ? 'quotation-row quotation-row--selected' : 'quotation-row'} onClick={() => setSelectedId(quotation.id)} key={quotation.id}><td><strong>{quotation.quotationNumber}</strong><span>{quotation.items.length} lines · {formatRelativeDate(quotation.createdAt)}</span></td><td><strong>{quotation.customerName}</strong><span>{quotation.clientId}</span></td><td>{quotation.validUntil ? new Date(quotation.validUntil).toLocaleDateString() : 'Not set'}</td><td><strong>{formatCurrency(quotation.netReceivableAmount ?? quotation.totalAmount, currency)}</strong></td><td><span className={`quotation-status quotation-status--${display.tone}`}>{display.label}</span></td><td><ChevronRight size={15} /></td></tr>;})}</tbody></table>{!filtered.length ? <QuotationEmpty canCreate={canCreate && view === 'active'} onCreate={() => setComposerOpen(true)} /> : null}</div></div>
+    {view === 'process' ? <ProcessOrdersPanel state={state} currency={currency} /> : <section className="quotation-workspace"><div className="quotation-list-panel"><div className="quotation-toolbar"><label><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search quotation, customer, or item" /></label><span>{filtered.length} documents</span></div><div className="quotation-table-wrap"><table className="quotation-table"><thead><tr><th>Quotation</th><th>Customer</th><th>Validity</th><th>Value</th><th>Status</th><th /></tr></thead><tbody>{filtered.map((quotation) => { const display = selectQuotationStatusDisplay(quotation); return <tr className={selected?.id === quotation.id ? 'quotation-row quotation-row--selected' : 'quotation-row'} onClick={() => setSelectedId(quotation.id)} key={quotation.id}><td><strong>{quotation.quotationNumber}</strong><span>{quotation.items.length} lines · {formatRelativeDate(quotation.createdAt)}</span></td><td><strong>{quotation.customerName}</strong><span>{quotation.clientId}</span></td><td>{quotation.validUntil ? new Date(quotation.validUntil).toLocaleDateString() : 'Not set'}</td><td><strong>{formatCurrency(quotation.netReceivableAmount ?? quotation.totalAmount, currency)}</strong></td><td><span className={`quotation-status quotation-status--${display.tone}`}>{display.label}</span></td><td><ChevronRight size={15} /></td></tr>;})}</tbody></table>{!filtered.length ? <QuotationEmpty canCreate={canCreate && view === 'active'} onCreate={() => setComposerOpen(true)} /> : null}</div></div>
       <QuotationInspector quotation={selected} state={state} currency={currency} now={pageOpenedAt} canConvert={canConvert} canRegisterCustomers={canRegisterCustomers} canManageClientPo={canCreate || canConvert} canPrint={canPrint} canExport={canExport} onConvert={setConversionTarget} onRegister={setRegistrationTarget} onUploadClientPo={attachClientPo} onOpenClientPo={openClientPo} onRemoveClientPo={removeClientPo} />
-    </section>
+    </section>}
   </div>{composerOpen ? <QuotationComposer state={state} currency={currency} onClose={() => setComposerOpen(false)} onCreate={(input) => { const result = addQuotation(input); setMessage(result.ok ? 'Quotation created and added to the active pipeline.' : result.message); if (result.ok) { setComposerOpen(false); setView('active'); } return result.ok; }} /> : null}{registrationTarget ? <ProspectRegistrationDialog quotation={registrationTarget} state={state} onClose={() => setRegistrationTarget(null)} onRegister={(existingCustomerId, customerType) => { const result = registerQuotationProspect({ quotationId: registrationTarget.id, existingCustomerId, customerType }); setMessage(result.ok ? `${registrationTarget.customerName} registered as ${result.clientId}. Future documents can use the customer account.` : result.message); if (result.ok) setRegistrationTarget(null); return result.ok; }} /> : null}{conversionTarget ? <ConversionDialog quotation={conversionTarget} currency={currency} onClose={() => setConversionTarget(null)} onConvert={convert} /> : null}</EnterpriseShell>;
 }
 
@@ -187,6 +188,46 @@ function QuotationInspector({ quotation, state, currency, now, canConvert, canRe
     <div className="quotation-inspector-actions">{canPrint ? <button className="icon-button" type="button" aria-label="Print quotation" title="Print quotation" onClick={() => window.print()}><Printer size={15} /></button> : null}{canExport ? <button className="icon-button" type="button" aria-label="Export quotation as PDF" title="Export quotation as PDF" onClick={() => window.print()}><FileText size={15} /></button> : null}<Link className="secondary-button" href={`/quotations/${quotation.id}`}><ReceiptText size={14} /> Open document</Link>{quotation.customerType === 'prospect' && canRegisterCustomers ? <button className="secondary-button" type="button" onClick={() => onRegister(quotation)}><UserPlus size={14} /> Register customer</button> : null}{canConvert && convertible ? <button className="primary-button" type="button" onClick={() => onConvert(quotation)}>Convert to invoice <ArrowRight size={14} /></button> : null}</div>
     {!convertible && normalizedStatus(quotation) !== 'converted' ? <div className="quotation-blocked-note">{status.helper}</div> : null}{quotation.convertedInvoiceId ? <Link className="quotation-converted-link" href={`/sales/${quotation.convertedInvoiceId}`}><Check size={14} /> Open converted invoice <ChevronRight size={14} /></Link> : null}
   </aside>;
+}
+
+function ProcessOrdersPanel({ state, currency }: { state: ReturnType<typeof useBusiness>['state']; currency: string }) {
+  const { hasPermission, reserveQuotationStock, releaseQuotationHold } = useBusiness();
+  const [now] = useState(() => Date.now());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [message, setMessage] = useState('');
+  const canManage = hasPermission('quotations.create');
+  const processable = selectProcessableQuotes(state, now);
+  const autoReserves = defaultOrderTypeAutoReserves(state);
+  const autoEligible = selectQuotesForAutoReserve(state, now);
+  const defaultLocation = state.locations.find((location) => location.isDefault && location.isActive) ?? state.locations.find((location) => location.isActive);
+
+  function toggle(id: string) { setSelected((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
+  function holdSelected() {
+    if (!defaultLocation) { setMessage('No active location to hold stock at.'); return; }
+    let ok = 0; let failed = 0;
+    processable.filter((entry) => selected.has(entry.quotation.id) && entry.canHold).forEach((entry) => { if (reserveQuotationStock({ quotationId: entry.quotation.id, locationId: defaultLocation.id }).ok) ok++; else failed++; });
+    setMessage(`Held stock for ${ok} order${ok === 1 ? '' : 's'}${failed ? `; ${failed} could not be held (insufficient stock)` : ''}.`);
+    setSelected(new Set());
+  }
+  function releaseSelected() {
+    let released = 0;
+    processable.filter((entry) => selected.has(entry.quotation.id) && entry.held).forEach((entry) => { if (releaseQuotationHold({ quotationId: entry.quotation.id }).ok) released++; });
+    setMessage(`Released ${released} hold${released === 1 ? '' : 's'}.`);
+    setSelected(new Set());
+  }
+  function applyAutoReserve() {
+    if (!defaultLocation) { setMessage('No active location to hold stock at.'); return; }
+    let ok = 0;
+    autoEligible.forEach((quotation) => { if (reserveQuotationStock({ quotationId: quotation.id, locationId: defaultLocation.id }).ok) ok++; });
+    setMessage(`Auto-reserved stock for ${ok} order${ok === 1 ? '' : 's'} per the default order type.`);
+  }
+
+  return <section className="process-orders-panel">
+    <div className="process-orders-heading"><div><strong>Process orders</strong><span>{processable.length} open order{processable.length === 1 ? '' : 's'}</span></div>{canManage && autoReserves && autoEligible.length ? <button className="secondary-button" type="button" onClick={applyAutoReserve}><Boxes size={14} /> Auto-reserve {autoEligible.length}</button> : null}</div>
+    {message ? <p className="settings-message" role="status">{message}</p> : null}
+    <div className="process-orders-wrap"><table className="process-orders-table"><thead><tr><th /><th>Order</th><th>Customer</th><th>Value</th><th>Units</th><th>Stock hold</th></tr></thead><tbody>{processable.map((entry) => <tr key={entry.quotation.id}><td><input type="checkbox" checked={selected.has(entry.quotation.id)} onChange={() => toggle(entry.quotation.id)} disabled={!canManage} aria-label={`Select ${entry.quotation.quotationNumber}`} /></td><td><strong>{entry.quotation.quotationNumber}</strong><span>{formatRelativeDate(entry.quotation.createdAt)}</span></td><td>{entry.quotation.customerName}</td><td>{formatCurrency(entry.quotation.netReceivableAmount ?? entry.quotation.totalAmount, currency)}</td><td>{entry.totalUnits}</td><td>{entry.held ? <span className="process-hold process-hold--held">{entry.heldUnits} held</span> : <span className="process-hold">Not held</span>}</td></tr>)}</tbody></table>{!processable.length ? <p className="process-orders-empty">No open orders to process.</p> : null}</div>
+    {canManage && selected.size ? <div className="process-orders-actions"><span>{selected.size} selected</span><button className="secondary-button" type="button" onClick={releaseSelected}>Release holds</button><button className="primary-button" type="button" onClick={holdSelected}><Boxes size={14} /> Hold stock</button></div> : null}
+  </section>;
 }
 
 function QuotationStockHold({ quotation, state }: { quotation: Quotation; state: ReturnType<typeof useBusiness>['state'] }) {
