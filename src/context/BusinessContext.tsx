@@ -127,6 +127,7 @@ import {
 } from '../utils/businessLogic';
 import { startFulfilmentInState, advanceFulfilmentInState, assignFulfilmentInState, type AdvanceFulfilmentInput } from '../utils/fulfilment';
 import { reserveStockInState, releaseReservationInState, reserveQuotationStockInState, releaseReservationsForReferenceInState, type ReserveStockInput } from '../utils/inventoryAvailability';
+import { updateOrderTypeInState, setDefaultOrderTypeInState, type OrderTypePatch } from '../utils/orderTypes';
 import type { ApprovalDelegationCategory } from '../data/seedBusiness';
 // Offline-resilient wrappers: identical behavior online; when the network is
 // down, writes are captured in a durable queue and replayed on reconnect.
@@ -227,6 +228,8 @@ type BusinessContextValue = {
   releaseReservation: (input: { reservationId: string }) => ActionResult;
   reserveQuotationStock: (input: { quotationId: string; locationId: string }) => ActionResult;
   releaseQuotationHold: (input: { quotationId: string }) => ActionResult;
+  updateOrderType: (input: { id: string; patch: OrderTypePatch }) => ActionResult;
+  setDefaultOrderType: (input: { id: string }) => ActionResult;
   updateCustomerStatus: (input: UpdateCustomerStatusInput) => ActionResult;
   updateBusinessProfile: (input: UpdateBusinessProfileInput) => Promise<ActionResult>;
   launchBusinessWorkspace: (input?: LaunchBusinessWorkspaceInput) => Promise<ActionResult>;
@@ -1098,6 +1101,26 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         }
         const result = releaseReservationsForReferenceInState(stateRef.current, input.quotationId);
         if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not release the hold.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      updateOrderType(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to configure order types.' };
+        }
+        const result = updateOrderTypeInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not update the order type.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      setDefaultOrderType(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to configure order types.' };
+        }
+        const result = setDefaultOrderTypeInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not set the default order type.' };
         stateRef.current = result.data;
         setState(result.data);
         return { ok: true };

@@ -617,6 +617,18 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .quotation-hold-actions { display: flex; gap: 8px; margin-top: 10px; }
 .quotation-hold-actions .secondary-button { display: inline-flex; align-items: center; gap: 6px; }
 
+/* Configurable order types */
+.settings-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; margin-top: 4px; }
+.order-type-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.order-type-table thead th { text-align: center; padding: 10px 12px; background: #f8faf9; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+.order-type-table thead th:first-child { text-align: left; }
+.order-type-table tbody td { padding: 11px 12px; border-top: 1px solid var(--line); text-align: center; vertical-align: middle; }
+.order-type-table tbody td:first-child { text-align: left; }
+.order-type-table td strong { display: block; font-size: 13px; }
+.order-type-table td span { color: var(--muted); font-size: 11px; }
+.order-type-table input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--forest); }
+.order-type-default { color: var(--forest); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+
 .settings-panel-heading--sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .settings-panel-heading--sub h3 { font-size: 15px; margin: 0; }
 .settings-panel-heading--sub p { margin: 5px 0 0; color: var(--muted); font-size: 13px; max-width: 640px; }

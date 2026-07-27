@@ -41,7 +41,7 @@ import type {
   WithholdingTaxBasis,
   WithholdingTaxSnapshot,
 } from '../data/seedBusiness';
-import { seedState } from '../data/seedBusiness';
+import { seedState, DEFAULT_ORDER_TYPES } from '../data/seedBusiness';
 import type { AppPermission } from '../authz/types';
 
 /**
@@ -1685,6 +1685,7 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     closedAccountingPeriods: raw.closedAccountingPeriods ?? [],
     fulfilments: raw.fulfilments ?? [],
     stockReservations: raw.stockReservations ?? [],
+    orderTypes: raw.orderTypes && raw.orderTypes.length ? raw.orderTypes : DEFAULT_ORDER_TYPES,
     themePreference: raw.themePreference ?? 'system',
   };
 }
