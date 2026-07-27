@@ -15,6 +15,7 @@ import {
   ReceiptText,
   Search,
   Send,
+  ShieldAlert,
   ShieldCheck,
   ShoppingCart,
   Trash2,
@@ -24,7 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 
 import { useBusiness } from '../../src/context/BusinessContext';
 import type { ClientPurchaseOrderDocument, PaymentMethod, Quotation } from '../../src/data/seedBusiness';
@@ -37,7 +38,7 @@ import { buildTaxSnapshot, buildWithholdingTaxSnapshot, calculateTaxTotals } fro
 import { formatCurrency, formatRelativeDate } from '../../src/utils/format';
 import { EnterpriseApp } from './enterprise-app';
 import { EnterpriseShell } from './enterprise-shell';
-import { deleteClientPurchaseOrder, getClientPurchaseOrderUrl, uploadClientPurchaseOrder } from '../lib/sales-documents';
+import { deleteClientPurchaseOrder, fetchDocumentStorageConfigured, getClientPurchaseOrderUrl, uploadClientPurchaseOrder } from '../lib/sales-documents';
 
 type PipelineView = 'active' | 'converted' | 'expired' | 'all';
 type DraftLine = { id: number; productId: string; quantity: number; productSearch: string; pickerOpen: boolean };
@@ -191,7 +192,14 @@ function ClientPurchaseOrderPanel({ quotation, canManage, onUpload, onOpen, onRe
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [storageConfigured, setStorageConfigured] = useState<boolean | null>(null);
   const documents = quotation.clientPurchaseOrders ?? [];
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDocumentStorageConfigured().then((configured) => { if (!cancelled) setStorageConfigured(configured); });
+    return () => { cancelled = true; };
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -217,7 +225,8 @@ function ClientPurchaseOrderPanel({ quotation, canManage, onUpload, onOpen, onRe
 
   return <section className="quotation-po-panel"><div className="quotation-section-heading"><strong>Client purchase order</strong><span>{documents.length ? `${documents.length} attached` : 'Approval evidence'}</span></div>
     <div className="quotation-po-list">{documents.map((document) => <div className="quotation-po-item" key={document.id}><FileCheck2 size={15} /><span><strong>{document.poNumber}</strong><small>{document.name} · {new Date(document.uploadedAt).toLocaleDateString()}</small></span><button className="icon-button" type="button" aria-label="Open client PO" title="Open client PO" onClick={() => void onOpen(quotation, document)}><ExternalLink size={14} /></button>{canManage ? <button className="icon-button" type="button" aria-label="Remove client PO" title="Remove client PO" onClick={() => void onRemove(quotation, document)}><Trash2 size={14} /></button> : null}</div>)}{!documents.length ? <p>No approved client PO has been attached yet.</p> : null}</div>
-    {canManage ? <form className="quotation-po-upload" onSubmit={(event) => void submit(event)}><label className="form-field"><span>Client PO number</span><input value={poNumber} onChange={(event) => setPoNumber(event.target.value)} placeholder="e.g. PO-2026-1048" /></label><label className="quotation-file-drop"><Upload size={15} /><span>{file?.name ?? 'Choose PO PDF'}</span><input type="file" accept="application/pdf" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>{error ? <small className="quotation-po-error">{error}</small> : null}<button className="secondary-button" type="submit" disabled={busy}>{busy ? 'Uploading...' : 'Attach PO'}</button></form> : null}
+    {canManage && storageConfigured === false ? <div className="quotation-po-unavailable"><ShieldAlert size={15} /><span><strong>Document storage isn&apos;t set up</strong><small>An administrator needs to set <code>SUPABASE_SERVICE_ROLE_KEY</code> and create a private <code>sales-documents</code> bucket before client POs can be attached.</small></span></div> : null}
+    {canManage && storageConfigured !== false ? <form className="quotation-po-upload" onSubmit={(event) => void submit(event)}><label className="form-field"><span>Client PO number</span><input value={poNumber} onChange={(event) => setPoNumber(event.target.value)} placeholder="e.g. PO-2026-1048" disabled={storageConfigured === null} /></label><label className="quotation-file-drop"><Upload size={15} /><span>{file?.name ?? 'Choose PO PDF'}</span><input type="file" accept="application/pdf" onChange={(event) => setFile(event.target.files?.[0] ?? null)} disabled={storageConfigured === null} /></label>{error ? <small className="quotation-po-error">{error}</small> : null}<button className="secondary-button" type="submit" disabled={busy || storageConfigured === null}>{busy ? 'Uploading...' : storageConfigured === null ? 'Checking storage…' : 'Attach PO'}</button></form> : null}
   </section>;
 }
 

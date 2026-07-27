@@ -591,6 +591,12 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .credit-note-totals .credit-note-total dt, .credit-note-totals .credit-note-total dd { color: var(--ink); font-size: 15px; }
 @media (max-width: 720px) { .credit-note-summary { grid-template-columns: 1fr; } }
 
+.quotation-po-unavailable { display: flex; align-items: flex-start; gap: 9px; margin-top: 10px; padding: 11px 13px; background: #fdf4e7; border: 1px solid #f0d9b8; border-radius: 8px; color: #8a4b16; }
+.quotation-po-unavailable > svg { flex-shrink: 0; margin-top: 1px; }
+.quotation-po-unavailable strong { display: block; font-size: 13px; }
+.quotation-po-unavailable small { display: block; margin-top: 3px; font-size: 12px; line-height: 1.5; }
+.quotation-po-unavailable code { padding: 1px 5px; background: rgba(138, 75, 22, 0.12); border-radius: 4px; font-size: 11px; }
+
 .settings-panel-heading--sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .settings-panel-heading--sub h3 { font-size: 15px; margin: 0; }
 .settings-panel-heading--sub p { margin: 5px 0 0; color: var(--muted); font-size: 13px; max-width: 640px; }
