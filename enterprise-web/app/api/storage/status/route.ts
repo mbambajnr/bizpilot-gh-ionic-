@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 
+// Read env at request time, not at build time — otherwise Next bakes in the build-time result.
+export const dynamic = 'force-dynamic';
+
 /**
  * Reports whether server-side private document storage is configured, so the UI can guide the user
  * instead of letting an upload dead-end. Returns only a boolean — never any key material.
