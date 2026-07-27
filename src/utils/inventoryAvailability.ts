@@ -88,6 +88,52 @@ export function fulfilReservationInState(current: BusinessState, input: { reserv
   return setReservationStatus(current, input.reservationId, 'fulfilled');
 }
 
+/**
+ * Book a quotation against stock: reserve every line at `locationId` in one atomic step. Fails without
+ * reserving anything if the quote is already holding stock or any line exceeds availability (aggregated per
+ * product so repeated lines don't oversell). This is the SME "sales order booked → reserves inventory".
+ */
+export function reserveQuotationStockInState(
+  current: BusinessState,
+  input: { quotationId: string; locationId: string; createdByName?: string },
+): ActionResult<BusinessState> {
+  const quotation = current.quotations.find((entry) => entry.id === input.quotationId);
+  if (!quotation) return { ok: false, message: 'That quotation could not be found.' };
+  if ((current.stockReservations ?? []).some((entry) => entry.referenceId === quotation.id && entry.status === 'active')) {
+    return { ok: false, message: 'This quotation is already holding stock. Release the hold first to re-book it.' };
+  }
+
+  const requestedByProduct = new Map<string, number>();
+  for (const line of quotation.items) {
+    if (line.quantity > 0) requestedByProduct.set(line.productId, (requestedByProduct.get(line.productId) ?? 0) + line.quantity);
+  }
+  if (!requestedByProduct.size) return { ok: false, message: 'This quotation has no stock lines to hold.' };
+
+  for (const [productId, quantity] of requestedByProduct) {
+    const product = current.products.find((entry) => entry.id === productId);
+    if (!product) return { ok: false, message: 'A product on this quotation no longer exists.' };
+    const available = selectAvailableQuantity(current, productId, input.locationId);
+    if (quantity > available) {
+      return { ok: false, message: `Not enough ${product.name} to hold — need ${quantity}, only ${available} available at this location.` };
+    }
+  }
+
+  const now = new Date().toISOString();
+  const reservations: StockReservation[] = [...requestedByProduct.entries()].map(([productId, quantity]) => ({
+    id: `res-${crypto.randomUUID()}`,
+    productId,
+    locationId: input.locationId,
+    quantity,
+    status: 'active',
+    reason: 'quotation',
+    referenceId: quotation.id,
+    referenceLabel: quotation.quotationNumber,
+    createdAt: now,
+    createdByName: input.createdByName,
+  }));
+  return { ok: true, data: { ...current, stockReservations: [...reservations, ...(current.stockReservations ?? [])] } };
+}
+
 /** Release every active reservation tied to an order/quote (e.g. on cancellation). */
 export function releaseReservationsForReferenceInState(current: BusinessState, referenceId: string): ActionResult<BusinessState> {
   const affected = (current.stockReservations ?? []).some((entry) => entry.referenceId === referenceId && entry.status === 'active');

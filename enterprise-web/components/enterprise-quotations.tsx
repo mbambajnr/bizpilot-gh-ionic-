@@ -2,6 +2,7 @@
 
 import {
   ArrowRight,
+  Boxes,
   CalendarClock,
   Check,
   ChevronRight,
@@ -181,10 +182,37 @@ function QuotationInspector({ quotation, state, currency, now, canConvert, canRe
     <dl className="quotation-totals"><div><dt>Subtotal</dt><dd>{formatCurrency(tax.subtotalAmount, currency)}</dd></div>{tax.hasTax ? <div><dt>{tax.isExempt ? 'Tax exempt' : `Tax (${tax.taxRate}%)`}</dt><dd>{formatCurrency(tax.taxAmount, currency)}</dd></div> : null}<div><dt>Gross total</dt><dd>{formatCurrency(quotation.totalAmount, currency)}</dd></div>{withholding.hasWithholding ? <><div><dt>{withholding.label}</dt><dd>-{formatCurrency(withholding.amount, currency)}</dd></div><div className="quotation-net-total"><dt>Net receivable</dt><dd>{formatCurrency(withholding.netReceivableAmount, currency)}</dd></div></> : null}</dl>
     {tax.isExempt ? <div className="quotation-control-note"><ShieldCheck size={14} /><span><strong>Tax exemption applied</strong><small>{tax.exemptionReason || 'Customer exemption snapshot'}</small></span></div> : null}
     {quotation.customerType === 'prospect' ? <div className="quotation-prospect-note"><UserPlus size={15} /><span><strong>Prospect quotation</strong><small>You can invoice now using the prospect snapshot, then register or link the customer later.</small></span></div> : null}
+    <QuotationStockHold quotation={quotation} state={state} />
     <ClientPurchaseOrderPanel quotation={quotation} canManage={canManageClientPo && normalizedStatus(quotation) !== 'converted'} onUpload={onUploadClientPo} onOpen={onOpenClientPo} onRemove={onRemoveClientPo} />
     <div className="quotation-inspector-actions">{canPrint ? <button className="icon-button" type="button" aria-label="Print quotation" title="Print quotation" onClick={() => window.print()}><Printer size={15} /></button> : null}{canExport ? <button className="icon-button" type="button" aria-label="Export quotation as PDF" title="Export quotation as PDF" onClick={() => window.print()}><FileText size={15} /></button> : null}<Link className="secondary-button" href={`/quotations/${quotation.id}`}><ReceiptText size={14} /> Open document</Link>{quotation.customerType === 'prospect' && canRegisterCustomers ? <button className="secondary-button" type="button" onClick={() => onRegister(quotation)}><UserPlus size={14} /> Register customer</button> : null}{canConvert && convertible ? <button className="primary-button" type="button" onClick={() => onConvert(quotation)}>Convert to invoice <ArrowRight size={14} /></button> : null}</div>
     {!convertible && normalizedStatus(quotation) !== 'converted' ? <div className="quotation-blocked-note">{status.helper}</div> : null}{quotation.convertedInvoiceId ? <Link className="quotation-converted-link" href={`/sales/${quotation.convertedInvoiceId}`}><Check size={14} /> Open converted invoice <ChevronRight size={14} /></Link> : null}
   </aside>;
+}
+
+function QuotationStockHold({ quotation, state }: { quotation: Quotation; state: ReturnType<typeof useBusiness>['state'] }) {
+  const { hasPermission, reserveQuotationStock, releaseQuotationHold } = useBusiness();
+  const [error, setError] = useState('');
+  const canManage = hasPermission('quotations.create');
+  const converted = normalizedStatus(quotation) === 'converted';
+  const held = (state.stockReservations ?? []).filter((entry) => entry.referenceId === quotation.id && entry.status === 'active');
+  const totalHeld = held.reduce((sum, entry) => sum + entry.quantity, 0);
+  const defaultLocation = state.locations.find((location) => location.isDefault && location.isActive) ?? state.locations.find((location) => location.isActive);
+
+  function hold() {
+    if (!defaultLocation) { setError('No active location to hold stock at.'); return; }
+    const result = reserveQuotationStock({ quotationId: quotation.id, locationId: defaultLocation.id });
+    setError(result.ok ? '' : result.message);
+  }
+  function release() {
+    const result = releaseQuotationHold({ quotationId: quotation.id });
+    setError(result.ok ? '' : result.message);
+  }
+
+  return <section className="quotation-po-panel"><div className="quotation-section-heading"><strong>Stock hold</strong><span>{totalHeld > 0 ? `${totalHeld} units held` : 'Not held'}</span></div>
+    {totalHeld > 0 ? <p className="quotation-hold-note"><Boxes size={14} /> This quotation is holding {totalHeld} unit{totalHeld === 1 ? '' : 's'} of stock{defaultLocation ? ` at ${defaultLocation.name}` : ''}. It stays unavailable to other orders until this quote is invoiced or the hold is released.</p> : <p className="quotation-hold-empty">No stock is reserved for this quotation. Hold stock to guarantee availability when the customer confirms.</p>}
+    {canManage && !converted ? <div className="quotation-hold-actions">{totalHeld > 0 ? <button className="secondary-button" type="button" onClick={release}>Release hold</button> : <button className="secondary-button" type="button" onClick={hold}><Boxes size={14} /> Hold stock for this quote</button>}</div> : null}
+    {error ? <small className="quotation-po-error">{error}</small> : null}
+  </section>;
 }
 
 function ClientPurchaseOrderPanel({ quotation, canManage, onUpload, onOpen, onRemove }: { quotation: Quotation; canManage: boolean; onUpload: (quotation: Quotation, file: File, poNumber: string) => Promise<boolean>; onOpen: (quotation: Quotation, document: ClientPurchaseOrderDocument) => Promise<void>; onRemove: (quotation: Quotation, document: ClientPurchaseOrderDocument) => Promise<boolean> }) {

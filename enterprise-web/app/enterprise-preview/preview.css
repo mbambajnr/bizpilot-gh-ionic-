@@ -610,6 +610,13 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .inventory-reservation-form select { flex: 1; min-height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-size: 13px; }
 .inventory-reservation-error { color: var(--danger); font-size: 12px; margin: 8px 0 0; }
 
+/* Quotation stock hold */
+.quotation-hold-note { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0 0; padding: 10px 12px; background: var(--forest-soft); border-radius: 8px; color: var(--forest); font-size: 12px; line-height: 1.5; }
+.quotation-hold-note svg { flex-shrink: 0; margin-top: 1px; }
+.quotation-hold-empty { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.quotation-hold-actions { display: flex; gap: 8px; margin-top: 10px; }
+.quotation-hold-actions .secondary-button { display: inline-flex; align-items: center; gap: 6px; }
+
 .settings-panel-heading--sub { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .settings-panel-heading--sub h3 { font-size: 15px; margin: 0; }
 .settings-panel-heading--sub p { margin: 5px 0 0; color: var(--muted); font-size: 13px; max-width: 640px; }
