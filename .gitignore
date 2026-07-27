@@ -9,14 +9,27 @@
 /coverage
 
 # production
-/dist
+/out
+/enterprise-web/.next
+/enterprise-web/node_modules
+/enterprise-web/public
+/BisaPilot*.mp4
+
+# accidental nested repos / local worktrees
+/bizpilot/
 
 # misc
 .DS_Store
+# local agent/tool config
+/.claude/
+/.zcode/
 .env.local
+.env.server
 .env.development.local
 .env.test.local
 .env.production.local
+/server/data/
+/supabase/.temp/
 /.nx
 /.nx/cache
 /.vscode/*
@@ -29,3 +42,6 @@ yarn-error.log*
 
 # Optional eslint cache
 .eslintcache
+
+# TypeScript incremental build info
+*.tsbuildinfo
