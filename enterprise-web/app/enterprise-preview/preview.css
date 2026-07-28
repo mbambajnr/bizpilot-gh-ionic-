@@ -2277,9 +2277,9 @@ td:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600;
 .quotation-file-drop span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quotation-file-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .quotation-po-error { grid-column: 1 / -1; color: #9d3b2f; font-size: 12px; font-weight: 800; }
-.quotation-inspector-actions { display: flex; align-items: center; gap: 7px; padding: 12px 14px; }
-.quotation-inspector-actions .secondary-button { padding-inline: 10px; }
-.quotation-inspector-actions .primary-button { min-width: 0; flex: 1; justify-content: center; padding-inline: 10px; font-size: 12px; }
+.quotation-inspector-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; }
+.quotation-inspector-actions .secondary-button { flex: 1 1 auto; justify-content: center; padding-inline: 12px; white-space: nowrap; }
+.quotation-inspector-actions .primary-button { flex: 1 1 100%; min-width: 0; justify-content: center; padding-inline: 14px; font-size: 15px; white-space: nowrap; }
 .quotation-blocked-note { padding: 10px 14px; color: #7e601f; background: #fbf4df; border-top: 1px solid #eadcae; font-size: 12px; }
 .quotation-converted-link { display: flex; align-items: center; gap: 7px; padding: 11px 14px; color: #2e6950; background: #edf5f1; border-top: 1px solid #d8e7df; font-size: 12px; font-weight: 700; text-decoration: none; }
 .quotation-converted-link svg:last-child { margin-left: auto; }
