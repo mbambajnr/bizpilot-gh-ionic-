@@ -39,14 +39,3 @@ jobs:
 
       - name: Build enterprise web
         run: npm run build:web
-
-      - name: Build Ionic mobile assets
-        run: npm run build:mobile
-
-      - name: Upload mobile assets
-        uses: actions/upload-artifact@v4
-        with:
-          name: bizpilot-mobile-dist
-          path: dist
-          if-no-files-found: error
-          retention-days: 14
