@@ -145,7 +145,7 @@ function EnterpriseSettingsView() {
         ) : null}
 
         {section === 'team' ? <EnterpriseTeamSettings /> : null}
-        {section === 'operations' ? <EnterpriseOperationsSettings /> : null}
+        {section === 'operations' ? <div className="settings-stack"><EnterpriseOperationsSettings /><OrderTypeSettings /></div> : null}
 
         {section === 'connections' ? (
           <div className="connections-grid">
@@ -190,6 +190,28 @@ function AiConnectionStatus() {
   return <section className="settings-panel connection-summary">
     <div className="settings-panel-heading"><div><p className="eyebrow">Assistant</p><h2>AI provider</h2></div><Sparkles size={20} /></div>
     <div className="connection-detail"><span className={`status-dot status-dot--${configured ? 'supabase' : 'local'}`} /><div><strong>{!loaded ? 'Checking…' : configured ? `${status?.provider} · ${status?.model}` : 'Not configured'}</strong><p>{configured ? 'Free-text questions and model-refined insight are live.' : 'Set LLM_API_KEY (and provider/model) in .env.server to enable. The assistant runs in deterministic mode until then.'}</p></div></div>
+  </section>;
+}
+
+function OrderTypeSettings() {
+  const { state, hasPermission, updateOrderType, setDefaultOrderType } = useBusiness();
+  const canEdit = hasPermission('business.edit');
+  const [message, setMessage] = useState('');
+  const orderTypes = state.orderTypes ?? [];
+
+  function toggle(id: string, key: 'autoReserve' | 'holdOnEntry' | 'requireAllocation', value: boolean) {
+    const result = updateOrderType({ id, patch: { [key]: value } });
+    setMessage(result.ok ? '' : (result.message ?? 'That change could not be saved.'));
+  }
+  function makeDefault(id: string) {
+    const result = setDefaultOrderType({ id });
+    setMessage(result.ok ? '' : (result.message ?? 'That change could not be saved.'));
+  }
+
+  return <section className="settings-panel">
+    <div className="settings-panel-heading"><div><p className="eyebrow">Order configuration</p><h2>Order types</h2><p>Control how each document type behaves — reserve stock, hold on entry, require allocation — without code changes.</p></div>{!canEdit ? <span className="status-pill">Read only</span> : null}</div>
+    <div className="settings-table-wrap"><table className="order-type-table"><thead><tr><th>Type</th><th>Auto-reserve</th><th>Hold on entry</th><th>Require allocation</th><th>Default</th></tr></thead><tbody>{orderTypes.map((type) => <tr key={type.id}><td><strong>{type.code}</strong><span>{type.name}</span></td><td><input type="checkbox" checked={type.autoReserve} disabled={!canEdit} aria-label={`${type.code} auto-reserve`} onChange={(event) => toggle(type.id, 'autoReserve', event.target.checked)} /></td><td><input type="checkbox" checked={type.holdOnEntry} disabled={!canEdit} aria-label={`${type.code} hold on entry`} onChange={(event) => toggle(type.id, 'holdOnEntry', event.target.checked)} /></td><td><input type="checkbox" checked={type.requireAllocation} disabled={!canEdit} aria-label={`${type.code} require allocation`} onChange={(event) => toggle(type.id, 'requireAllocation', event.target.checked)} /></td><td>{type.isDefault ? <span className="order-type-default">Default</span> : canEdit ? <button className="text-button" type="button" onClick={() => makeDefault(type.id)}>Set default</button> : null}</td></tr>)}</tbody></table></div>
+    {message ? <p className="settings-message" role="status">{message}</p> : null}
   </section>;
 }
 

@@ -41,7 +41,9 @@ import type {
   WithholdingTaxBasis,
   WithholdingTaxSnapshot,
 } from '../data/seedBusiness';
-import { seedState } from '../data/seedBusiness';
+import { seedState, DEFAULT_ORDER_TYPES } from '../data/seedBusiness';
+import { defaultOrderTypeHoldsOnEntry, defaultOrderTypeRequiresAllocation } from './orderTypes';
+import { isQuotationStockAllocated } from './inventoryAvailability';
 import type { AppPermission } from '../authz/types';
 
 /**
@@ -1684,6 +1686,8 @@ export function restoreBusinessState(state: BusinessState | Record<string, unkno
     approvalDelegations: raw.approvalDelegations ?? [],
     closedAccountingPeriods: raw.closedAccountingPeriods ?? [],
     fulfilments: raw.fulfilments ?? [],
+    stockReservations: raw.stockReservations ?? [],
+    orderTypes: raw.orderTypes && raw.orderTypes.length ? raw.orderTypes : DEFAULT_ORDER_TYPES,
     themePreference: raw.themePreference ?? 'system',
   };
 }
@@ -3976,6 +3980,7 @@ export function addQuotationToState(current: BusinessState, input: NewQuotationI
     netReceivableAmount: withholdingTaxSnapshot ? netReceivableAmount : undefined,
     totalAmount: taxTotals.totalAmount,
     status: input.status ?? 'Draft',
+    onHold: defaultOrderTypeHoldsOnEntry(current) || undefined,
     customerType: customer
       ? input.customerType ?? (customer.name.trim().toLowerCase() === 'walk-in customer' ? 'walkIn' : 'registered')
       : 'prospect',
@@ -4243,6 +4248,23 @@ export function removeQuotationClientPoInState(current: BusinessState, input: Re
   };
 }
 
+/** Place or release an order-entry hold on a quotation (Acumatica hold/release mechanism). */
+export function setQuotationHoldInState(current: BusinessState, input: { quotationId: string; onHold: boolean }): ActionResult<BusinessState> {
+  const quotation = current.quotations.find((entry) => entry.id === input.quotationId);
+  if (!quotation) return { ok: false, message: 'That quotation could not be found.' };
+  if (isQuotationConverted(quotation.status)) return { ok: false, message: 'A converted quotation can no longer be held or released.' };
+  if (Boolean(quotation.onHold) === input.onHold) {
+    return { ok: false, message: input.onHold ? 'This order is already on hold.' : 'This order is not on hold.' };
+  }
+  return {
+    ok: true,
+    data: {
+      ...current,
+      quotations: current.quotations.map((entry) => (entry.id === input.quotationId ? { ...entry, onHold: input.onHold || undefined } : entry)),
+    },
+  };
+}
+
 export function convertQuotationToSalesState(
   current: BusinessState,
   input: ConvertQuotationInput
@@ -4286,6 +4308,15 @@ export function convertQuotationToSalesState(
   }
   if (lifecycleStatus === 'rejected' || lifecycleStatus === 'cancelled') {
     return { ok: false, message: 'Only active quotations can be converted to sales.' };
+  }
+
+  // Order-type gates (Acumatica): a held order is parked until released; some order types require stock
+  // to be allocated before the order can be processed.
+  if (quotation.onHold) {
+    return { ok: false, message: 'This order is on hold. Release the hold before converting it to an invoice.' };
+  }
+  if (defaultOrderTypeRequiresAllocation(current) && !isQuotationStockAllocated(current, quotation)) {
+    return { ok: false, message: 'This order type requires stock allocation. Hold stock for every line before converting to an invoice.' };
   }
 
   if (!Number.isFinite(input.amountPaid) || input.amountPaid < 0 || input.amountPaid > quotation.totalAmount) {

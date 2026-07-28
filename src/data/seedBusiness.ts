@@ -315,6 +315,8 @@ export type Quotation = {
   netReceivableAmount?: number;
   totalAmount: number;
   status: 'Draft' | 'Converted' | 'draft' | 'open' | 'approved' | 'converted' | 'rejected' | 'expired' | 'cancelled';
+  /** Acumatica "Hold Orders on Entry": order is parked on hold and cannot be converted until released. */
+  onHold?: boolean;
   rejectionReason?: string;
   convertedAt?: string;
   convertedInvoiceId?: string;
@@ -666,6 +668,43 @@ export type Fulfilment = {
   updatedAt: string;
 };
 
+/**
+ * A soft hold on stock for an order or quote: it reduces AVAILABLE quantity without moving on-hand stock,
+ * so the same unit can't be promised to two customers. Released (or fulfilled into a real stock movement)
+ * when the order ships or is cancelled. This is the SME-scaled version of Acumatica's plan types.
+ */
+export type StockReservation = {
+  id: string;
+  productId: string;
+  locationId: string;
+  quantity: number;
+  status: 'active' | 'released' | 'fulfilled';
+  /** What the hold is for, e.g. a sales order or quotation. */
+  reason: 'sales_order' | 'quotation' | 'manual';
+  referenceId?: string;
+  referenceLabel?: string;
+  createdAt: string;
+  createdByName?: string;
+};
+
+/**
+ * A configurable order type (Acumatica-style): drives how an order of this type behaves without code
+ * changes. The predefined set covers common SME scenarios; flags can be toggled per business.
+ */
+export type OrderType = {
+  id: string;
+  code: string;
+  name: string;
+  /** Automatically hold stock when an order of this type is created (Acumatica "SA" behaviour). */
+  autoReserve: boolean;
+  /** New orders of this type start on hold. */
+  holdOnEntry: boolean;
+  /** Stock must be held/allocated before the order can be processed. */
+  requireAllocation: boolean;
+  isDefault: boolean;
+  active: boolean;
+};
+
 export type BusinessState = {
   businessProfile: BusinessProfile;
   locations: BusinessLocation[];
@@ -693,8 +732,19 @@ export type BusinessState = {
   approvalDelegations: ApprovalDelegation[];
   closedAccountingPeriods: ClosedAccountingPeriod[];
   fulfilments: Fulfilment[];
+  stockReservations: StockReservation[];
+  orderTypes: OrderType[];
   themePreference: 'system' | 'light' | 'dark';
 };
+
+/** Predefined order types seeded for every business; behaviour flags are configurable in Settings. */
+export const DEFAULT_ORDER_TYPES: OrderType[] = [
+  { id: 'ot-so', code: 'SO', name: 'Sales Order', autoReserve: false, holdOnEntry: false, requireAllocation: false, isDefault: true, active: true },
+  { id: 'ot-sa', code: 'SA', name: 'Sales Order with Allocation', autoReserve: true, holdOnEntry: false, requireAllocation: true, isDefault: false, active: true },
+  { id: 'ot-in', code: 'IN', name: 'Invoice', autoReserve: false, holdOnEntry: false, requireAllocation: false, isDefault: false, active: true },
+  { id: 'ot-cs', code: 'CS', name: 'Cash Sale', autoReserve: false, holdOnEntry: false, requireAllocation: false, isDefault: false, active: true },
+  { id: 'ot-qt', code: 'QT', name: 'Quote', autoReserve: false, holdOnEntry: false, requireAllocation: false, isDefault: false, active: true },
+];
 
 /** A locked accounting period. `period` is a 'YYYY-MM' key; nothing dated within it can be created, reversed, or edited. */
 export type ClosedAccountingPeriod = {
@@ -981,6 +1031,8 @@ export const seedState: BusinessState = {
   approvalDelegations: [],
   closedAccountingPeriods: [],
   fulfilments: [],
+  stockReservations: [],
+  orderTypes: DEFAULT_ORDER_TYPES,
   themePreference: 'system',
 };
 

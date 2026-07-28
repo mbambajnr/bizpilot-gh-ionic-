@@ -12,6 +12,7 @@ import {
   adjustStockInState,
   addQuotationToState,
   registerQuotationProspectInState,
+  setQuotationHoldInState,
   addSaleToState,
   ConvertedSaleReceipt,
   convertQuotationToSalesState,
@@ -126,6 +127,8 @@ import {
   setPaymentReconciledInState,
 } from '../utils/businessLogic';
 import { startFulfilmentInState, advanceFulfilmentInState, assignFulfilmentInState, type AdvanceFulfilmentInput } from '../utils/fulfilment';
+import { reserveStockInState, releaseReservationInState, reserveQuotationStockInState, releaseReservationsForReferenceInState, type ReserveStockInput } from '../utils/inventoryAvailability';
+import { updateOrderTypeInState, setDefaultOrderTypeInState, type OrderTypePatch } from '../utils/orderTypes';
 import type { ApprovalDelegationCategory } from '../data/seedBusiness';
 // Offline-resilient wrappers: identical behavior online; when the network is
 // down, writes are captured in a durable queue and replayed on reconnect.
@@ -222,6 +225,13 @@ type BusinessContextValue = {
   startFulfilment: (input: { saleId: string }) => ActionResult;
   advanceFulfilment: (input: Omit<AdvanceFulfilmentInput, 'byUserId' | 'byName'>) => ActionResult;
   assignFulfilment: (input: { fulfilmentId: string; assignToUserId: string; assignToName: string }) => ActionResult;
+  reserveStock: (input: Omit<ReserveStockInput, 'createdByName'>) => ActionResult;
+  releaseReservation: (input: { reservationId: string }) => ActionResult;
+  reserveQuotationStock: (input: { quotationId: string; locationId: string }) => ActionResult;
+  releaseQuotationHold: (input: { quotationId: string }) => ActionResult;
+  setQuotationHold: (input: { quotationId: string; onHold: boolean }) => ActionResult;
+  updateOrderType: (input: { id: string; patch: OrderTypePatch }) => ActionResult;
+  setDefaultOrderType: (input: { id: string }) => ActionResult;
   updateCustomerStatus: (input: UpdateCustomerStatusInput) => ActionResult;
   updateBusinessProfile: (input: UpdateBusinessProfileInput) => Promise<ActionResult>;
   launchBusinessWorkspace: (input?: LaunchBusinessWorkspaceInput) => Promise<ActionResult>;
@@ -1057,6 +1067,76 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         setState(result.data);
         return { ok: true };
       },
+      reserveStock(input) {
+        if (!hasPermission(currentUser, 'inventory.adjust')) {
+          return { ok: false, message: 'You are not authorized to reserve stock.' };
+        }
+        const result = reserveStockInState(stateRef.current, { ...input, createdByName: currentUser.name });
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not reserve the stock.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      releaseReservation(input) {
+        if (!hasPermission(currentUser, 'inventory.adjust')) {
+          return { ok: false, message: 'You are not authorized to release reservations.' };
+        }
+        const result = releaseReservationInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not release the reservation.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      reserveQuotationStock(input) {
+        if (!hasPermission(currentUser, 'quotations.create')) {
+          return { ok: false, message: 'You are not authorized to hold stock for quotations.' };
+        }
+        const result = reserveQuotationStockInState(stateRef.current, { ...input, createdByName: currentUser.name });
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not hold stock for the quotation.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      releaseQuotationHold(input) {
+        if (!hasPermission(currentUser, 'quotations.create')) {
+          return { ok: false, message: 'You are not authorized to release quotation holds.' };
+        }
+        const result = releaseReservationsForReferenceInState(stateRef.current, input.quotationId);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not release the hold.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      setQuotationHold(input) {
+        if (!hasPermission(currentUser, 'quotations.convert')) {
+          return { ok: false, message: 'You are not authorized to hold or release orders.' };
+        }
+        const result = setQuotationHoldInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not update the order hold.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      updateOrderType(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to configure order types.' };
+        }
+        const result = updateOrderTypeInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not update the order type.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      setDefaultOrderType(input) {
+        if (!hasPermission(currentUser, 'business.edit')) {
+          return { ok: false, message: 'You are not authorized to configure order types.' };
+        }
+        const result = setDefaultOrderTypeInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not set the default order type.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
       updateCustomerStatus(input) {
         if (!hasPermission(currentUser, 'customers.edit')) {
           return { ok: false, message: 'You are not authorized to manage customer accounts.' };
@@ -1222,7 +1302,10 @@ export function BusinessProvider({ children }: PropsWithChildren) {
           return { ok: false, message: 'Could not convert the quotation right now.' };
         }
 
-        const { data, receipts, quotationNumber } = result.data as ConvertQuotationResult;
+        const { data: convertedData, receipts, quotationNumber } = result.data as ConvertQuotationResult;
+        // Any stock this quote was holding is now covered by the real sale movement — release the hold.
+        const releaseResult = releaseReservationsForReferenceInState(convertedData, input.quotationId);
+        const data = releaseResult.ok && releaseResult.data ? releaseResult.data : convertedData;
         setState(data);
 
         const convertedQuotation = data.quotations.find((quotation) => quotation.id === input.quotationId);

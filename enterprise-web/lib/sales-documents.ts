@@ -16,6 +16,18 @@ async function parseResponse(response: Response) {
   return payload;
 }
 
+/** Whether the server has private document storage configured. Fails closed (false) if unreachable. */
+export async function fetchDocumentStorageConfigured(): Promise<boolean> {
+  try {
+    const response = await fetch('/api/storage/status', { cache: 'no-store' });
+    if (!response.ok) return false;
+    const payload = await response.json().catch(() => null) as { configured?: boolean } | null;
+    return Boolean(payload?.configured);
+  } catch {
+    return false;
+  }
+}
+
 export async function uploadClientPurchaseOrder(file: File, input: { quotationId: string; businessId: string; poNumber: string; user: UserAccessProfile }) {
   const form = new FormData();
   form.set('file', file);

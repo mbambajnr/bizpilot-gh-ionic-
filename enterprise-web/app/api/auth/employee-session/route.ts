@@ -9,8 +9,8 @@ function sessionSecret() {
 
 export async function POST(request: NextRequest) {
   const secret = sessionSecret();
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (secret.length < 32 || !url || !publishableKey) return NextResponse.json({ message: 'Employee server sessions are not configured.' }, { status: 503 });
   const body = await request.json().catch(() => null) as { identifier?: string; password?: string } | null;
   if (!body?.identifier?.trim() || !body.password?.trim()) return NextResponse.json({ message: 'Employee credentials are required.' }, { status: 400 });
