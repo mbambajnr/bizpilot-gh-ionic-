@@ -2,7 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { EMPLOYEE_SESSION_COOKIE, verifyEmployeeSessionToken } from '@/lib/employee-session';
 
-const BUCKET = 'procurement-documents';
+// Shared private document bucket. Paths are prefixed with businessId/purchaseId so sales and
+// procurement uploads never collide. Point SUPABASE_DOCUMENTS_BUCKET at the per-environment bucket
+// (e.g. documents_dev / documents_prod); defaults to `documents`.
+const BUCKET = process.env.SUPABASE_DOCUMENTS_BUCKET || 'documents';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_TYPES = new Set([
   'application/pdf',
