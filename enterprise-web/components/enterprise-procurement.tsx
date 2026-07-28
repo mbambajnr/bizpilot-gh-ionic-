@@ -416,6 +416,7 @@ function SearchSelect({ options, value, onChange, placeholder, ariaLabel }: {
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const selected = options.find((option) => option.id === value) ?? null;
 
   const filtered = useMemo(() => {
@@ -426,6 +427,7 @@ function SearchSelect({ options, value, onChange, placeholder, ariaLabel }: {
 
   useEffect(() => {
     if (!open) return;
+    inputRef.current?.focus();
     function onPointerDown(event: PointerEvent) {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) { setOpen(false); setQuery(''); }
     }
@@ -433,13 +435,14 @@ function SearchSelect({ options, value, onChange, placeholder, ariaLabel }: {
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open]);
 
+  function openMenu() { setQuery(''); setHighlight(0); setOpen(true); }
   function choose(option: SearchOption) { onChange(option.id); setOpen(false); setQuery(''); }
 
-  function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
-    if (!open) {
-      if (event.key === 'ArrowDown' || event.key === 'Enter') { event.preventDefault(); setOpen(true); }
-      return;
-    }
+  function onValueKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>) {
+    if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openMenu(); }
+  }
+
+  function onInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === 'ArrowDown') { event.preventDefault(); setHighlight((current) => Math.min(current + 1, filtered.length - 1)); }
     else if (event.key === 'ArrowUp') { event.preventDefault(); setHighlight((current) => Math.max(current - 1, 0)); }
     else if (event.key === 'Enter') { event.preventDefault(); const option = filtered[highlight]; if (option) choose(option); }
@@ -448,24 +451,42 @@ function SearchSelect({ options, value, onChange, placeholder, ariaLabel }: {
 
   return (
     <div className="search-select" ref={rootRef}>
-      <div className="search-select__control">
-        <Search size={15} className="search-select__icon" aria-hidden />
-        <input
-          type="text"
-          role="combobox"
-          aria-expanded={open}
-          aria-controls={menuId}
-          aria-autocomplete="list"
+      {open ? (
+        <div className="search-select__control">
+          <Search size={16} className="search-select__lead" aria-hidden />
+          <input
+            ref={inputRef}
+            type="text"
+            role="combobox"
+            aria-expanded
+            aria-controls={menuId}
+            aria-autocomplete="list"
+            aria-label={ariaLabel}
+            className="search-select__input"
+            value={query}
+            placeholder={selected ? selected.label : placeholder}
+            onChange={(event) => { setQuery(event.target.value); setHighlight(0); }}
+            onKeyDown={onInputKeyDown}
+          />
+          <ChevronDown size={16} className="search-select__chevron search-select__chevron--open" aria-hidden />
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={`search-select__value${selected ? '' : ' is-empty'}`}
+          aria-haspopup="listbox"
           aria-label={ariaLabel}
-          className="search-select__input"
-          value={open ? query : (selected?.label ?? '')}
-          placeholder={selected ? selected.label : placeholder}
-          onChange={(event) => { setQuery(event.target.value); setHighlight(0); if (!open) setOpen(true); }}
-          onFocus={() => { setOpen(true); setQuery(''); setHighlight(0); }}
-          onKeyDown={onKeyDown}
-        />
-        <ChevronDown size={16} className="search-select__chevron" aria-hidden />
-      </div>
+          onClick={openMenu}
+          onKeyDown={onValueKeyDown}
+        >
+          <Search size={16} className="search-select__lead" aria-hidden />
+          {selected
+            ? <span className="search-select__value-label">{selected.label}</span>
+            : <span className="search-select__value-placeholder">{placeholder}</span>}
+          {selected?.hint ? <span className="search-select__code">{selected.hint}</span> : null}
+          <ChevronDown size={16} className="search-select__chevron" aria-hidden />
+        </button>
+      )}
       {open ? (
         <ul className="search-select__menu" id={menuId} role="listbox" aria-label={ariaLabel}>
           {filtered.length ? filtered.map((option, index) => (
@@ -473,15 +494,15 @@ function SearchSelect({ options, value, onChange, placeholder, ariaLabel }: {
               key={option.id}
               role="option"
               aria-selected={option.id === value}
-              className={`search-select__option${index === highlight ? ' is-active' : ''}${option.id === value ? ' is-selected' : ''}`}
+              className={`search-select__option${index === highlight ? ' is-active' : ''}`}
               onMouseEnter={() => setHighlight(index)}
               onMouseDown={(event) => { event.preventDefault(); choose(option); }}
             >
-              <span className="search-select__label">{option.label}</span>
-              {option.hint ? <span className="search-select__hint">{option.hint}</span> : null}
-              {option.id === value ? <Check size={14} className="search-select__check" aria-hidden /> : null}
+              <span className="search-select__text">{option.label}</span>
+              {option.hint ? <span className="search-select__code">{option.hint}</span> : null}
+              <span className="search-select__tick">{option.id === value ? <Check size={15} aria-hidden /> : null}</span>
             </li>
-          )) : <li className="search-select__empty">No matches</li>}
+          )) : <li className="search-select__empty"><Search size={15} aria-hidden /> No matches for &ldquo;{query}&rdquo;</li>}
         </ul>
       ) : null}
     </div>
