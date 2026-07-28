@@ -174,7 +174,7 @@ function RoleAssistant() {
   }
 
   return <section className="assistant-panel">
-    <div className="panel-heading"><div><p className="eyebrow assistant-eyebrow"><Sparkles size={13} /> Ask BisaPilot</p><h2>Your assistant</h2></div><span>{aiOn ? `${aiStatus?.model} · read-only` : 'Read-only · respects your role'}</span></div>
+    <div className="panel-heading"><div><p className="eyebrow assistant-eyebrow"><Sparkles size={13} /> BisaPilot</p><h2>Your assistant</h2></div><span>{aiOn ? `${aiStatus?.model} · read-only` : 'Read-only · respects your role'}</span></div>
     <form className="assistant-ask" onSubmit={(event) => void submit(event)}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ask about cash, receivables, stock, or expenses…" aria-label="Ask BisaPilot" /><button className="primary-button" type="submit" disabled={thinking}><Send size={14} /> {thinking ? 'Thinking…' : 'Ask'}</button></form>
     <div className="assistant-suggestions">{intents.map((intent) => <button key={intent.id} type="button" className={activeId === intent.id ? 'assistant-chip assistant-chip--active' : 'assistant-chip'} onClick={() => { setQuery(''); ask(intent.id); }}>{intent.question}</button>)}</div>
     {notice ? <p className="assistant-notice">{notice}</p> : null}
