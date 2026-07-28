@@ -3,6 +3,7 @@
 import {
   ArrowRight,
   Check,
+  ChevronDown,
   ChevronRight,
   ClipboardCheck,
   CalendarClock,
@@ -20,7 +21,7 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { useBusiness } from '../../src/context/BusinessContext';
 import type { ProcurementDocument, Purchase, PurchaseItem, PurchaseStatus } from '../../src/data/seedBusiness';
@@ -400,6 +401,93 @@ function PurchaseDetail({ purchase, state, currentUserId, canCreate, canApprove,
 
 function TimelineStep({ label, complete }: { label: string; complete: boolean }) { return <div className={complete ? 'timeline-step timeline-step--complete' : 'timeline-step'}><i>{complete ? <Check size={10} /> : null}</i><span>{label}</span></div>; }
 
+type SearchOption = { id: string; label: string; hint?: string };
+
+/** Type-ahead combobox: filter a list by name or code and pick one. Keyboard + mouse accessible. */
+function SearchSelect({ options, value, onChange, placeholder, ariaLabel }: {
+  options: SearchOption[];
+  value: string;
+  onChange: (id: string) => void;
+  placeholder: string;
+  ariaLabel: string;
+}) {
+  const menuId = useId();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [highlight, setHighlight] = useState(0);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const selected = options.find((option) => option.id === value) ?? null;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options.slice(0, 60);
+    return options.filter((option) => `${option.label} ${option.hint ?? ''}`.toLowerCase().includes(q)).slice(0, 60);
+  }, [options, query]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: PointerEvent) {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) { setOpen(false); setQuery(''); }
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
+  function choose(option: SearchOption) { onChange(option.id); setOpen(false); setQuery(''); }
+
+  function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (!open) {
+      if (event.key === 'ArrowDown' || event.key === 'Enter') { event.preventDefault(); setOpen(true); }
+      return;
+    }
+    if (event.key === 'ArrowDown') { event.preventDefault(); setHighlight((current) => Math.min(current + 1, filtered.length - 1)); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); setHighlight((current) => Math.max(current - 1, 0)); }
+    else if (event.key === 'Enter') { event.preventDefault(); const option = filtered[highlight]; if (option) choose(option); }
+    else if (event.key === 'Escape') { event.preventDefault(); setOpen(false); setQuery(''); }
+  }
+
+  return (
+    <div className="search-select" ref={rootRef}>
+      <div className="search-select__control">
+        <Search size={15} className="search-select__icon" aria-hidden />
+        <input
+          type="text"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={menuId}
+          aria-autocomplete="list"
+          aria-label={ariaLabel}
+          className="search-select__input"
+          value={open ? query : (selected?.label ?? '')}
+          placeholder={selected ? selected.label : placeholder}
+          onChange={(event) => { setQuery(event.target.value); setHighlight(0); if (!open) setOpen(true); }}
+          onFocus={() => { setOpen(true); setQuery(''); setHighlight(0); }}
+          onKeyDown={onKeyDown}
+        />
+        <ChevronDown size={16} className="search-select__chevron" aria-hidden />
+      </div>
+      {open ? (
+        <ul className="search-select__menu" id={menuId} role="listbox" aria-label={ariaLabel}>
+          {filtered.length ? filtered.map((option, index) => (
+            <li
+              key={option.id}
+              role="option"
+              aria-selected={option.id === value}
+              className={`search-select__option${index === highlight ? ' is-active' : ''}${option.id === value ? ' is-selected' : ''}`}
+              onMouseEnter={() => setHighlight(index)}
+              onMouseDown={(event) => { event.preventDefault(); choose(option); }}
+            >
+              <span className="search-select__label">{option.label}</span>
+              {option.hint ? <span className="search-select__hint">{option.hint}</span> : null}
+              {option.id === value ? <Check size={14} className="search-select__check" aria-hidden /> : null}
+            </li>
+          )) : <li className="search-select__empty">No matches</li>}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function PurchaseComposer({ vendors, products, currency, currentUserId, prefill, onClose, onCreate, onMessage }: {
   vendors: ReturnType<typeof useBusiness>['state']['vendors'];
   products: ReturnType<typeof useBusiness>['state']['products'];
@@ -435,7 +523,7 @@ function PurchaseComposer({ vendors, products, currency, currentUserId, prefill,
   }
 
   const total = lines.reduce((sum, line) => sum + line.totalCost, 0);
-  return <div className="composer-backdrop" role="presentation"><form className="purchase-composer" onSubmit={(event) => void create(event)}><div className="composer-heading"><div><p className="eyebrow">New purchase order</p><h2>Build supplier order</h2></div><button className="icon-button" type="button" aria-label="Close purchase order" title="Close purchase order" onClick={onClose}><X size={18} /></button></div><div className="composer-body"><label className="form-field"><span>Supplier</span><select value={vendorId} onChange={(event) => setVendorId(event.target.value)}>{vendors.map((vendor) => <option value={vendor.id} key={vendor.id}>{vendor.name} · {vendor.vendorCode}</option>)}</select></label><div className="composer-line-builder"><label className="form-field"><span>Stock item</span><select value={productId} onChange={(event) => { const nextId = event.target.value; setProductId(nextId); setUnitCost(products.find((product) => product.id === nextId)?.cost ?? 0); }}>{products.map((product) => <option value={product.id} key={product.id}>{product.name} · {product.inventoryId}</option>)}</select></label><label className="form-field"><span>Quantity</span><input type="number" min="1" value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label><label className="form-field"><span>Unit cost</span><input type="number" min="0" step="0.01" value={unitCost} onChange={(event) => setUnitCost(Number(event.target.value))} /></label><button className="secondary-button add-line-button" type="button" onClick={addLine}><Plus size={15} /> Add line</button></div><div className="composer-lines">{lines.map((line) => <div key={line.productId}><div><strong>{line.productName}</strong><span>{line.quantity} × {formatCurrency(line.unitCost, currency)}</span></div><b>{formatCurrency(line.totalCost, currency)}</b><button className="icon-button" type="button" aria-label={`Remove ${line.productName}`} title={`Remove ${line.productName}`} onClick={() => setLines((current) => current.filter((entry) => entry.productId !== line.productId))}><X size={14} /></button></div>)}{!lines.length ? <p>Add at least one product line to create the draft.</p> : null}</div></div><div className="composer-footer"><div><span>Purchase total</span><strong>{formatCurrency(total, currency)}</strong></div><button className="primary-button" type="submit" disabled={busy || !vendorId || !lines.length}>{busy ? 'Creating...' : 'Create draft'}</button></div></form></div>;
+  return <div className="composer-backdrop" role="presentation"><form className="purchase-composer" onSubmit={(event) => void create(event)}><div className="composer-heading"><div><p className="eyebrow">New purchase order</p><h2>Build supplier order</h2></div><button className="icon-button" type="button" aria-label="Close purchase order" title="Close purchase order" onClick={onClose}><X size={18} /></button></div><div className="composer-body"><div className="form-field"><span>Supplier</span><SearchSelect ariaLabel="Search suppliers by name or code" placeholder="Search suppliers by name or code" value={vendorId} onChange={setVendorId} options={vendors.map((vendor) => ({ id: vendor.id, label: vendor.name, hint: vendor.vendorCode }))} /></div><div className="composer-line-builder"><div className="form-field"><span>Stock item</span><SearchSelect ariaLabel="Search stock items by name or code" placeholder="Search items by name or code" value={productId} onChange={(nextId) => { setProductId(nextId); setUnitCost(products.find((product) => product.id === nextId)?.cost ?? 0); }} options={products.map((product) => ({ id: product.id, label: product.name, hint: product.inventoryId }))} /></div><label className="form-field"><span>Quantity</span><input type="number" min="1" value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label><label className="form-field"><span>Unit cost</span><input type="number" min="0" step="0.01" value={unitCost} onChange={(event) => setUnitCost(Number(event.target.value))} /></label><button className="secondary-button add-line-button" type="button" onClick={addLine}><Plus size={15} /> Add line</button></div><div className="composer-lines">{lines.map((line) => <div key={line.productId}><div><strong>{line.productName}</strong><span>{line.quantity} × {formatCurrency(line.unitCost, currency)}</span></div><b>{formatCurrency(line.totalCost, currency)}</b><button className="icon-button" type="button" aria-label={`Remove ${line.productName}`} title={`Remove ${line.productName}`} onClick={() => setLines((current) => current.filter((entry) => entry.productId !== line.productId))}><X size={14} /></button></div>)}{!lines.length ? <p>Add at least one product line to create the draft.</p> : null}</div></div><div className="composer-footer"><div><span>Purchase total</span><strong>{formatCurrency(total, currency)}</strong></div><button className="primary-button" type="submit" disabled={busy || !vendorId || !lines.length}>{busy ? 'Creating...' : 'Create draft'}</button></div></form></div>;
 }
 
 function ReorderWorkspace({ feed, error, canCreate, onCreateDraft, currency }: { feed: MagentoReorderResult | null; error: string; canCreate: boolean; onCreateDraft: (item: MagentoReorderItem) => void; currency: string }) {
