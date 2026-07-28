@@ -26,6 +26,16 @@ export function selectOrderTypeByCode(state: BusinessState, code?: string): Orde
   return selectOrderTypes(state).find((type) => type.code === code);
 }
 
+/** Whether new orders should be parked on hold on entry (Acumatica "Hold Orders on Entry"). */
+export function defaultOrderTypeHoldsOnEntry(state: BusinessState): boolean {
+  return Boolean(selectDefaultOrderType(state)?.holdOnEntry);
+}
+
+/** Whether stock must be allocated/held before an order can be processed (Acumatica "Require Stock Allocation"). */
+export function defaultOrderTypeRequiresAllocation(state: BusinessState): boolean {
+  return Boolean(selectDefaultOrderType(state)?.requireAllocation);
+}
+
 /** Editable behaviour flags on an order type (code/name stay fixed for the predefined set). */
 export type OrderTypePatch = Partial<Pick<OrderType, 'autoReserve' | 'holdOnEntry' | 'requireAllocation' | 'active'>>;
 

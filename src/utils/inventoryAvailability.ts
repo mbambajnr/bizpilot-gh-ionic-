@@ -1,4 +1,4 @@
-import type { BusinessState, StockReservation } from '../data/seedBusiness';
+import type { BusinessState, Quotation, StockReservation } from '../data/seedBusiness';
 import { selectProductQuantityOnHand } from '../selectors/businessSelectors';
 import type { ActionResult } from './businessLogic';
 
@@ -132,6 +132,33 @@ export function reserveQuotationStockInState(
     createdByName: input.createdByName,
   }));
   return { ok: true, data: { ...current, stockReservations: [...reservations, ...(current.stockReservations ?? [])] } };
+}
+
+/** Active held quantity for a quote, summed per product. */
+export function selectQuotationHeldByProduct(state: BusinessState, quotationId: string): Map<string, number> {
+  const held = new Map<string, number>();
+  for (const reservation of state.stockReservations ?? []) {
+    if (reservation.referenceId !== quotationId || reservation.status !== 'active') continue;
+    held.set(reservation.productId, (held.get(reservation.productId) ?? 0) + reservation.quantity);
+  }
+  return held;
+}
+
+/**
+ * True when every stock line on the quote is fully covered by an active hold — the "allocated" state
+ * Acumatica's Require Stock Allocation gate checks before an order can be processed.
+ */
+export function isQuotationStockAllocated(state: BusinessState, quotation: Pick<Quotation, 'id' | 'items'>): boolean {
+  const held = selectQuotationHeldByProduct(state, quotation.id);
+  const requestedByProduct = new Map<string, number>();
+  for (const line of quotation.items) {
+    if (line.quantity > 0) requestedByProduct.set(line.productId, (requestedByProduct.get(line.productId) ?? 0) + line.quantity);
+  }
+  if (!requestedByProduct.size) return false; // nothing to allocate — treat as not allocated
+  for (const [productId, quantity] of requestedByProduct) {
+    if ((held.get(productId) ?? 0) < quantity) return false;
+  }
+  return true;
 }
 
 /** Release every active reservation tied to an order/quote (e.g. on cancellation). */

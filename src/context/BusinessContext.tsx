@@ -12,6 +12,7 @@ import {
   adjustStockInState,
   addQuotationToState,
   registerQuotationProspectInState,
+  setQuotationHoldInState,
   addSaleToState,
   ConvertedSaleReceipt,
   convertQuotationToSalesState,
@@ -228,6 +229,7 @@ type BusinessContextValue = {
   releaseReservation: (input: { reservationId: string }) => ActionResult;
   reserveQuotationStock: (input: { quotationId: string; locationId: string }) => ActionResult;
   releaseQuotationHold: (input: { quotationId: string }) => ActionResult;
+  setQuotationHold: (input: { quotationId: string; onHold: boolean }) => ActionResult;
   updateOrderType: (input: { id: string; patch: OrderTypePatch }) => ActionResult;
   setDefaultOrderType: (input: { id: string }) => ActionResult;
   updateCustomerStatus: (input: UpdateCustomerStatusInput) => ActionResult;
@@ -1101,6 +1103,16 @@ export function BusinessProvider({ children }: PropsWithChildren) {
         }
         const result = releaseReservationsForReferenceInState(stateRef.current, input.quotationId);
         if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not release the hold.' };
+        stateRef.current = result.data;
+        setState(result.data);
+        return { ok: true };
+      },
+      setQuotationHold(input) {
+        if (!hasPermission(currentUser, 'quotations.convert')) {
+          return { ok: false, message: 'You are not authorized to hold or release orders.' };
+        }
+        const result = setQuotationHoldInState(stateRef.current, input);
+        if (!result.ok || !result.data) return { ok: false, message: result.message ?? 'Could not update the order hold.' };
         stateRef.current = result.data;
         setState(result.data);
         return { ok: true };

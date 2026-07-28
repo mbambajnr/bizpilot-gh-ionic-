@@ -315,6 +315,8 @@ export type Quotation = {
   netReceivableAmount?: number;
   totalAmount: number;
   status: 'Draft' | 'Converted' | 'draft' | 'open' | 'approved' | 'converted' | 'rejected' | 'expired' | 'cancelled';
+  /** Acumatica "Hold Orders on Entry": order is parked on hold and cannot be converted until released. */
+  onHold?: boolean;
   rejectionReason?: string;
   convertedAt?: string;
   convertedInvoiceId?: string;
